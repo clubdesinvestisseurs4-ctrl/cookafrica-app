@@ -1,5 +1,5 @@
 // Version du SW — incrémenter à chaque déploiement pour forcer la mise à jour
-const SW_VERSION = 'cookafrica-v2.0.0';
+const SW_VERSION = 'cookafrica-v2.0.1';
 
 // ── Install : activation immédiate sans bloquer sur du pré-cache ──
 self.addEventListener('install', () => {
@@ -40,7 +40,17 @@ self.addEventListener('fetch', event => {
   }
 
   // Tout le reste (HTML, JS, CSS, icônes…) → réseau direct, sans cache SW
-  event.respondWith(fetch(event.request));
+  event.respondWith(
+    fetch(event.request).catch(() => {
+      if (event.request.mode === 'navigate') {
+        return new Response(
+          '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Hors ligne</title></head><body style="font-family:sans-serif;text-align:center;padding:2rem"><h1>Vous êtes hors ligne</h1><p>Vérifiez votre connexion et rechargez la page.</p></body></html>',
+          { headers: { 'Content-Type': 'text/html' }, status: 503 }
+        );
+      }
+      return new Response('', { status: 503 });
+    })
+  );
 });
 
 self.addEventListener('message', event => {

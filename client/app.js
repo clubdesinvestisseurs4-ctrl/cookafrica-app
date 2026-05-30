@@ -1112,13 +1112,28 @@ function closeModal(name) {
 // ─── Service Worker ────────────────────────────────────
 
 if ('serviceWorker' in navigator) {
-  // updateViaCache:'none' → le navigateur vérifie sw.js sur le réseau à chaque chargement
+  const forceSkip = worker => worker.postMessage('SKIP_WAITING');
+
   navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
-    .then(reg => reg.update())
+    .then(reg => {
+      // Si un nouveau SW est déjà en attente, le forcer à s'activer immédiatement
+      if (reg.waiting) forceSkip(reg.waiting);
+
+      // Quand un nouveau SW s'installe pendant que la page est ouverte
+      reg.addEventListener('updatefound', () => {
+        const installing = reg.installing;
+        installing.addEventListener('statechange', () => {
+          if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+            forceSkip(installing);
+          }
+        });
+      });
+
+      return reg.update();
+    })
     .catch(() => {});
 
-  // Quand un nouveau SW prend le contrôle (après mise à jour), on recharge la page
-  // pour s'assurer que l'utilisateur a bien la dernière version de l'app.
+  // Quand le nouveau SW prend le contrôle, recharger pour avoir la dernière version
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     window.location.reload();
   });
