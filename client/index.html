@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#8B1A1A">
+  <meta name="description" content="Application de gestion interne – Cook Africa Restaurant">
+  <title>Cook Africa – Gestion</title>
+
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+        crossorigin="anonymous" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Offline banner -->
+<div class="offline-banner"><i class="fas fa-wifi-slash"></i> Mode hors ligne – données possiblement indisponibles</div>
+
+<!-- Loader -->
+<div class="loader-overlay" id="loader">
+  <div class="spinner"></div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- ══ Login ══════════════════════════════════════ -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <i class="fas fa-utensils"></i>
+      <h1>COOK AFRICA</h1>
+      <p>Application de Gestion Interne</p>
+    </div>
+    <form id="login-form">
+      <div class="form-group">
+        <label for="login-username">Identifiant</label>
+        <input type="text" id="login-username" placeholder="Votre identifiant" autocomplete="username" required>
+      </div>
+      <div class="form-group">
+        <label for="login-password">Mot de passe</label>
+        <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" required>
+      </div>
+      <div id="login-error" class="form-error" style="display:none"></div>
+      <button type="submit" class="btn btn-primary" style="width:100%;margin-top:8px;justify-content:center;padding:11px" id="login-btn">
+        <i class="fas fa-sign-in-alt"></i> Se connecter
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ══ App ═══════════════════════════════════════ -->
+<div id="app-screen" style="display:none">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <i class="fas fa-utensils"></i>
+      <span>COOK AFRICA</span>
+    </div>
+    <nav class="nav-menu">
+
+      <div class="nav-section-label">Général</div>
+      <a class="nav-item active" data-page="dashboard">
+        <i class="fas fa-tachometer-alt"></i><span>Dashboard</span>
+      </a>
+
+      <div class="nav-section-label" id="nav-section-salle">Salle</div>
+      <a class="nav-item" data-page="commandes" id="nav-commandes">
+        <i class="fas fa-list-alt"></i><span>Commandes</span>
+      </a>
+      <a class="nav-item" data-page="facturation" id="nav-facturation">
+        <i class="fas fa-receipt"></i><span>Facturation</span>
+      </a>
+
+      <div class="nav-section-label" id="nav-section-cuisine">Cuisine</div>
+      <a class="nav-item" data-page="cuisine" id="nav-cuisine">
+        <i class="fas fa-fire"></i><span>Écran Cuisine</span>
+      </a>
+      <a class="nav-item" data-page="stocks" id="nav-stocks">
+        <i class="fas fa-boxes"></i><span>Stocks</span>
+      </a>
+
+      <div class="nav-section-label" id="nav-section-admin">Administration</div>
+      <a class="nav-item" data-page="menu" id="nav-menu">
+        <i class="fas fa-book-open"></i><span>Menu</span>
+      </a>
+      <a class="nav-item" data-page="rapports" id="nav-rapports">
+        <i class="fas fa-chart-bar"></i><span>Rapports</span>
+      </a>
+      <a class="nav-item" data-page="sessions" id="nav-sessions">
+        <i class="fas fa-shield-alt"></i><span>Sessions</span>
+      </a>
+
+    </nav>
+    <div class="user-info">
+      <i class="fas fa-user-circle" style="font-size:1.3rem"></i>
+      <div>
+        <div class="user-name" id="sidebar-user-name">—</div>
+        <div class="user-role" id="sidebar-user-role"></div>
+      </div>
+      <button class="btn-logout" id="logout-btn" title="Se déconnecter">
+        <i class="fas fa-power-off"></i>
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main-content">
+    <header class="top-header">
+      <h1 id="page-title">Dashboard</h1>
+      <div class="header-right">
+        <span class="date-badge" id="header-date"></span>
+        <div class="notif-wrapper">
+          <button class="btn-notif" id="notif-btn" title="Notifications">
+            <i class="fas fa-bell"></i>
+            <span class="badge" id="notif-badge" style="display:none">0</span>
+          </button>
+          <div class="notif-panel hidden" id="notif-panel">
+            <div class="notif-panel-header">
+              <span><i class="fas fa-bell"></i> Notifications</span>
+              <button class="notif-close" id="notif-close"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="notif-list" class="notif-list">
+              <div class="notif-loading"><i class="fas fa-spinner fa-spin"></i> Chargement…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="content-area">
+
+      <!-- ── DASHBOARD ────────────────────────── -->
+      <section id="page-dashboard" class="page active">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon red"><i class="fas fa-list-alt"></i></div>
+            <div><div class="stat-value" id="stat-commandes-jour">—</div><div class="stat-label">Commandes du jour</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon orange"><i class="fas fa-fire"></i></div>
+            <div><div class="stat-value" id="stat-commandes-actives">—</div><div class="stat-label">En cours</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon green"><i class="fas fa-money-bill-wave"></i></div>
+            <div><div class="stat-value" id="stat-revenus-jour">—</div><div class="stat-label">Revenus du jour (FCFA)</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon purple"><i class="fas fa-exclamation-triangle"></i></div>
+            <div><div class="stat-value" id="stat-alertes">—</div><div class="stat-label">Alertes stock</div></div>
+          </div>
+        </div>
+
+        <div class="dashboard-grid">
+          <div class="card">
+            <div class="card-title"><i class="fas fa-fire"></i> Commandes en cours</div>
+            <div class="list-scroll" id="dash-commandes-actives">
+              <div class="empty-state"><i class="fas fa-check-circle"></i><p>Aucune commande en cours</p></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title"><i class="fas fa-clock"></i> Activité récente</div>
+            <div class="list-scroll" id="dash-activite"></div>
+          </div>
+          <div class="card">
+            <div class="card-title"><i class="fas fa-exclamation-triangle" style="color:var(--warning)"></i> Stock bas</div>
+            <div id="dash-stock-alerts">
+              <em style="color:var(--gray);font-size:.85rem">Chargement…</em>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── COMMANDES ─────────────────────────── -->
+      <section id="page-commandes" class="page">
+        <div class="page-actions">
+          <button class="btn btn-primary" id="btn-new-commande">
+            <i class="fas fa-plus"></i> Nouvelle commande
+          </button>
+        </div>
+        <div class="filters">
+          <select id="filter-cmd-statut">
+            <option value="">Tous les statuts</option>
+            <option value="en-attente">En attente</option>
+            <option value="en-preparation">En préparation</option>
+            <option value="prete">Prête</option>
+            <option value="servie">Servie</option>
+            <option value="annulee">Annulée</option>
+          </select>
+          <input type="date" id="filter-cmd-date">
+          <button class="btn btn-secondary" id="btn-filter-cmd"><i class="fas fa-filter"></i> Filtrer</button>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead><tr>
+              <th>N° Commande</th><th>Heure</th><th>Articles</th>
+              <th>Total (FCFA)</th><th>Table</th><th>Statut</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="commandes-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ── ÉCRAN CUISINE ────────────────────── -->
+      <section id="page-cuisine" class="page">
+        <div class="cuisine-header">
+          <div>
+            <h2 style="font-size:1.1rem;font-weight:800;color:var(--primary)">
+              <i class="fas fa-fire"></i> Écran Cuisine
+            </h2>
+            <p style="font-size:.8rem;color:var(--gray);margin-top:4px">
+              Actualisation automatique toutes les 20 secondes
+            </p>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center">
+            <span id="cuisine-count" style="font-size:.85rem;color:var(--gray)"></span>
+            <button class="btn btn-secondary btn-sm" id="btn-refresh-cuisine">
+              <i class="fas fa-sync-alt"></i> Actualiser
+            </button>
+          </div>
+        </div>
+        <div class="cuisine-grid" id="cuisine-grid">
+          <div class="empty-state">
+            <i class="fas fa-check-circle"></i>
+            <p>Aucune commande en attente</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── FACTURATION ───────────────────────── -->
+      <section id="page-facturation" class="page">
+        <div class="page-actions">
+          <input type="date" id="filter-fact-start">
+          <input type="date" id="filter-fact-end">
+          <select id="filter-fact-statut">
+            <option value="">Tous statuts</option>
+            <option value="payee">Payée</option>
+            <option value="partielle">Partielle</option>
+          </select>
+          <button class="btn btn-secondary" id="btn-filter-fact"><i class="fas fa-filter"></i> Filtrer</button>
+          <button class="btn btn-primary" id="btn-new-facture"><i class="fas fa-plus"></i> Nouvelle facture</button>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead><tr>
+              <th>N° Facture</th><th>Date</th><th>Commande</th>
+              <th>Articles</th><th>Total (FCFA)</th><th>Reste</th><th>Mode</th><th>Statut</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="factures-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ── MENU ──────────────────────────────── -->
+      <section id="page-menu" class="page">
+        <div class="page-actions">
+          <button class="btn btn-primary" id="btn-new-plat"><i class="fas fa-plus"></i> Nouveau plat</button>
+          <button class="btn btn-secondary" id="btn-seed-menu"><i class="fas fa-layer-group"></i> Initialiser le menu</button>
+          <select id="filter-menu-cat" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem">
+            <option value="">Toutes les catégories</option>
+            <option value="Plats">Plats</option>
+            <option value="Entrées">Entrées</option>
+            <option value="Desserts">Desserts</option>
+            <option value="Boissons">Boissons</option>
+          </select>
+        </div>
+        <div class="menu-grid" id="menu-grid"></div>
+      </section>
+
+      <!-- ── STOCKS ────────────────────────────── -->
+      <section id="page-stocks" class="page">
+        <div class="stocks-header">
+          <div class="alerts-box">
+            <div class="card-title"><i class="fas fa-exclamation-triangle" style="color:var(--warning)"></i> Alertes stock bas</div>
+            <div id="stock-alerts-list"><em style="color:var(--gray);font-size:.85rem">Chargement…</em></div>
+          </div>
+          <div style="display:flex;gap:10px;flex-direction:column">
+            <button class="btn btn-primary" id="btn-new-stock"><i class="fas fa-plus"></i> Ajouter article</button>
+            <button class="btn btn-secondary" id="btn-seed-stocks"><i class="fas fa-layer-group"></i> Initialiser stocks</button>
+          </div>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead><tr>
+              <th>Ingrédient / Article</th><th>Catégorie</th><th>Quantité</th>
+              <th>Minimum</th><th>Unité</th><th>État</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="stocks-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ── RAPPORTS ──────────────────────────── -->
+      <section id="page-rapports" class="page">
+        <div class="page-actions">
+          <input type="date" id="rapp-start">
+          <span style="color:var(--gray)">–</span>
+          <input type="date" id="rapp-end">
+          <button class="btn btn-primary" id="btn-load-rapport"><i class="fas fa-chart-line"></i> Générer</button>
+          <button class="btn btn-secondary" id="btn-export-csv"><i class="fas fa-download"></i> Export CSV</button>
+        </div>
+        <div class="rapports-grid">
+          <div class="rapport-card">
+            <h3><i class="fas fa-receipt"></i> Ventes</h3>
+            <div class="kpi-value-big" id="rapp-nombre">—</div>
+            <div class="kpi-label-sm">Factures émises</div>
+            <ul class="kpi-list" id="rapp-par-statut" style="margin-top:12px"></ul>
+          </div>
+          <div class="rapport-card">
+            <h3><i class="fas fa-money-bill-wave"></i> Chiffre d'affaires</h3>
+            <div class="kpi-value-big" id="rapp-ca">—</div>
+            <div class="kpi-label-sm">Total FCFA</div>
+            <ul class="kpi-list" id="rapp-par-mode" style="margin-top:12px"></ul>
+          </div>
+          <div class="rapport-card">
+            <h3><i class="fas fa-star"></i> Top Plats</h3>
+            <ul class="kpi-list" id="rapp-top-plats"></ul>
+          </div>
+          <div class="rapport-card">
+            <h3><i class="fas fa-tags"></i> Ventes par catégorie</h3>
+            <ul class="kpi-list" id="rapp-par-categorie"></ul>
+          </div>
+        </div>
+        <div class="table-wrapper" style="margin-top:24px">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)">
+            <h3 style="font-size:.95rem;font-weight:700;color:var(--dark)"><i class="fas fa-list"></i> Détail des factures</h3>
+          </div>
+          <table class="data-table">
+            <thead><tr>
+              <th>N° Facture</th><th>Date</th><th>Commande</th><th>Articles</th><th>Total (FCFA)</th><th>Mode</th><th>Statut</th>
+            </tr></thead>
+            <tbody id="rapport-factures-tbody">
+              <tr><td colspan="7" style="text-align:center;color:var(--gray);padding:24px">Cliquez sur "Générer" pour afficher les données</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ── SESSIONS ──────────────────────────── -->
+      <section id="page-sessions" class="page">
+        <div class="page-actions">
+          <input type="date" id="filter-sess-start">
+          <input type="date" id="filter-sess-end">
+          <select id="filter-sess-user">
+            <option value="">Tous les utilisateurs</option>
+          </select>
+          <button class="btn btn-secondary" id="btn-filter-sessions"><i class="fas fa-filter"></i> Filtrer</button>
+        </div>
+        <div class="stats-grid" style="margin-bottom:20px">
+          <div class="stat-card">
+            <div class="stat-icon blue"><i class="fas fa-sign-in-alt"></i></div>
+            <div><div class="stat-value" id="sess-count-login">—</div><div class="stat-label">Connexions</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon red"><i class="fas fa-sign-out-alt"></i></div>
+            <div><div class="stat-value" id="sess-count-logout">—</div><div class="stat-label">Déconnexions</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon purple"><i class="fas fa-users"></i></div>
+            <div><div class="stat-value" id="sess-count-users">—</div><div class="stat-label">Utilisateurs actifs</div></div>
+          </div>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead><tr>
+              <th>Date &amp; Heure</th><th>Utilisateur</th><th>Nom</th><th>Rôle</th><th>Action</th><th>IP</th>
+            </tr></thead>
+            <tbody id="sessions-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+    </div><!-- /content-area -->
+  </main>
+</div><!-- /app-screen -->
+
+<!-- ══ MODALS ══════════════════════════════════════ -->
+
+<!-- Modal Nouvelle Commande -->
+<div class="modal-overlay hidden" id="modal-commande">
+  <div class="modal-box" style="max-width:680px">
+    <div class="modal-header">
+      <h2>Nouvelle commande</h2>
+      <button class="modal-close" data-modal="commande">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row" style="margin-bottom:14px">
+        <div class="form-group">
+          <label>N° Table (optionnel)</label>
+          <input type="text" id="cmd-table" placeholder="Ex: Table 3">
+        </div>
+        <div class="form-group">
+          <label>Note pour la cuisine</label>
+          <input type="text" id="cmd-note" placeholder="Ex: sans piment">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Ajouter un article au menu</label>
+        <div style="display:flex;gap:8px">
+          <select id="cmd-menu-select" style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem">
+            <option value="">Sélectionner un plat…</option>
+          </select>
+          <button class="btn btn-accent" id="btn-add-to-panier">
+            <i class="fas fa-plus"></i> Ajouter
+          </button>
+        </div>
+      </div>
+
+      <div class="panier-section">
+        <div style="font-weight:700;font-size:.9rem;margin-bottom:8px;color:var(--dark)">
+          <i class="fas fa-shopping-cart"></i> Panier
+        </div>
+        <div id="panier-items"></div>
+        <div class="panier-total" id="panier-total" style="display:none">
+          <span>Total commande</span>
+          <span id="panier-total-val">0 FCFA</span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-modal="commande">Annuler</button>
+      <button class="btn btn-primary" id="btn-save-commande">
+        <i class="fas fa-paper-plane"></i> Envoyer en cuisine
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Nouvelle Facture -->
+<div class="modal-overlay hidden" id="modal-new-facture">
+  <div class="modal-box" style="max-width:440px">
+    <div class="modal-header">
+      <h2>Générer une facture</h2>
+      <button class="modal-close" data-modal="new-facture">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Commande *</label>
+        <select id="new-facture-commande" style="width:100%">
+          <option value="">Sélectionner une commande…</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Acompte reçu (FCFA)</label>
+        <input type="number" id="new-facture-acompte" min="0" value="0" placeholder="0">
+      </div>
+      <div class="form-group">
+        <label>Mode de paiement</label>
+        <select id="new-facture-mode">
+          <option value="especes">Espèces</option>
+          <option value="carte">Carte bancaire</option>
+          <option value="mobile">Mobile Money</option>
+          <option value="virement">Virement</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-modal="new-facture">Annuler</button>
+      <button class="btn btn-primary" id="btn-save-new-facture">
+        <i class="fas fa-receipt"></i> Générer &amp; Imprimer
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Paiement facture partielle -->
+<div class="modal-overlay hidden" id="modal-pay-facture">
+  <div class="modal-box" style="max-width:380px">
+    <div class="modal-header">
+      <h2>Enregistrer paiement</h2>
+      <button class="modal-close" data-modal="pay-facture">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="pay-facture-id">
+      <p id="pay-facture-info" style="margin-bottom:16px;color:var(--gray);font-size:.9rem"></p>
+      <div class="form-group">
+        <label>Mode de paiement</label>
+        <select id="pay-facture-mode">
+          <option value="especes">Espèces</option>
+          <option value="carte">Carte bancaire</option>
+          <option value="mobile">Mobile Money</option>
+          <option value="virement">Virement</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-modal="pay-facture">Annuler</button>
+      <button class="btn btn-success" id="btn-confirm-pay-facture">
+        <i class="fas fa-check"></i> Marquer payée
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Plat Menu -->
+<div class="modal-overlay hidden" id="modal-plat">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2 id="modal-plat-title">Nouveau plat</h2>
+      <button class="modal-close" data-modal="plat">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="form-plat">
+        <input type="hidden" id="plat-id">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Nom du plat *</label>
+            <input type="text" id="plat-nom" required placeholder="Ex: Attiéké Poisson">
+          </div>
+          <div class="form-group">
+            <label>Catégorie</label>
+            <select id="plat-categorie">
+              <option value="Plats">Plats</option>
+              <option value="Entrées">Entrées</option>
+              <option value="Desserts">Desserts</option>
+              <option value="Boissons">Boissons</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Prix (FCFA) *</label>
+            <input type="number" id="plat-prix" min="0" required placeholder="Ex: 2500">
+          </div>
+          <div class="form-group">
+            <label>Disponible</label>
+            <select id="plat-disponible">
+              <option value="true">Oui</option>
+              <option value="false">Non</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <input type="text" id="plat-description" placeholder="Description courte du plat">
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-modal="plat">Annuler</button>
+      <button class="btn btn-primary" id="btn-save-plat"><i class="fas fa-save"></i> Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Stock -->
+<div class="modal-overlay hidden" id="modal-stock">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2 id="modal-stock-title">Article de stock</h2>
+      <button class="modal-close" data-modal="stock">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="form-stock">
+        <input type="hidden" id="stock-id">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Nom *</label>
+            <input type="text" id="stock-nom" required placeholder="Ex: Riz">
+          </div>
+          <div class="form-group">
+            <label>Catégorie</label>
+            <select id="stock-categorie">
+              <option>Ingrédients</option>
+              <option>Féculents</option>
+              <option>Viandes</option>
+              <option>Poissons</option>
+              <option>Légumes</option>
+              <option>Épices</option>
+              <option>Huiles</option>
+              <option>Condiments</option>
+              <option>Boissons</option>
+              <option>Consommables</option>
+              <option>Autre</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Quantité actuelle *</label>
+            <input type="number" id="stock-quantite" min="0" required>
+          </div>
+          <div class="form-group">
+            <label>Stock minimum *</label>
+            <input type="number" id="stock-minimum" min="0" required>
+          </div>
+          <div class="form-group">
+            <label>Unité</label>
+            <input type="text" id="stock-unite" value="kg" placeholder="kg, litres, pièces…">
+          </div>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-modal="stock">Annuler</button>
+      <button class="btn btn-primary" id="btn-save-stock"><i class="fas fa-save"></i> Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Détail Commande -->
+<div class="modal-overlay hidden" id="modal-detail-commande">
+  <div class="modal-box" style="max-width:500px">
+    <div class="modal-header">
+      <h2 id="modal-detail-titre">Détail commande</h2>
+      <button class="modal-close" data-modal="detail-commande">&times;</button>
+    </div>
+    <div class="modal-body" id="modal-detail-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-modal="detail-commande">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Aperçu Facture (impression) -->
+<div class="modal-overlay hidden" id="modal-apercu-facture">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-header">
+      <h2>Aperçu – Facture</h2>
+      <button class="modal-close" data-modal="apercu-facture">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="facture-print-area"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-modal="apercu-facture">Fermer</button>
+      <button class="btn btn-primary" id="btn-print-facture"><i class="fas fa-print"></i> Imprimer</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js" type="module"></script>
+</body>
+</html>

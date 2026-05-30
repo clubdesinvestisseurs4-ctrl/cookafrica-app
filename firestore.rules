@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Tout accès direct depuis le client est bloqué.
+    // Le frontend passe exclusivement par l'API Express (Firebase Admin SDK).
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
