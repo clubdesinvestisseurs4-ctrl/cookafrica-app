@@ -1045,12 +1045,22 @@ async function loadSessions() {
 
 // ─── Notifications ─────────────────────────────────────
 
+function fmtRelative(iso) {
+  if (!iso) return '';
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diff < 60)   return 'À l\'instant';
+  if (diff < 3600) return `il y a ${Math.floor(diff / 60)} min`;
+  if (diff < 86400) return `il y a ${Math.floor(diff / 3600)} h`;
+  return fmtDateOnly(iso);
+}
+
 async function loadNotifBadge() {
-  const notifs = await api('/api/stats/notifications');
+  const notifs = await api('/api/notifications');
   if (!notifs) return;
+  const unread = notifs.filter(n => !n.lu).length;
   const badge = document.getElementById('notif-badge');
-  if (notifs.length > 0) {
-    badge.textContent = notifs.length > 9 ? '9+' : notifs.length;
+  if (unread > 0) {
+    badge.textContent = unread > 9 ? '9+' : unread;
     badge.style.display = 'flex';
   } else {
     badge.style.display = 'none';
@@ -1061,20 +1071,33 @@ async function loadNotifPanel() {
   const el = document.getElementById('notif-list');
   el.innerHTML = '<div class="notif-loading"><i class="fas fa-spinner fa-spin"></i> Chargement…</div>';
 
-  const notifs = await api('/api/stats/notifications');
+  const notifs = await api('/api/notifications');
   if (!notifs || notifs.length === 0) {
-    el.innerHTML = '<div class="notif-loading"><i class="fas fa-check-circle" style="color:var(--success)"></i> Aucune alerte</div>';
+    el.innerHTML = '<div class="notif-loading"><i class="fas fa-check-circle" style="color:var(--success)"></i> Aucune notification</div>';
     return;
   }
 
   el.innerHTML = notifs.map(n => `
-    <div class="notif-item">
+    <div class="notif-item${n.lu ? '' : ' notif-unread'}">
       <div class="notif-icon ${n.type}"><i class="fas fa-${n.icon || 'bell'}"></i></div>
-      <div>
-        <div class="notif-text-title">${n.title}</div>
+      <div style="flex:1;min-width:0">
+        <div class="notif-text-title">${n.titre}</div>
         <div class="notif-text-msg">${n.message}</div>
+        <div style="font-size:.72rem;color:var(--gray);margin-top:2px">
+          <i class="fas fa-user" style="margin-right:3px"></i>${n.createdBy}
+          &nbsp;·&nbsp;${fmtRelative(n.createdAt)}
+        </div>
       </div>
     </div>`).join('');
+
+  // Marquer tout comme lu après affichage
+  api('/api/notifications/read', { method: 'PATCH' }).then(() => loadNotifBadge());
+}
+
+async function markAllNotifsRead() {
+  await api('/api/notifications/read', { method: 'PATCH' });
+  loadNotifBadge();
+  loadNotifPanel();
 }
 
 // ─── Modals ────────────────────────────────────────────
@@ -1165,6 +1188,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('notif-close').addEventListener('click', () => {
     document.getElementById('notif-panel').classList.add('hidden');
   });
+  document.getElementById('notif-mark-read').addEventListener('click', markAllNotifsRead);
 
   // ── Commandes ──
   document.getElementById('btn-new-commande').addEventListener('click', openNewCommande);

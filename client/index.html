@@ -121,7 +121,12 @@
           <div class="notif-panel hidden" id="notif-panel">
             <div class="notif-panel-header">
               <span><i class="fas fa-bell"></i> Notifications</span>
-              <button class="notif-close" id="notif-close"><i class="fas fa-times"></i></button>
+              <div style="display:flex;gap:8px;align-items:center">
+                <button class="btn btn-sm" id="notif-mark-read" title="Tout marquer comme lu" style="font-size:.75rem;padding:3px 8px">
+                  <i class="fas fa-check-double"></i>
+                </button>
+                <button class="notif-close" id="notif-close"><i class="fas fa-times"></i></button>
+              </div>
             </div>
             <div id="notif-list" class="notif-list">
               <div class="notif-loading"><i class="fas fa-spinner fa-spin"></i> Chargement…</div>
