@@ -351,6 +351,9 @@ async function annulerCommande(id, numero) {
   if (res?.message) { toast('Commande annulée', 'warning'); loadCommandes(); }
 }
 
+window.viewCommande = viewCommande;
+window.annulerCommande = annulerCommande;
+
 // ─── NOUVELLE COMMANDE (panier) ────────────────────────
 
 function openNewCommande() {
