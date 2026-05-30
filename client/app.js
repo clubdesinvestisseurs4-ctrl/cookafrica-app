@@ -46,11 +46,18 @@ const PAGE_TITLES = {
 // ─── Utilitaires ──────────────────────────────────────
 
 async function api(path, opts = {}) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
-  const res = await fetch(API + path, { headers, ...opts });
-  if (res.status === 401 || res.status === 403) { logout(); return null; }
-  return res.json();
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 15000);
+    const res = await fetch(API + path, { signal: controller.signal, headers, ...opts });
+    clearTimeout(tid);
+    if (res.status === 401 || res.status === 403) { logout(); return null; }
+    return res.json();
+  } catch {
+    return null;
+  }
 }
 
 function fmt(n)   { return Number(n || 0).toLocaleString('fr-FR'); }
