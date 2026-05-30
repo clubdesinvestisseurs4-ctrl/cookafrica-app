@@ -280,10 +280,11 @@ async function loadCommandes() {
   if (statut) url += `statut=${statut}&`;
   if (date)   url += `date=${date}`;
 
-  const commandes = await api(url);
+  const [commandes, factures] = await Promise.all([api(url), api('/api/factures')]);
   hideLoader();
   if (!commandes) return;
   state.commandes = commandes;
+  if (factures) state.factures = factures;
 
   const tbody = document.getElementById('commandes-tbody');
   if (commandes.length === 0) {
@@ -293,7 +294,8 @@ async function loadCommandes() {
 
   tbody.innerHTML = commandes.map(c => {
     const items = (c.items || []).map(i => `${i.quantite}x ${i.nom}`).join(', ');
-    const canFacture = ['servie', 'prete'].includes(c.statut);
+    const alreadyFactured = state.factures.some(f => f.commandeId === c.id);
+    const canFacture = ['servie', 'prete'].includes(c.statut) && !alreadyFactured;
     const canCancel  = state.user?.role === 'directeur' && !['annulee', 'servie'].includes(c.statut);
     return `
     <tr>
@@ -356,7 +358,11 @@ window.annulerCommande = annulerCommande;
 
 // ─── NOUVELLE COMMANDE (panier) ────────────────────────
 
-function openNewCommande() {
+async function openNewCommande() {
+  if (state.menu.length === 0) {
+    const menu = await api('/api/menu');
+    if (menu) state.menu = menu;
+  }
   state.panier = [];
   renderPanier();
   // Peupler le select menu avec les plats disponibles
@@ -562,12 +568,12 @@ async function loadFactures() {
 }
 
 function openNewFacture() {
-  // Peupler avec les commandes non facturées (servies ou prêtes)
-  const cmdsEligibles = state.commandes.filter(c => ['servie', 'prete'].includes(c.statut));
+  const cmdsEligibles = state.commandes.filter(c =>
+    ['servie', 'prete'].includes(c.statut) && !state.factures.some(f => f.commandeId === c.id)
+  );
   const sel = document.getElementById('new-facture-commande');
   sel.innerHTML = '<option value="">Sélectionner une commande…</option>' +
     cmdsEligibles.map(c => `<option value="${c.id}">${c.numero} – ${fmt(c.total)} FCFA${c.tableNumero ? ' – ' + c.tableNumero : ''}</option>`).join('');
-  document.getElementById('new-facture-acompte').value = '0';
   openModal('new-facture');
 }
 
@@ -576,13 +582,11 @@ window.openNewFactureForCmd = (cmdId) => {
   if (!c) return;
   const sel = document.getElementById('new-facture-commande');
   sel.innerHTML = `<option value="${c.id}" selected>${c.numero} – ${fmt(c.total)} FCFA</option>`;
-  document.getElementById('new-facture-acompte').value = '0';
   openModal('new-facture');
 };
 
 async function saveNewFacture() {
   const commandeId   = document.getElementById('new-facture-commande').value;
-  const acompte      = document.getElementById('new-facture-acompte').value;
   const modePaiement = document.getElementById('new-facture-mode').value;
 
   if (!commandeId) { toast('Sélectionnez une commande', 'warning'); return; }
@@ -590,7 +594,7 @@ async function saveNewFacture() {
   showLoader();
   const res = await api('/api/factures', {
     method: 'POST',
-    body: JSON.stringify({ commandeId, acompte: Number(acompte), modePaiement }),
+    body: JSON.stringify({ commandeId, modePaiement }),
   });
   hideLoader();
 
@@ -666,8 +670,7 @@ window.aperçuFacture = async (id) => {
           <td><strong>TOTAL</strong></td>
           <td><strong>${fmt(f.total)} FCFA</strong></td>
         </tr>
-        ${f.acompte > 0 ? `<tr><td style="color:var(--success)">Acompte reçu</td><td style="color:var(--success)">-${fmt(f.acompte)} FCFA</td></tr>` : ''}
-        ${f.reste > 0 ? `<tr><td style="color:var(--danger)"><strong>RESTE</strong></td><td style="color:var(--danger)"><strong>${fmt(f.reste)} FCFA</strong></td></tr>` : ''}
+        ${f.reste > 0 ? `<tr><td style="color:var(--danger)"><strong>RESTE À PAYER</strong></td><td style="color:var(--danger)"><strong>${fmt(f.reste)} FCFA</strong></td></tr>` : `<tr><td style="color:var(--success)"><strong>PAYÉE</strong></td><td style="color:var(--success)"><strong>✓</strong></td></tr>`}
       </table>
       <div style="margin-top:16px;padding-top:12px;border-top:2px dashed var(--border);text-align:center;font-size:.8rem;color:var(--gray)">
         <p>Mode de paiement : <strong>${f.modePaiement}</strong></p>

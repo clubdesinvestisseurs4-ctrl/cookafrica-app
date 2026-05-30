@@ -46,7 +46,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // POST /api/factures — générer une facture depuis une commande
 router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), async (req, res) => {
   try {
-    const { commandeId, modePaiement, acompte } = req.body;
+    const { commandeId, modePaiement } = req.body;
     if (!commandeId) return res.status(400).json({ error: 'commandeId requis' });
 
     const cmdDoc = await db.collection('commandes').doc(commandeId).get();
@@ -61,8 +61,6 @@ router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), 
     const sousTotal = commande.total || 0;
     const tva = Math.round(sousTotal * TVA_RATE);
     const total = sousTotal + tva;
-    const acompteVal = Number(acompte) || 0;
-    const reste = total - acompteVal;
 
     const numero = await getNextNumeroFacture();
     const now = new Date();
@@ -77,10 +75,9 @@ router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), 
       sousTotal,
       tva,
       total,
-      acompte: acompteVal,
-      reste: Math.max(0, reste),
+      reste: total,
       modePaiement: modePaiement || 'especes',
-      statut: reste <= 0 ? 'payee' : 'partielle',
+      statut: 'partielle',
       date: now.toISOString().split('T')[0],
       createdBy: req.user.username,
       createdAt: now.toISOString(),
@@ -121,7 +118,6 @@ router.put('/:id/pay', authenticateToken, requireRole('directeur', 'receptionnis
     const update = {
       statut: 'payee',
       reste: 0,
-      acompte: facture.total,
       modePaiement: modePaiement || facture.modePaiement,
       updatedAt: new Date().toISOString(),
     };
