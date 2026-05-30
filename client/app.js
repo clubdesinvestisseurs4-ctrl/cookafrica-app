@@ -7,6 +7,25 @@ const API = (window.location.hostname === 'localhost' || window.location.hostnam
   ? 'http://localhost:3001'
   : 'https://cookafrica-api.onrender.com'; // ← à remplacer par votre URL Render
 
+// Render free tier se met en veille → ping /health jusqu'à ce qu'il réponde
+async function wakeUpServer() {
+  if (API.includes('localhost')) return; // inutile en local
+  const statusEl = document.getElementById('loader-status');
+  for (let i = 0; i < 20; i++) {
+    try {
+      const ctrl = new AbortController();
+      const tid  = setTimeout(() => ctrl.abort(), 8000);
+      const res  = await fetch(API + '/health', { signal: ctrl.signal });
+      clearTimeout(tid);
+      if (res.ok) { if (statusEl) statusEl.textContent = ''; return; }
+    } catch { /* réseau ou timeout → on réessaie */ }
+    if (statusEl) statusEl.textContent = 'Démarrage du serveur en cours… veuillez patienter';
+    await new Promise(r => setTimeout(r, 3000));
+  }
+  // Après ~60 s, on laisse passer quand même (le serveur prend parfois plus longtemps)
+  if (statusEl) statusEl.textContent = '';
+}
+
 const state = {
   token:   null,
   user:    null,
@@ -1144,7 +1163,9 @@ window.addEventListener('offline', () => document.body.classList.add('offline'))
 
 // ─── Event Listeners ───────────────────────────────────
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+
+  await wakeUpServer();
 
   // Login
   document.getElementById('login-form').addEventListener('submit', async e => {
