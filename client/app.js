@@ -1112,7 +1112,16 @@ function closeModal(name) {
 // ─── Service Worker ────────────────────────────────────
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch(() => {});
+  // updateViaCache:'none' → le navigateur vérifie sw.js sur le réseau à chaque chargement
+  navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
+    .then(reg => reg.update())
+    .catch(() => {});
+
+  // Quand un nouveau SW prend le contrôle (après mise à jour), on recharge la page
+  // pour s'assurer que l'utilisateur a bien la dernière version de l'app.
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    window.location.reload();
+  });
 }
 
 window.addEventListener('online',  () => document.body.classList.remove('offline'));

@@ -1,62 +1,46 @@
-const CACHE_NAME = 'cookafrica-v1.1.0';
-const ASSETS = [
-  '/',
-  '/index.html',
-  '/styles.css',
-  '/app.js',
-  '/manifest.json',
-  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css',
-];
+// Version du SW — incrémenter à chaque déploiement pour forcer la mise à jour
+const SW_VERSION = 'cookafrica-v2.0.0';
 
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(ASSETS))
-      .then(() => self.skipWaiting())
-  );
+// ── Install : activation immédiate sans bloquer sur du pré-cache ──
+self.addEventListener('install', () => {
+  self.skipWaiting();
 });
 
+// ── Activate : supprime TOUS les anciens caches puis prend le contrôle ──
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
 
+// ── Fetch : réseau direct pour tous les fichiers de l'app ──
+// Les appels API passent en réseau avec fallback hors-ligne.
+// Les assets (HTML, JS, CSS) ne sont JAMAIS mis en cache :
+// l'utilisateur reçoit toujours la version en production.
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // API calls : réseau direct, fallback offline
+  // Appels API → réseau obligatoire, message offline si coupé
   if (
     url.pathname.startsWith('/api/') ||
     url.hostname.includes('render.com') ||
-    url.hostname.includes('firestore')
+    url.hostname.includes('firestore.googleapis.com')
   ) {
     event.respondWith(
-      fetch(event.request).catch(() => new Response(
-        JSON.stringify({ error: 'Hors ligne – vérifiez votre connexion' }),
-        { headers: { 'Content-Type': 'application/json' }, status: 503 }
-      ))
+      fetch(event.request).catch(() =>
+        new Response(
+          JSON.stringify({ error: 'Hors ligne – vérifiez votre connexion' }),
+          { headers: { 'Content-Type': 'application/json' }, status: 503 }
+        )
+      )
     );
     return;
   }
 
-  // Assets (HTML, JS, CSS) : network-first → toujours la version fraîche si connecté
-  event.respondWith(
-    fetch(event.request)
-      .then(response => {
-        if (response.ok && event.request.method === 'GET') {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-        }
-        return response;
-      })
-      .catch(() =>
-        caches.match(event.request)
-          .then(cached => cached || caches.match('/index.html'))
-      )
-  );
+  // Tout le reste (HTML, JS, CSS, icônes…) → réseau direct, sans cache SW
+  event.respondWith(fetch(event.request));
 });
 
 self.addEventListener('message', event => {
