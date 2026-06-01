@@ -73,7 +73,13 @@ router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), 
     const existing = await db.collection('factures').where('commandeId', '==', commandeId).limit(1).get();
     if (!existing.empty) return res.status(409).json({ error: 'Une facture existe déjà pour cette commande' });
 
-    const sousTotal = commande.total || 0;
+    // Ne facturer que les plats (pas les boissons — gérées par le bon bar)
+    const platsItems = (commande.items || []).filter(i => i.categorie !== 'Boissons');
+    if (platsItems.length === 0) {
+      return res.status(400).json({ error: 'Cette commande ne contient que des boissons, utilisez le bon bar' });
+    }
+
+    const sousTotal = platsItems.reduce((sum, i) => sum + i.sousTotal, 0);
     const tva = Math.round(sousTotal * TVA_RATE);
     const total = sousTotal + tva;
 
@@ -84,7 +90,7 @@ router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), 
       numero,
       commandeId,
       commandeNumero: commande.numero,
-      items: commande.items,
+      items: platsItems,
       tableNumero: commande.tableNumero || '',
       note: commande.note || '',
       sousTotal,

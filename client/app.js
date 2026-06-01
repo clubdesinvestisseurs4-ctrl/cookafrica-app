@@ -684,12 +684,15 @@ async function loadFactures() {
     facturesBar.forEach(f => { state.barFactures[f.commandeId] = f; });
   }
 
+  // Exclure les factures qui ne contiennent que des boissons (données historiques mal créées)
+  const facturesPlats = factures.filter(f => (f.items || []).some(i => i.categorie !== 'Boissons'));
+
   const tbody = document.getElementById('factures-tbody');
-  if (factures.length === 0) {
+  if (facturesPlats.length === 0) {
     tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--gray)">Aucune facture</td></tr>';
   } else {
-    tbody.innerHTML = factures.map(f => {
-      const nbArticles = (f.items || []).length;
+    tbody.innerHTML = facturesPlats.map(f => {
+      const nbArticles = (f.items || []).filter(i => i.categorie !== 'Boissons').length;
       const canPay     = f.statut === 'partielle';
       return `
       <tr>

@@ -239,47 +239,51 @@ router.put('/:id', authenticateToken, async (req, res) => {
       const notif = messages[update.statut];
       if (notif) pushNotification({ type: notif.type, icon: notif.icon, titre: notif.titre, message: notif.msg, createdBy: req.user.username });
 
-      // Auto-générer la facture dès que la commande est prête
+      // Auto-générer la facture plats dès que la commande est prête
       if (update.statut === 'prete') {
-        const alreadyExists = await db.collection('factures')
-          .where('commandeId', '==', req.params.id).limit(1).get();
+        // Ne générer une facture plats que s'il y a au moins un article non-Boissons
+        const platsItems = (existing.items || []).filter(i => i.categorie !== 'Boissons');
+        if (platsItems.length > 0) {
+          const alreadyExists = await db.collection('factures')
+            .where('commandeId', '==', req.params.id).limit(1).get();
 
-        if (alreadyExists.empty) {
-          const lastSnap = await db.collection('factures').orderBy('createdAt', 'desc').limit(1).get();
-          const lastNum = lastSnap.empty
-            ? 0
-            : parseInt((lastSnap.docs[0].data().numero || 'FACT-0000').split('-')[1] || '0', 10);
-          const factureNumero = `FACT-${String(lastNum + 1).padStart(4, '0')}`;
+          if (alreadyExists.empty) {
+            const lastSnap = await db.collection('factures').orderBy('createdAt', 'desc').limit(1).get();
+            const lastNum = lastSnap.empty
+              ? 0
+              : parseInt((lastSnap.docs[0].data().numero || 'FACT-0000').split('-')[1] || '0', 10);
+            const factureNumero = `FACT-${String(lastNum + 1).padStart(4, '0')}`;
 
-          const TVA = 0.18;
-          const sousTotal = existing.total || 0;
-          const tva       = Math.round(sousTotal * TVA);
-          const total     = sousTotal + tva;
+            const TVA = 0.18;
+            const sousTotal = platsItems.reduce((sum, i) => sum + i.sousTotal, 0);
+            const tva       = Math.round(sousTotal * TVA);
+            const total     = sousTotal + tva;
 
-          await db.collection('factures').add({
-            numero:          factureNumero,
-            commandeId:      req.params.id,
-            commandeNumero:  existing.numero,
-            items:           existing.items,
-            tableNumero:     existing.tableNumero || '',
-            note:            existing.note || '',
-            sousTotal,
-            tva,
-            total,
-            reste:           total,
-            modePaiement:    'especes',
-            statut:          'partielle',
-            date:            now.toISOString().split('T')[0],
-            createdBy:       req.user.username,
-            createdAt:       now.toISOString(),
-          });
+            await db.collection('factures').add({
+              numero:          factureNumero,
+              commandeId:      req.params.id,
+              commandeNumero:  existing.numero,
+              items:           platsItems,
+              tableNumero:     existing.tableNumero || '',
+              note:            existing.note || '',
+              sousTotal,
+              tva,
+              total,
+              reste:           total,
+              modePaiement:    'especes',
+              statut:          'partielle',
+              date:            now.toISOString().split('T')[0],
+              createdBy:       req.user.username,
+              createdAt:       now.toISOString(),
+            });
 
-          pushNotification({
-            type: 'success', icon: 'receipt',
-            titre: `Facture ${factureNumero} générée`,
-            message: `${existing.numero} – Total TTC : ${total.toLocaleString('fr-FR')} FCFA`,
-            createdBy: req.user.username,
-          });
+            pushNotification({
+              type: 'success', icon: 'receipt',
+              titre: `Facture ${factureNumero} générée`,
+              message: `${existing.numero} – Total TTC : ${total.toLocaleString('fr-FR')} FCFA`,
+              createdBy: req.user.username,
+            });
+          }
         }
       }
     }
