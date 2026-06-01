@@ -32,6 +32,21 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/factures/bar — lister les bons bar
+router.get('/bar', authenticateToken, async (req, res) => {
+  try {
+    const { debut, fin, statut } = req.query;
+    const snap = await db.collection('factures_bar').orderBy('createdAt', 'desc').limit(300).get();
+    let factures = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (debut)  factures = factures.filter(f => f.date >= debut);
+    if (fin)    factures = factures.filter(f => f.date <= fin);
+    if (statut) factures = factures.filter(f => f.statut === statut);
+    res.json(factures);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/factures/:id
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
@@ -93,9 +108,42 @@ router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), 
       });
     }
 
-    // Déduire du stock journalier de plats préparés
-    const factureDate = now.toISOString().split('T')[0];
-    for (const item of commande.items) {
+    pushNotification({
+      type: 'success', icon: 'receipt',
+      titre: `Facture ${numero} générée`,
+      message: `${commande.numero} – Total: ${total.toLocaleString('fr-FR')} FCFA – ${data.statut}`,
+      createdBy: req.user.username,
+    });
+
+    res.status(201).json({ id: ref.id, ...data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/factures/bar/:id/pay — payer un bon bar + déduire boissons du stock
+router.put('/bar/:id/pay', authenticateToken, requireRole('directeur', 'receptionniste'), async (req, res) => {
+  try {
+    const { modePaiement } = req.body;
+    const docRef = db.collection('factures_bar').doc(req.params.id);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ error: 'Bon bar introuvable' });
+
+    const facture = doc.data();
+    if (facture.statut === 'payee') return res.status(400).json({ error: 'Déjà payé' });
+
+    const now = new Date();
+    const update = {
+      statut: 'payee',
+      reste: 0,
+      modePaiement: modePaiement || facture.modePaiement || 'especes',
+      updatedAt: now.toISOString(),
+    };
+    await docRef.update(update);
+
+    // Déduire les boissons du stock journalier
+    const factureDate = facture.date || now.toISOString().split('T')[0];
+    for (const item of (facture.items || [])) {
       if (!item.menuItemId) continue;
       const snapPlat = await db.collection('stocks_plats')
         .where('menuItemId', '==', item.menuItemId)
@@ -112,19 +160,19 @@ router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), 
     }
 
     pushNotification({
-      type: 'success', icon: 'receipt',
-      titre: `Facture ${numero} générée`,
-      message: `${commande.numero} – Total: ${total.toLocaleString('fr-FR')} FCFA – ${data.statut}`,
+      type: 'success', icon: 'money-bill-wave',
+      titre: 'Paiement bar enregistré',
+      message: `${facture.numero} – ${(facture.total || 0).toLocaleString('fr-FR')} FCFA encaissés`,
       createdBy: req.user.username,
     });
 
-    res.status(201).json({ id: ref.id, ...data });
+    res.json({ id: req.params.id, ...facture, ...update });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// PUT /api/factures/:id/pay — enregistrer paiement complet
+// PUT /api/factures/:id/pay — enregistrer paiement complet (plats)
 router.put('/:id/pay', authenticateToken, requireRole('directeur', 'receptionniste'), async (req, res) => {
   try {
     const { modePaiement } = req.body;
@@ -133,13 +181,32 @@ router.put('/:id/pay', authenticateToken, requireRole('directeur', 'receptionnis
     if (!doc.exists) return res.status(404).json({ error: 'Facture introuvable' });
 
     const facture = doc.data();
+    const now = new Date();
     const update = {
       statut: 'payee',
       reste: 0,
       modePaiement: modePaiement || facture.modePaiement,
-      updatedAt: new Date().toISOString(),
+      updatedAt: now.toISOString(),
     };
     await docRef.update(update);
+
+    // Déduire les plats du stock journalier (uniquement les non-Boissons)
+    const factureDate = facture.date || now.toISOString().split('T')[0];
+    for (const item of (facture.items || [])) {
+      if (!item.menuItemId || item.categorie === 'Boissons') continue;
+      const snapPlat = await db.collection('stocks_plats')
+        .where('menuItemId', '==', item.menuItemId)
+        .where('date', '==', factureDate)
+        .limit(1).get();
+      if (!snapPlat.empty) {
+        const platDoc = snapPlat.docs[0];
+        const restante = platDoc.data().quantiteRestante || 0;
+        await platDoc.ref.update({
+          quantiteRestante: Math.max(0, restante - (item.quantite || 1)),
+          updatedAt: now.toISOString(),
+        });
+      }
+    }
 
     pushNotification({
       type: 'success', icon: 'money-bill-wave',

@@ -49,7 +49,7 @@ const PAGE_ROLES = {
   cuisine:     ['directeur', 'cuisinier'],
   facturation: ['directeur', 'receptionniste'],
   menu:        ['directeur'],
-  stocks:      ['directeur', 'cuisinier'],
+  stocks:      ['directeur', 'cuisinier', 'barman'],
   rapports:    ['directeur'],
   sessions:    ['directeur'],
   barman:      ['directeur', 'barman'],
@@ -669,47 +669,90 @@ async function loadFactures() {
   if (fin)    url += `fin=${fin}&`;
   if (statut) url += `statut=${statut}`;
 
-  const factures = await api(url);
+  let urlBar = '/api/factures/bar?';
+  if (debut)  urlBar += `debut=${debut}&`;
+  if (fin)    urlBar += `fin=${fin}&`;
+  if (statut) urlBar += `statut=${statut}`;
+
+  const [factures, facturesBar] = await Promise.all([api(url), api(urlBar)]);
   hideLoader();
   if (!factures) return;
   state.factures = factures;
 
+  // Mettre à jour state.barFactures pour que aperçuFactureBar fonctionne depuis la caisse
+  if (facturesBar) {
+    facturesBar.forEach(f => { state.barFactures[f.commandeId] = f; });
+  }
+
   const tbody = document.getElementById('factures-tbody');
   if (factures.length === 0) {
     tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--gray)">Aucune facture</td></tr>';
-    return;
+  } else {
+    tbody.innerHTML = factures.map(f => {
+      const nbArticles = (f.items || []).length;
+      const canPay     = f.statut === 'partielle';
+      return `
+      <tr>
+        <td><strong>${f.numero}</strong></td>
+        <td style="font-size:.8rem">${fmtDateOnly(f.date)}</td>
+        <td style="font-size:.82rem;color:var(--gray)">${f.commandeNumero || '—'}</td>
+        <td style="font-size:.82rem">${nbArticles} article(s)</td>
+        <td><strong>${fmt(f.total)} FCFA</strong></td>
+        <td style="color:${f.reste > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:700">${fmt(f.reste)} FCFA</td>
+        <td style="font-size:.82rem;color:var(--gray)">${f.modePaiement || '—'}</td>
+        <td>${badgeStatus(f.statut)}</td>
+        <td>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-secondary btn-sm" onclick="aperçuFacture('${f.id}')">
+              <i class="fas fa-print"></i>
+            </button>
+            ${canPay ? `<button class="btn btn-success btn-sm" onclick="openPayFacture('${f.id}','${fmt(f.reste)}','plat')">
+              <i class="fas fa-check"></i> Payer
+            </button>` : ''}
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
   }
 
-  tbody.innerHTML = factures.map(f => {
-    const nbArticles = (f.items || []).length;
-    const canPay     = f.statut === 'partielle';
-    return `
-    <tr>
-      <td><strong>${f.numero}</strong></td>
-      <td style="font-size:.8rem">${fmtDateOnly(f.date)}</td>
-      <td style="font-size:.82rem;color:var(--gray)">${f.commandeNumero || '—'}</td>
-      <td style="font-size:.82rem">${nbArticles} article(s)</td>
-      <td><strong>${fmt(f.total)} FCFA</strong></td>
-      <td style="color:${f.reste > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:700">${fmt(f.reste)} FCFA</td>
-      <td style="font-size:.82rem;color:var(--gray)">${f.modePaiement || '—'}</td>
-      <td>${badgeStatus(f.statut)}</td>
-      <td>
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-secondary btn-sm" onclick="aperçuFacture('${f.id}')">
-            <i class="fas fa-print"></i>
-          </button>
-          ${canPay ? `<button class="btn btn-success btn-sm" onclick="openPayFacture('${f.id}','${fmt(f.reste)}')">
-            <i class="fas fa-check"></i> Payer
-          </button>` : ''}
-        </div>
-      </td>
-    </tr>`;
-  }).join('');
+  const tbodyBar = document.getElementById('factures-bar-tbody');
+  if (!facturesBar || facturesBar.length === 0) {
+    tbodyBar.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--gray)">Aucun bon bar</td></tr>';
+  } else {
+    tbodyBar.innerHTML = facturesBar.map(f => {
+      const nbArticles = (f.items || []).length;
+      const canPay     = !f.statut || f.statut === 'partielle';
+      const reste      = f.reste != null ? f.reste : f.total;
+      return `
+      <tr>
+        <td><strong style="color:#1565C0">${f.numero}</strong></td>
+        <td style="font-size:.8rem">${fmtDateOnly(f.date)}</td>
+        <td style="font-size:.82rem;color:var(--gray)">${f.commandeNumero || '—'}</td>
+        <td style="font-size:.82rem">${nbArticles} boisson(s)</td>
+        <td><strong>${fmt(f.total)} FCFA</strong></td>
+        <td style="color:${reste > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:700">${fmt(reste)} FCFA</td>
+        <td style="font-size:.82rem;color:var(--gray)">${f.modePaiement || '—'}</td>
+        <td>${badgeStatus(f.statut || 'partielle')}</td>
+        <td>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-secondary btn-sm" onclick="aperçuFactureBar('${f.commandeId}')">
+              <i class="fas fa-print"></i>
+            </button>
+            ${canPay ? `<button class="btn btn-success btn-sm" onclick="openPayFacture('${f.id}','${fmt(reste)}','bar')">
+              <i class="fas fa-check"></i> Payer
+            </button>` : ''}
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+  }
 }
 
 function openNewFacture() {
   const cmdsEligibles = state.commandes.filter(c =>
-    ['servie', 'prete'].includes(c.statut) && !state.factures.some(f => f.commandeId === c.id)
+    ['servie', 'prete'].includes(c.statut) &&
+    !state.factures.some(f => f.commandeId === c.id) &&
+    (c.items || []).some(i => i.categorie !== 'Boissons')
   );
   const sel = document.getElementById('new-facture-commande');
   sel.innerHTML = '<option value="">Sélectionner une commande…</option>' +
@@ -749,17 +792,23 @@ async function saveNewFacture() {
   }
 }
 
-window.openPayFacture = (id, reste) => {
-  document.getElementById('pay-facture-id').value = id;
-  document.getElementById('pay-facture-info').textContent = `Reste à payer : ${reste} FCFA`;
+window.openPayFacture = (id, reste, type = 'plat') => {
+  document.getElementById('pay-facture-id').value   = id;
+  document.getElementById('pay-facture-type').value = type;
+  const label = type === 'bar' ? 'Bon bar' : 'Facture';
+  document.getElementById('pay-facture-info').textContent = `${label} – Reste à payer : ${reste} FCFA`;
   openModal('pay-facture');
 };
 
 async function confirmPayFacture() {
   const id   = document.getElementById('pay-facture-id').value;
+  const type = document.getElementById('pay-facture-type').value;
   const mode = document.getElementById('pay-facture-mode').value;
+  const endpoint = type === 'bar'
+    ? `/api/factures/bar/${id}/pay`
+    : `/api/factures/${id}/pay`;
   showLoader();
-  const res = await api(`/api/factures/${id}/pay`, {
+  const res = await api(endpoint, {
     method: 'PUT',
     body: JSON.stringify({ modePaiement: mode }),
   });

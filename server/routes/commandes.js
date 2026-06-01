@@ -56,7 +56,7 @@ router.get('/bar', authenticateToken, requireRole('directeur', 'barman'), async 
   }
 });
 
-// GET /api/commandes/cuisine — commandes actives + terminées du jour
+// GET /api/commandes/cuisine — commandes actives + terminées du jour (plats uniquement)
 router.get('/cuisine', authenticateToken, async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
@@ -70,10 +70,20 @@ router.get('/cuisine', authenticateToken, async (req, res) => {
         .orderBy('createdAt', 'desc').get(),
     ]);
 
-    const active = activeSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Exclure les boissons : la cuisine ne gère que les plats
+    const active = activeSnap.docs
+      .map(d => {
+        const data = d.data();
+        return { id: d.id, ...data, items: (data.items || []).filter(i => i.categorie !== 'Boissons') };
+      })
+      .filter(c => c.items.length > 0);
+
     const terminee = todaySnap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .filter(c => ['prete', 'servie'].includes(c.statut));
+      .map(d => {
+        const data = d.data();
+        return { id: d.id, ...data, items: (data.items || []).filter(i => i.categorie !== 'Boissons') };
+      })
+      .filter(c => ['prete', 'servie'].includes(c.statut) && c.items.length > 0);
 
     res.json({ active, terminee });
   } catch (err) {
@@ -148,7 +158,12 @@ router.put('/:id/bar-pret', authenticateToken, requireRole('directeur', 'barman'
     }
 
     const now = new Date();
-    await docRef.update({ boissonsStatut: 'prete', updatedAt: now.toISOString() });
+
+    // Si la commande n'a que des boissons, la marquer comme prête côté plats aussi
+    const allBoissons = (commande.items || []).every(i => i.categorie === 'Boissons');
+    const commandeUpdate = { boissonsStatut: 'prete', updatedAt: now.toISOString() };
+    if (allBoissons) commandeUpdate.statut = 'prete';
+    await docRef.update(commandeUpdate);
 
     const boissonsItems = (commande.items || []).filter(i => i.categorie === 'Boissons');
     let factureBar = null;
@@ -174,6 +189,9 @@ router.put('/:id/bar-pret', authenticateToken, requireRole('directeur', 'barman'
         sousTotal,
         tva,
         total,
+        reste: total,
+        statut: 'partielle',
+        modePaiement: 'especes',
         date: now.toISOString().split('T')[0],
         createdBy: req.user.username,
         createdAt: now.toISOString(),
@@ -262,24 +280,6 @@ router.put('/:id', authenticateToken, async (req, res) => {
             message: `${existing.numero} – Total TTC : ${total.toLocaleString('fr-FR')} FCFA`,
             createdBy: req.user.username,
           });
-
-          // Déduire chaque article de la commande du stock journalier de plats
-          const factureDate = now.toISOString().split('T')[0];
-          for (const item of existing.items || []) {
-            if (!item.menuItemId) continue;
-            const snapPlat = await db.collection('stocks_plats')
-              .where('menuItemId', '==', item.menuItemId)
-              .where('date', '==', factureDate)
-              .limit(1).get();
-            if (!snapPlat.empty) {
-              const platDoc  = snapPlat.docs[0];
-              const restante = platDoc.data().quantiteRestante || 0;
-              await platDoc.ref.update({
-                quantiteRestante: Math.max(0, restante - (item.quantite || 1)),
-                updatedAt: now.toISOString(),
-              });
-            }
-          }
         }
       }
     }

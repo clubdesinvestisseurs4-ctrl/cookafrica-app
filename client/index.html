@@ -284,25 +284,6 @@
           </div>
         </div>
 
-        <!-- Stock boissons -->
-        <div id="barman-stock-section" style="margin-top:28px">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-top:16px;border-top:2px solid var(--border)">
-            <h3 style="font-size:.95rem;font-weight:800;color:var(--dark);margin:0">
-              <i class="fas fa-boxes" style="color:#1565C0"></i> Stock Boissons
-            </h3>
-          </div>
-          <div class="table-wrapper">
-            <table class="data-table">
-              <thead><tr>
-                <th>Article</th><th>Quantité</th><th>Minimum</th><th>Unité</th><th>État</th>
-              </tr></thead>
-              <tbody id="barman-stock-tbody">
-                <tr><td colspan="5" style="text-align:center;padding:20px;color:var(--gray)">Chargement…</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
         <!-- Boissons servies aujourd'hui -->
         <div id="barman-bilan-section" style="display:none;margin-top:28px">
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-top:16px;border-top:2px solid var(--border)">
@@ -337,6 +318,18 @@
               <th>Articles</th><th>Total (FCFA)</th><th>Reste</th><th>Mode</th><th>Statut</th><th>Actions</th>
             </tr></thead>
             <tbody id="factures-tbody"></tbody>
+          </table>
+        </div>
+        <h3 style="margin:24px 0 10px;font-size:1rem;color:#1565C0;display:flex;align-items:center;gap:8px">
+          <i class="fas fa-wine-glass-alt"></i> Bons Bar (Boissons)
+        </h3>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead><tr>
+              <th>N° Bon Bar</th><th>Date</th><th>Commande</th>
+              <th>Articles</th><th>Total (FCFA)</th><th>Reste</th><th>Mode</th><th>Statut</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="factures-bar-tbody"></tbody>
           </table>
         </div>
       </section>
@@ -596,6 +589,7 @@
     </div>
     <div class="modal-body">
       <input type="hidden" id="pay-facture-id">
+      <input type="hidden" id="pay-facture-type" value="plat">
       <p id="pay-facture-info" style="margin-bottom:16px;color:var(--gray);font-size:.9rem"></p>
       <div class="form-group">
         <label>Mode de paiement</label>
