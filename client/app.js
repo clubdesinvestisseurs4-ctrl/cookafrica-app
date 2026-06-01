@@ -7,22 +7,23 @@ const API = (window.location.hostname === 'localhost' || window.location.hostnam
   ? 'http://localhost:3001'
   : 'https://cookafrica-api.onrender.com'; // ← à remplacer par votre URL Render
 
-// Render free tier se met en veille → ping /health jusqu'à ce qu'il réponde
+// Render free tier se met en veille → ping /health avec backoff exponentiel
+// Max 6 tentatives : ~4s, 6s, 9s, 14s, 20s = 6 requêtes sur ~55s
 async function wakeUpServer() {
-  if (API.includes('localhost')) return; // inutile en local
+  if (API.includes('localhost')) return;
   const statusEl = document.getElementById('loader-status');
-  for (let i = 0; i < 20; i++) {
+  const delays = [0, 4000, 6000, 9000, 14000, 20000];
+  for (let i = 0; i < delays.length; i++) {
+    if (delays[i] > 0) await new Promise(r => setTimeout(r, delays[i]));
     try {
       const ctrl = new AbortController();
-      const tid  = setTimeout(() => ctrl.abort(), 8000);
+      const tid  = setTimeout(() => ctrl.abort(), 10000);
       const res  = await fetch(API + '/health', { signal: ctrl.signal });
       clearTimeout(tid);
       if (res.ok) { if (statusEl) statusEl.textContent = ''; return; }
-    } catch { /* réseau ou timeout → on réessaie */ }
+    } catch { /* réseau ou timeout */ }
     if (statusEl) statusEl.textContent = 'Démarrage du serveur en cours… veuillez patienter';
-    await new Promise(r => setTimeout(r, 3000));
   }
-  // Après ~60 s, on laisse passer quand même (le serveur prend parfois plus longtemps)
   if (statusEl) statusEl.textContent = '';
 }
 
