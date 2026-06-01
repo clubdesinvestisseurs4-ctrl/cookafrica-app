@@ -81,6 +81,7 @@ async function api(path, opts = {}) {
     const res = await fetch(API + path, { signal: controller.signal, headers, ...opts });
     clearTimeout(tid);
     if (res.status === 401 || res.status === 403) { logout(); return null; }
+    if (!res.ok) return null;
     return res.json();
   } catch {
     return null;

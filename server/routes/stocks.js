@@ -5,6 +5,10 @@ const { pushNotification } = require('../utils/notifications');
 
 const router = express.Router();
 
+let _alertsCache = null;
+let _alertsCacheTs = 0;
+const ALERTS_TTL = 60_000;
+
 // GET /api/stocks
 router.get('/', authenticateToken, async (req, res) => {
   try {
@@ -70,6 +74,7 @@ router.put('/:id', authenticateToken, requireRole('directeur', 'cuisinier'), asy
       createdBy: req.user.username,
     });
 
+    _alertsCache = null;
     res.json({ id: req.params.id, ...update });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -142,11 +147,15 @@ router.post('/plats', authenticateToken, requireRole('directeur', 'cuisinier'), 
 // GET /api/stocks/alerts
 router.get('/alerts', authenticateToken, async (req, res) => {
   try {
+    if (_alertsCache && Date.now() - _alertsCacheTs < ALERTS_TTL) {
+      return res.json(_alertsCache);
+    }
     const snap = await db.collection('stocks').get();
-    const alerts = snap.docs
+    _alertsCache = snap.docs
       .map(d => ({ id: d.id, ...d.data() }))
       .filter(s => s.quantite < s.minimum);
-    res.json(alerts);
+    _alertsCacheTs = Date.now();
+    res.json(_alertsCache);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
