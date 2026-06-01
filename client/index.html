@@ -55,8 +55,11 @@
 <!-- ══ App ═══════════════════════════════════════ -->
 <div id="app-screen" style="display:none">
 
+  <!-- Mobile sidebar overlay -->
+  <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
   <!-- Sidebar -->
-  <aside class="sidebar">
+  <aside class="sidebar" id="main-sidebar">
     <div class="sidebar-logo">
       <i class="fas fa-utensils"></i>
       <span>COOK AFRICA</span>
@@ -93,6 +96,9 @@
       <a class="nav-item" data-page="menu" id="nav-menu">
         <i class="fas fa-book-open"></i><span>Menu</span>
       </a>
+      <a class="nav-item" data-page="utilisateurs" id="nav-utilisateurs">
+        <i class="fas fa-users-cog"></i><span>Utilisateurs</span>
+      </a>
       <a class="nav-item" data-page="rapports" id="nav-rapports">
         <i class="fas fa-chart-bar"></i><span>Rapports</span>
       </a>
@@ -116,7 +122,12 @@
   <!-- Main -->
   <main class="main-content">
     <header class="top-header">
-      <h1 id="page-title">Dashboard</h1>
+      <div class="header-left">
+        <button class="hamburger-btn" id="sidebar-toggle" aria-label="Menu">
+          <i class="fas fa-bars"></i>
+        </button>
+        <h1 id="page-title">Dashboard</h1>
+      </div>
       <div class="header-right">
         <span class="date-badge" id="header-date"></span>
         <div class="notif-wrapper">
@@ -448,6 +459,23 @@
         </div>
       </section>
 
+      <!-- ── UTILISATEURS ──────────────────────────── -->
+      <section id="page-utilisateurs" class="page">
+        <div class="page-actions">
+          <button class="btn btn-primary" id="btn-new-utilisateur">
+            <i class="fas fa-user-plus"></i> Nouvel utilisateur
+          </button>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead><tr>
+              <th>Prénom</th><th>Nom</th><th>Identifiant</th><th>Rôle</th><th>Statut</th><th>Dernière connexion</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="utilisateurs-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
     </div><!-- /content-area -->
   </main>
 </div><!-- /app-screen -->
@@ -474,15 +502,10 @@
       </div>
 
       <div class="form-group">
-        <label>Ajouter un article au menu</label>
-        <div style="display:flex;gap:8px">
-          <select id="cmd-menu-select" style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem">
-            <option value="">Sélectionner un plat…</option>
-          </select>
-          <button class="btn btn-accent" id="btn-add-to-panier">
-            <i class="fas fa-plus"></i> Ajouter
-          </button>
-        </div>
+        <label>Sélectionner un article <small style="color:var(--gray);font-weight:400">(ajout automatique au panier)</small></label>
+        <select id="cmd-menu-select" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem">
+          <option value="">— Choisir un plat ou une boisson —</option>
+        </select>
       </div>
 
       <div class="panier-section">
@@ -699,6 +722,66 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" data-modal="apercu-facture">Fermer</button>
       <button class="btn btn-primary" id="btn-print-facture"><i class="fas fa-print"></i> Imprimer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Utilisateur -->
+<div class="modal-overlay hidden" id="modal-utilisateur">
+  <div class="modal-box" style="max-width:500px">
+    <div class="modal-header">
+      <h2 id="modal-utilisateur-title">Nouvel utilisateur</h2>
+      <button class="modal-close" data-modal="utilisateur">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="form-utilisateur" autocomplete="off">
+        <input type="hidden" id="utilisateur-id">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Prénom</label>
+            <input type="text" id="utilisateur-prenom" placeholder="Ex: Koné">
+          </div>
+          <div class="form-group">
+            <label>Nom de famille *</label>
+            <input type="text" id="utilisateur-nom" required placeholder="Ex: Aminata">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Identifiant *</label>
+            <input type="text" id="utilisateur-username" required placeholder="Ex: receptio" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label>Rôle *</label>
+            <select id="utilisateur-role">
+              <option value="receptionniste">Réceptionniste</option>
+              <option value="cuisinier">Cuisinier</option>
+              <option value="barman">Barman</option>
+              <option value="directeur">Directeur</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label id="utilisateur-password-label">Mot de passe *</label>
+          <input type="password" id="utilisateur-password" placeholder="••••••••" autocomplete="new-password">
+          <small id="utilisateur-password-hint" style="display:none;color:var(--gray);font-size:.78rem;margin-top:4px;display:none">
+            Laisser vide pour conserver le mot de passe actuel
+          </small>
+        </div>
+        <div class="form-group" id="utilisateur-actif-group" style="display:none">
+          <label>Statut du compte</label>
+          <select id="utilisateur-actif">
+            <option value="true">Actif</option>
+            <option value="false">Inactif</option>
+          </select>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-modal="utilisateur">Annuler</button>
+      <button class="btn btn-primary" id="btn-save-utilisateur">
+        <i class="fas fa-save"></i> Enregistrer
+      </button>
     </div>
   </div>
 </div>

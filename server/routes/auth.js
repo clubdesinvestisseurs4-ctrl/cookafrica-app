@@ -50,13 +50,14 @@ router.post('/login', async (req, res) => {
       createdBy: user.username,
     });
 
+    const nomComplet = user.prenom ? `${user.prenom} ${user.nom}`.trim() : user.nom;
     const token = jwt.sign(
-      { id: userDoc.id, username: user.username, nom: user.nom, role: user.role },
+      { id: userDoc.id, username: user.username, nom: nomComplet, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: '12h' }
     );
 
-    res.json({ token, user: { id: userDoc.id, username: user.username, nom: user.nom, role: user.role } });
+    res.json({ token, user: { id: userDoc.id, username: user.username, nom: nomComplet, role: user.role } });
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -123,6 +124,92 @@ router.post('/seed', async (req, res) => {
   } catch (err) {
     console.error('Seed error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// GET /api/auth/utilisateurs — liste des utilisateurs (directeur)
+router.get('/utilisateurs', authenticateToken, requireRole('directeur'), async (req, res) => {
+  try {
+    const snap = await db.collection('utilisateurs').orderBy('createdAt', 'desc').get();
+    const users = snap.docs.map(d => {
+      const { passwordHash, ...rest } = d.data();
+      return { id: d.id, ...rest };
+    });
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/auth/utilisateurs — créer un utilisateur (directeur)
+router.post('/utilisateurs', authenticateToken, requireRole('directeur'), async (req, res) => {
+  try {
+    const { prenom, nom, username, password, role } = req.body;
+    const validRoles = ['directeur', 'receptionniste', 'cuisinier', 'barman'];
+    if (!nom || !username || !password || !role) {
+      return res.status(400).json({ error: 'Nom, identifiant, mot de passe et rôle requis' });
+    }
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ error: 'Rôle invalide' });
+    }
+    const existing = await db.collection('utilisateurs')
+      .where('username', '==', username.toLowerCase().trim()).limit(1).get();
+    if (!existing.empty) {
+      return res.status(409).json({ error: 'Cet identifiant est déjà utilisé' });
+    }
+    const passwordHash = await bcrypt.hash(password, 10);
+    const data = {
+      prenom: prenom?.trim() || '',
+      nom: nom.trim(),
+      username: username.toLowerCase().trim(),
+      role,
+      passwordHash,
+      actif: true,
+      createdAt: new Date().toISOString(),
+      lastLogin: null,
+    };
+    const ref = await db.collection('utilisateurs').add(data);
+    const { passwordHash: _, ...safe } = data;
+    res.status(201).json({ id: ref.id, ...safe });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/auth/utilisateurs/:id — modifier un utilisateur (directeur)
+router.put('/utilisateurs/:id', authenticateToken, requireRole('directeur'), async (req, res) => {
+  try {
+    const { prenom, nom, role, password, actif } = req.body;
+    const validRoles = ['directeur', 'receptionniste', 'cuisinier', 'barman'];
+    const update = { updatedAt: new Date().toISOString() };
+    if (nom !== undefined)   update.nom = nom.trim();
+    if (prenom !== undefined) update.prenom = prenom.trim();
+    if (role !== undefined) {
+      if (!validRoles.includes(role)) return res.status(400).json({ error: 'Rôle invalide' });
+      update.role = role;
+    }
+    if (actif !== undefined) update.actif = actif;
+    if (password) update.passwordHash = await bcrypt.hash(password, 10);
+    await db.collection('utilisateurs').doc(req.params.id).update(update);
+    res.json({ message: 'Utilisateur mis à jour' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/auth/utilisateurs/:id — désactiver un utilisateur (directeur)
+router.delete('/utilisateurs/:id', authenticateToken, requireRole('directeur'), async (req, res) => {
+  try {
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ error: 'Vous ne pouvez pas désactiver votre propre compte' });
+    }
+    await db.collection('utilisateurs').doc(req.params.id).update({
+      actif: false,
+      updatedAt: new Date().toISOString(),
+    });
+    res.json({ message: 'Utilisateur désactivé' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -44,7 +44,9 @@ async function generateCombinedInvoice(commandeId, commande, validatedByCuisinie
     modePaiement: 'especes',
     statut: 'partielle',
     validatedByCuisinier: validatedByCuisinier || '',
+    validatedByCuisinierNom: commande.validatedByCuisinierNom || '',
     validatedByBarman: validatedByBarman || '',
+    validatedByBarmanNom: commande.validatedByBarmanNom || '',
     date: now.toISOString().split('T')[0],
     createdBy: commande.createdBy || '',
     createdAt: now.toISOString(),
@@ -205,6 +207,7 @@ router.put('/:id/bar-pret', authenticateToken, requireRole('directeur', 'barman'
     const commandeUpdate = {
       boissonsStatut: 'prete',
       validatedByBarman: req.user.username,
+      validatedByBarmanNom: req.user.nom,
       updatedAt: now.toISOString(),
     };
     if (allBoissons) commandeUpdate.statut = 'prete';
@@ -254,6 +257,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     // Stocker le nom du cuisinier qui valide
     if (update.statut === 'prete') {
       update.validatedByCuisinier = req.user.username;
+      update.validatedByCuisinierNom = req.user.nom;
     }
 
     await docRef.update(update);

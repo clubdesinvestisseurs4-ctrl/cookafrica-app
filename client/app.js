@@ -34,6 +34,7 @@ const state = {
   commandes: [],
   factures:  [],
   stocks:    [],
+  utilisateurs: [],
   panier:    [],
   barFactures: {},
   notifInterval:   null,
@@ -44,27 +45,29 @@ const state = {
 
 // ─── Visibilité des pages par rôle ────────────────────
 const PAGE_ROLES = {
-  dashboard:   ['directeur', 'receptionniste', 'cuisinier'],
-  commandes:   ['directeur', 'receptionniste'],
-  cuisine:     ['directeur', 'cuisinier'],
-  facturation: ['directeur', 'receptionniste'],
-  menu:        ['directeur'],
-  stocks:      ['directeur', 'cuisinier', 'barman'],
-  rapports:    ['directeur'],
-  sessions:    ['directeur'],
-  barman:      ['directeur', 'barman'],
+  dashboard:    ['directeur', 'receptionniste', 'cuisinier'],
+  commandes:    ['directeur', 'receptionniste'],
+  cuisine:      ['directeur', 'cuisinier'],
+  facturation:  ['directeur', 'receptionniste'],
+  menu:         ['directeur'],
+  stocks:       ['directeur', 'cuisinier', 'barman'],
+  rapports:     ['directeur'],
+  sessions:     ['directeur'],
+  barman:       ['directeur', 'barman'],
+  utilisateurs: ['directeur'],
 };
 
 const PAGE_TITLES = {
-  dashboard:   'Dashboard',
-  commandes:   'Commandes',
-  cuisine:     'Écran Cuisine',
-  facturation: 'Facturation',
-  menu:        'Carte du Menu',
-  stocks:      'Gestion des Stocks',
-  rapports:    'Rapports & Statistiques',
-  sessions:    'Journal des Sessions',
-  barman:      'Écran Bar',
+  dashboard:    'Dashboard',
+  commandes:    'Commandes',
+  cuisine:      'Écran Cuisine',
+  facturation:  'Facturation',
+  menu:         'Carte du Menu',
+  stocks:       'Gestion des Stocks',
+  rapports:     'Rapports & Statistiques',
+  sessions:     'Journal des Sessions',
+  barman:       'Écran Bar',
+  utilisateurs: 'Gestion des Utilisateurs',
 };
 
 // ─── Utilitaires ──────────────────────────────────────
@@ -206,15 +209,16 @@ function navigateTo(page) {
   state.currentPage = page;
 
   const loaders = {
-    dashboard:   loadDashboard,
-    commandes:   loadCommandes,
-    cuisine:     loadCuisine,
-    facturation: loadFactures,
-    menu:        loadMenu,
-    stocks:      loadStocks,
-    rapports:    () => {},
-    sessions:    loadSessions,
-    barman:      loadBarman,
+    dashboard:    loadDashboard,
+    commandes:    loadCommandes,
+    cuisine:      loadCuisine,
+    facturation:  loadFactures,
+    menu:         loadMenu,
+    stocks:       loadStocks,
+    rapports:     () => {},
+    sessions:     loadSessions,
+    barman:       loadBarman,
+    utilisateurs: loadUtilisateurs,
   };
   if (loaders[page]) loaders[page]();
 }
@@ -435,13 +439,14 @@ function addToPanier() {
   const opt = sel.selectedOptions[0];
   if (!opt || !opt.value) return;
 
-  const id       = opt.value;
-  const nom      = opt.dataset.nom;
-  const prix     = Number(opt.dataset.prix);
+  const id        = opt.value;
+  const nom       = opt.dataset.nom;
+  const prix      = Number(opt.dataset.prix);
   const categorie = opt.dataset.categorie || '';
-  const existing = state.panier.find(p => p.menuItemId === id);
+  const existing  = state.panier.find(p => p.menuItemId === id);
   if (existing) { existing.quantite++; existing.sousTotal = existing.prix * existing.quantite; }
   else { state.panier.push({ menuItemId: id, nom, prix, categorie, quantite: 1, sousTotal: prix }); }
+  sel.value = '';  // réinitialiser le select
   renderPanier();
 }
 
@@ -824,8 +829,14 @@ window.aperçuFacture = async (id) => {
     ${renderRows(platsItems)}` : '';
 
   const validateurs = [];
-  if (f.validatedByCuisinier) validateurs.push(`<span><i class="fas fa-fire" style="color:var(--primary)"></i> Cuisine : <strong>${f.validatedByCuisinier}</strong></span>`);
-  if (f.validatedByBarman)    validateurs.push(`<span><i class="fas fa-wine-glass-alt" style="color:#1565C0"></i> Bar : <strong>${f.validatedByBarman}</strong></span>`);
+  if (f.validatedByCuisinier) {
+    const nomCuisinier = f.validatedByCuisinierNom || f.validatedByCuisinier;
+    validateurs.push(`<span><i class="fas fa-fire" style="color:var(--primary)"></i> Cuisine : <strong>${nomCuisinier}</strong></span>`);
+  }
+  if (f.validatedByBarman) {
+    const nomBarman = f.validatedByBarmanNom || f.validatedByBarman;
+    validateurs.push(`<span><i class="fas fa-wine-glass-alt" style="color:#1565C0"></i> Bar : <strong>${nomBarman}</strong></span>`);
+  }
 
   document.getElementById('facture-print-area').innerHTML = `
     <div class="facture-print">
@@ -1396,6 +1407,132 @@ function exportCSV() {
   a.click(); URL.revokeObjectURL(url);
 }
 
+// ─── UTILISATEURS ──────────────────────────────────────
+
+async function loadUtilisateurs() {
+  showLoader();
+  const users = await api('/api/auth/utilisateurs');
+  hideLoader();
+  if (!users) return;
+  state.utilisateurs = users;
+
+  const roleLabels = { directeur: 'Directeur', receptionniste: 'Réceptionniste', cuisinier: 'Cuisinier', barman: 'Barman' };
+  const roleColors = { directeur: '#8B1A1A', receptionniste: '#2C5F2E', cuisinier: '#D4891A', barman: '#1565C0' };
+
+  const tbody = document.getElementById('utilisateurs-tbody');
+  if (users.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--gray)">Aucun utilisateur</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = users.map(u => `
+    <tr style="${!u.actif ? 'opacity:.5' : ''}">
+      <td>${u.prenom || '—'}</td>
+      <td><strong>${u.nom}</strong></td>
+      <td style="font-size:.82rem;color:var(--gray)">${u.username}</td>
+      <td><span style="color:${roleColors[u.role] || '#666'};font-weight:700;font-size:.82rem">${roleLabels[u.role] || u.role}</span></td>
+      <td><span class="badge-status ${u.actif ? 'disponible' : 'annulee'}">${u.actif ? '✅ Actif' : '❌ Inactif'}</span></td>
+      <td style="font-size:.78rem;color:var(--gray)">${u.lastLogin ? fmtDate(u.lastLogin) : 'Jamais'}</td>
+      <td>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" onclick="editUtilisateur('${u.id}')">
+            <i class="fas fa-edit"></i>
+          </button>
+          ${u.id !== state.user?.id ? `
+          <button class="btn btn-${u.actif ? 'danger' : 'success'} btn-sm"
+            onclick="toggleUtilisateur('${u.id}',${u.actif})">
+            <i class="fas fa-${u.actif ? 'user-slash' : 'user-check'}"></i>
+          </button>` : '<span style="font-size:.72rem;color:var(--gray);padding:5px">(vous)</span>'}
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+function openNewUtilisateur() {
+  document.getElementById('modal-utilisateur-title').textContent = 'Nouvel utilisateur';
+  document.getElementById('form-utilisateur').reset();
+  document.getElementById('utilisateur-id').value = '';
+  document.getElementById('utilisateur-username').disabled = false;
+  document.getElementById('utilisateur-password').required = true;
+  document.getElementById('utilisateur-password-label').textContent = 'Mot de passe *';
+  document.getElementById('utilisateur-password-hint').style.display = 'none';
+  document.getElementById('utilisateur-actif-group').style.display = 'none';
+  openModal('utilisateur');
+}
+
+window.editUtilisateur = (id) => {
+  const u = state.utilisateurs.find(x => x.id === id);
+  if (!u) return;
+  document.getElementById('modal-utilisateur-title').textContent = 'Modifier l\'utilisateur';
+  document.getElementById('utilisateur-id').value      = u.id;
+  document.getElementById('utilisateur-prenom').value  = u.prenom || '';
+  document.getElementById('utilisateur-nom').value     = u.nom;
+  document.getElementById('utilisateur-username').value   = u.username;
+  document.getElementById('utilisateur-username').disabled = true;
+  document.getElementById('utilisateur-role').value    = u.role;
+  document.getElementById('utilisateur-password').value   = '';
+  document.getElementById('utilisateur-password').required = false;
+  document.getElementById('utilisateur-password-label').textContent = 'Nouveau mot de passe';
+  document.getElementById('utilisateur-password-hint').style.display = 'block';
+  document.getElementById('utilisateur-actif-group').style.display = 'block';
+  document.getElementById('utilisateur-actif').value = String(u.actif !== false);
+  openModal('utilisateur');
+};
+
+async function saveUtilisateur() {
+  const id       = document.getElementById('utilisateur-id').value;
+  const prenom   = document.getElementById('utilisateur-prenom').value.trim();
+  const nom      = document.getElementById('utilisateur-nom').value.trim();
+  const username = document.getElementById('utilisateur-username').value.trim();
+  const role     = document.getElementById('utilisateur-role').value;
+  const password = document.getElementById('utilisateur-password').value;
+  const actif    = document.getElementById('utilisateur-actif').value;
+
+  if (!nom) { toast('Le nom est requis', 'warning'); return; }
+  if (!id && (!username || !password)) { toast('Identifiant et mot de passe requis', 'warning'); return; }
+
+  showLoader();
+  let res;
+  if (id) {
+    const body = { prenom, nom, role, actif: actif === 'true' };
+    if (password) body.password = password;
+    res = await api(`/api/auth/utilisateurs/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+  } else {
+    res = await api('/api/auth/utilisateurs', {
+      method: 'POST',
+      body: JSON.stringify({ prenom, nom, username, password, role }),
+    });
+  }
+  hideLoader();
+
+  if (res?.message || res?.id) {
+    toast(id ? 'Utilisateur mis à jour' : 'Utilisateur créé', 'success');
+    closeModal('utilisateur');
+    loadUtilisateurs();
+  } else {
+    toast(res?.error || 'Erreur', 'error');
+  }
+}
+
+window.toggleUtilisateur = async (id, currentActif) => {
+  const newActif = !currentActif;
+  const u = state.utilisateurs.find(x => x.id === id);
+  const label = newActif ? 'réactiver' : 'désactiver';
+  if (!confirm(`${label.charAt(0).toUpperCase() + label.slice(1)} ${u?.nom || ''} ?`)) return;
+  showLoader();
+  const res = await api(`/api/auth/utilisateurs/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ actif: newActif }),
+  });
+  hideLoader();
+  if (res?.message) {
+    toast(`Utilisateur ${newActif ? 'réactivé' : 'désactivé'}`, newActif ? 'success' : 'warning');
+    loadUtilisateurs();
+  } else {
+    toast(res?.error || 'Erreur', 'error');
+  }
+};
+
 // ─── SESSIONS ──────────────────────────────────────────
 
 async function loadSessions() {
@@ -1594,7 +1731,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Navigation
   document.querySelectorAll('.nav-item[data-page]').forEach(el => {
-    el.addEventListener('click', () => navigateTo(el.dataset.page));
+    el.addEventListener('click', () => {
+      navigateTo(el.dataset.page);
+      // Fermer la sidebar sur mobile
+      document.getElementById('main-sidebar')?.classList.remove('open');
+      document.getElementById('sidebar-overlay')?.classList.remove('visible');
+    });
+  });
+
+  // Hamburger (mobile)
+  document.getElementById('sidebar-toggle')?.addEventListener('click', () => {
+    document.getElementById('main-sidebar')?.classList.toggle('open');
+    document.getElementById('sidebar-overlay')?.classList.toggle('visible');
+  });
+  document.getElementById('sidebar-overlay')?.addEventListener('click', () => {
+    document.getElementById('main-sidebar')?.classList.remove('open');
+    document.getElementById('sidebar-overlay')?.classList.remove('visible');
   });
 
   // Close modals via [data-modal] buttons
@@ -1625,7 +1777,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Commandes ──
   document.getElementById('btn-new-commande').addEventListener('click', openNewCommande);
-  document.getElementById('btn-add-to-panier').addEventListener('click', addToPanier);
+  document.getElementById('cmd-menu-select').addEventListener('change', addToPanier);
   document.getElementById('btn-save-commande').addEventListener('click', saveCommande);
   document.getElementById('btn-filter-cmd').addEventListener('click', loadCommandes);
 
@@ -1657,6 +1809,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Sessions ──
   document.getElementById('btn-filter-sessions').addEventListener('click', loadSessions);
+
+  // ── Utilisateurs ──
+  document.getElementById('btn-new-utilisateur')?.addEventListener('click', openNewUtilisateur);
+  document.getElementById('btn-save-utilisateur')?.addEventListener('click', saveUtilisateur);
 
   // ── Restauration session ──
   const savedToken = localStorage.getItem('ca_token');
