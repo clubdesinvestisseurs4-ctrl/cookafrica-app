@@ -613,7 +613,7 @@ window.updateStatutCommande = async (id, statut) => {
 };
 
 // Impression du bilan complet du jour depuis la cuisine
-function printBilanJour() {
+window.printBilanJour = function printBilanJour() {
   const today = new Date().toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
   const cards = document.getElementById('cuisine-bilan-grid').innerHTML;
   const w = window.open('', '_blank');
