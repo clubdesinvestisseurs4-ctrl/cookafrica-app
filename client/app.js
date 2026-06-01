@@ -826,7 +826,97 @@ async function seedMenu() {
 
 // ─── STOCKS ────────────────────────────────────────────
 
+function initStockSubtabs() {
+  document.querySelectorAll('.stock-subtab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.stock-subtab').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.stock-subtab-content').forEach(c => c.classList.add('hidden'));
+      btn.classList.add('active');
+      document.getElementById(`stock-subtab-${btn.dataset.subtab}`).classList.remove('hidden');
+    });
+  });
+}
+
+async function loadStocksPlats() {
+  const dateInput = document.getElementById('plats-date');
+  if (!dateInput.value) dateInput.value = new Date().toISOString().split('T')[0];
+  const date = dateInput.value;
+
+  const [menu, platStocks] = await Promise.all([
+    state.menu.length ? Promise.resolve(state.menu) : api('/api/menu'),
+    api(`/api/stocks/plats?date=${date}`),
+  ]);
+  if (!menu) return;
+  if (state.menu.length === 0) state.menu = menu;
+
+  const platsMap = {};
+  (platStocks || []).forEach(p => { platsMap[p.menuItemId] = p; });
+
+  const tbody = document.getElementById('plats-jour-tbody');
+  const dishes = menu.filter(m => m.disponible !== false && ['Plats', 'Entrées', 'Desserts'].includes(m.categorie));
+
+  if (dishes.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--gray)">Aucun plat au menu</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = dishes.map(m => {
+    const ps = platsMap[m.id];
+    const prepare  = ps ? ps.quantitePrepare  : 0;
+    const restante = ps ? ps.quantiteRestante : 0;
+    const pct = prepare > 0 ? Math.round((restante / prepare) * 100) : 0;
+    const etatColor = restante === 0 && prepare > 0 ? 'var(--danger)' : restante <= prepare * 0.3 ? 'var(--warning)' : 'var(--success)';
+    const etatLabel = restante === 0 && prepare > 0 ? '❌ Épuisé' : restante <= prepare * 0.3 && prepare > 0 ? '⚠️ Presque fini' : prepare === 0 ? '—' : '✅ Disponible';
+    return `
+    <tr>
+      <td><strong>${m.nom}</strong></td>
+      <td style="color:var(--gray);font-size:.82rem">${m.categorie}</td>
+      <td>
+        <input type="number" min="0" class="plats-qty-input" id="plat-qty-${m.id}"
+          value="${prepare}" data-menu-id="${m.id}" data-nom="${m.nom}" data-categorie="${m.categorie}">
+      </td>
+      <td><strong style="color:${etatColor}">${prepare > 0 ? restante : '—'}</strong>${prepare > 0 ? ` <small style="color:var(--gray)">(${pct}%)</small>` : ''}</td>
+      <td><span style="color:${etatColor};font-weight:600">${etatLabel}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+async function saveStocksPlats() {
+  const date = document.getElementById('plats-date').value;
+  const inputs = document.querySelectorAll('.plats-qty-input');
+  const plats = [];
+  inputs.forEach(inp => {
+    const qty = parseInt(inp.value, 10);
+    if (!isNaN(qty) && qty >= 0) {
+      plats.push({
+        menuItemId: inp.dataset.menuId,
+        nom: inp.dataset.nom,
+        categorie: inp.dataset.categorie,
+        quantitePrepare: qty,
+      });
+    }
+  });
+
+  if (plats.length === 0) { toast('Aucune donnée à enregistrer', 'warning'); return; }
+  showLoader();
+  const res = await api('/api/stocks/plats', { method: 'POST', body: JSON.stringify({ plats, date }) });
+  hideLoader();
+  if (res?.message) {
+    toast(res.message, 'success');
+    loadStocksPlats();
+  } else {
+    toast(res?.error || 'Erreur', 'error');
+  }
+}
+
 async function loadStocks() {
+  // Initialise les sous-onglets une seule fois
+  if (!document.querySelector('.stock-subtab[data-initialized]')) {
+    initStockSubtabs();
+    document.querySelectorAll('.stock-subtab').forEach(b => b.dataset.initialized = '1');
+  }
+  loadStocksPlats();
+
   showLoader();
   const [stocks, alerts] = await Promise.all([
     api('/api/stocks'),
@@ -1258,6 +1348,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('filter-menu-cat').addEventListener('change', () => renderMenu(state.menu));
 
   // ── Stocks ──
+  document.getElementById('btn-save-plats-jour').addEventListener('click', saveStocksPlats);
   document.getElementById('btn-new-stock').addEventListener('click', openNewStock);
   document.getElementById('btn-save-stock').addEventListener('click', saveStock);
   document.getElementById('btn-seed-stocks').addEventListener('click', seedStocks);

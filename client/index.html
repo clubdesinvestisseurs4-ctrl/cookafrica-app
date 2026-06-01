@@ -278,24 +278,65 @@
 
       <!-- ── STOCKS ────────────────────────────── -->
       <section id="page-stocks" class="page">
-        <div class="stocks-header">
-          <div class="alerts-box">
-            <div class="card-title"><i class="fas fa-exclamation-triangle" style="color:var(--warning)"></i> Alertes stock bas</div>
-            <div id="stock-alerts-list"><em style="color:var(--gray);font-size:.85rem">Chargement…</em></div>
+        <div class="stock-subtabs">
+          <button class="stock-subtab active" data-subtab="plats-jour">
+            <i class="fas fa-utensils"></i> Plats du Jour
+          </button>
+          <button class="stock-subtab" data-subtab="ingredients">
+            <i class="fas fa-boxes"></i> Ingrédients
+          </button>
+        </div>
+
+        <!-- ── Plats du Jour ── -->
+        <div id="stock-subtab-plats-jour" class="stock-subtab-content">
+          <div class="stocks-header">
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <label style="font-weight:600"><i class="fas fa-calendar-day"></i> Date :</label>
+              <input type="date" id="plats-date" class="form-input" style="width:170px">
+              <button class="btn btn-secondary btn-sm" onclick="loadStocksPlats()">
+                <i class="fas fa-sync"></i> Actualiser
+              </button>
+            </div>
+            <button class="btn btn-primary" id="btn-save-plats-jour">
+              <i class="fas fa-save"></i> Enregistrer les quantités
+            </button>
           </div>
-          <div style="display:flex;gap:10px;flex-direction:column">
-            <button class="btn btn-primary" id="btn-new-stock"><i class="fas fa-plus"></i> Ajouter article</button>
-            <button class="btn btn-secondary" id="btn-seed-stocks"><i class="fas fa-layer-group"></i> Initialiser stocks</button>
+          <p style="color:var(--gray);font-size:.85rem;margin-bottom:12px">
+            <i class="fas fa-info-circle"></i>
+            Entrez le nombre de portions préparées pour chaque plat. Les commandes facturées déduiront automatiquement du stock.
+          </p>
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead><tr>
+                <th>Plat</th><th>Catégorie</th>
+                <th>Portions préparées</th><th>Portions restantes</th><th>État</th>
+              </tr></thead>
+              <tbody id="plats-jour-tbody"></tbody>
+            </table>
           </div>
         </div>
-        <div class="table-wrapper">
-          <table class="data-table">
-            <thead><tr>
-              <th>Ingrédient / Article</th><th>Catégorie</th><th>Quantité</th>
-              <th>Minimum</th><th>Unité</th><th>État</th><th>Actions</th>
-            </tr></thead>
-            <tbody id="stocks-tbody"></tbody>
-          </table>
+
+        <!-- ── Ingrédients ── -->
+        <div id="stock-subtab-ingredients" class="stock-subtab-content hidden">
+          <div class="stocks-header">
+            <div class="alerts-box">
+              <div class="card-title"><i class="fas fa-exclamation-triangle" style="color:var(--warning)"></i> Alertes stock bas</div>
+              <div id="stock-alerts-list"><em style="color:var(--gray);font-size:.85rem">Chargement…</em></div>
+            </div>
+            <div style="display:flex;gap:10px;flex-direction:column">
+              <button class="btn btn-primary" id="btn-new-stock"><i class="fas fa-plus"></i> Ajouter article</button>
+              <button class="btn btn-secondary" id="btn-seed-stocks"><i class="fas fa-layer-group"></i> Initialiser stocks</button>
+            </div>
+          </div>
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead><tr>
+                <th>Ingrédient / Article</th><th>Catégorie</th><th>Quantité</th>
+                <th>Minimum</th><th>Unité</th><th>État</th><th>Actions</th>
+              </tr></thead>
+              <tbody id="stocks-tbody"></tbody>
+            </table>
+          </div>
         </div>
       </section>
 

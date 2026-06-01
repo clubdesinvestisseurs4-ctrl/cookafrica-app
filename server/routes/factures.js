@@ -93,6 +93,24 @@ router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), 
       });
     }
 
+    // Déduire du stock journalier de plats préparés
+    const factureDate = now.toISOString().split('T')[0];
+    for (const item of commande.items) {
+      if (!item.menuItemId) continue;
+      const snapPlat = await db.collection('stocks_plats')
+        .where('menuItemId', '==', item.menuItemId)
+        .where('date', '==', factureDate)
+        .limit(1).get();
+      if (!snapPlat.empty) {
+        const platDoc = snapPlat.docs[0];
+        const restante = platDoc.data().quantiteRestante || 0;
+        await platDoc.ref.update({
+          quantiteRestante: Math.max(0, restante - (item.quantite || 1)),
+          updatedAt: now.toISOString(),
+        });
+      }
+    }
+
     pushNotification({
       type: 'success', icon: 'receipt',
       titre: `Facture ${numero} générée`,

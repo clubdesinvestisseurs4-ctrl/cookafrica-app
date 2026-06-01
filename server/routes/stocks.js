@@ -76,6 +76,69 @@ router.put('/:id', authenticateToken, requireRole('directeur', 'cuisinier'), asy
   }
 });
 
+// GET /api/stocks/plats?date=YYYY-MM-DD
+router.get('/plats', authenticateToken, async (req, res) => {
+  try {
+    const date = req.query.date || new Date().toISOString().split('T')[0];
+    const snap = await db.collection('stocks_plats').where('date', '==', date).get();
+    res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/stocks/plats — sauvegarder les quantités de plats préparés du jour
+router.post('/plats', authenticateToken, requireRole('directeur', 'cuisinier'), async (req, res) => {
+  try {
+    const { plats, date } = req.body;
+    if (!Array.isArray(plats) || plats.length === 0) {
+      return res.status(400).json({ error: 'Liste de plats requise' });
+    }
+    const dateStr = date || new Date().toISOString().split('T')[0];
+    const now = new Date().toISOString();
+
+    for (const plat of plats) {
+      const existing = await db.collection('stocks_plats')
+        .where('menuItemId', '==', plat.menuItemId)
+        .where('date', '==', dateStr)
+        .limit(1).get();
+
+      if (!existing.empty) {
+        const doc = existing.docs[0];
+        const data = doc.data();
+        const consomme = data.quantitePrepare - data.quantiteRestante;
+        await doc.ref.update({
+          quantitePrepare: plat.quantitePrepare,
+          quantiteRestante: Math.max(0, plat.quantitePrepare - consomme),
+          updatedAt: now,
+        });
+      } else {
+        await db.collection('stocks_plats').add({
+          menuItemId: plat.menuItemId,
+          nom: plat.nom,
+          categorie: plat.categorie || '',
+          date: dateStr,
+          quantitePrepare: plat.quantitePrepare,
+          quantiteRestante: plat.quantitePrepare,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+    }
+
+    pushNotification({
+      type: 'success', icon: 'utensils',
+      titre: 'Stock plats mis à jour',
+      message: `${plats.length} plat(s) configuré(s) pour le ${dateStr}`,
+      createdBy: req.user.username,
+    });
+
+    res.json({ message: `Stock de ${plats.length} plat(s) enregistré`, date: dateStr });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/stocks/alerts
 router.get('/alerts', authenticateToken, async (req, res) => {
   try {

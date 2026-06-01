@@ -396,6 +396,26 @@ body {
 }
 
 /* ── Stocks ────────────────────────────────────── */
+.stock-subtabs {
+  display: flex; gap: 8px; margin-bottom: 20px;
+  border-bottom: 2px solid var(--border); padding-bottom: 0;
+}
+.stock-subtab {
+  padding: 9px 20px; border: none; background: none;
+  cursor: pointer; font-size: .9rem; font-weight: 600;
+  color: var(--gray); border-bottom: 3px solid transparent;
+  margin-bottom: -2px; transition: color .2s, border-color .2s;
+}
+.stock-subtab.active {
+  color: var(--primary); border-bottom-color: var(--primary);
+}
+.stock-subtab:hover:not(.active) { color: var(--dark); }
+.stock-subtab-content.hidden { display: none; }
+.plats-qty-input {
+  width: 90px; padding: 6px 10px; border: 1px solid var(--border);
+  border-radius: var(--radius); font-size: .9rem; text-align: center;
+}
+.plats-qty-input:focus { outline: none; border-color: var(--primary); }
 .stocks-header {
   display: flex; justify-content: space-between;
   align-items: flex-start; gap: 16px; margin-bottom: 16px;
