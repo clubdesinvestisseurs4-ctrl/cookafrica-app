@@ -165,6 +165,22 @@ router.put('/bar/:id/pay', authenticateToken, requireRole('directeur', 'receptio
       }
     }
 
+    // Marquer la commande "servie" si la partie plats est aussi payée (ou absente)
+    if (facture.commandeId) {
+      const cmdDoc = await db.collection('commandes').doc(facture.commandeId).get();
+      if (cmdDoc.exists && !['servie', 'annulee'].includes(cmdDoc.data().statut)) {
+        const platsSnap = await db.collection('factures')
+          .where('commandeId', '==', facture.commandeId).limit(1).get();
+        const platsPaid = platsSnap.empty || platsSnap.docs[0].data().statut === 'payee';
+        if (platsPaid) {
+          await db.collection('commandes').doc(facture.commandeId).update({
+            statut: 'servie',
+            updatedAt: now.toISOString(),
+          });
+        }
+      }
+    }
+
     pushNotification({
       type: 'success', icon: 'money-bill-wave',
       titre: 'Paiement bar enregistré',
@@ -211,6 +227,22 @@ router.put('/:id/pay', authenticateToken, requireRole('directeur', 'receptionnis
           quantiteRestante: Math.max(0, restante - (item.quantite || 1)),
           updatedAt: now.toISOString(),
         });
+      }
+    }
+
+    // Marquer la commande "servie" si la partie bar est aussi payée (ou absente)
+    if (facture.commandeId) {
+      const cmdDoc = await db.collection('commandes').doc(facture.commandeId).get();
+      if (cmdDoc.exists && !['servie', 'annulee'].includes(cmdDoc.data().statut)) {
+        const barSnap = await db.collection('factures_bar')
+          .where('commandeId', '==', facture.commandeId).limit(1).get();
+        const barPaid = barSnap.empty || barSnap.docs[0].data().statut === 'payee';
+        if (barPaid) {
+          await db.collection('commandes').doc(facture.commandeId).update({
+            statut: 'servie',
+            updatedAt: now.toISOString(),
+          });
+        }
       }
     }
 

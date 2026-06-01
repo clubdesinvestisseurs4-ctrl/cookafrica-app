@@ -491,7 +491,10 @@ async function saveCommande() {
   const res = await api('/api/commandes', { method: 'POST', body: JSON.stringify(body) });
   hideLoader();
   if (res?.id) {
-    toast(`Commande ${res.numero} envoyée en cuisine !`, 'success');
+    const allBoissons = state.panier.every(i => i.categorie === 'Boissons');
+    const hasBoissons = state.panier.some(i => i.categorie === 'Boissons');
+    const dest = allBoissons ? 'au bar' : hasBoissons ? 'en cuisine et au bar' : 'en cuisine';
+    toast(`Commande ${res.numero} envoyée ${dest} !`, 'success');
     closeModal('commande');
     loadCommandes();
   } else {
@@ -1286,58 +1289,7 @@ async function saveStocksPlats() {
 }
 
 async function loadStocks() {
-  // Initialise les sous-onglets une seule fois
-  if (!document.querySelector('.stock-subtab[data-initialized]')) {
-    initStockSubtabs();
-    document.querySelectorAll('.stock-subtab').forEach(b => b.dataset.initialized = '1');
-  }
   loadStocksPlats();
-
-  showLoader();
-  const [stocks, alerts] = await Promise.all([
-    api('/api/stocks'),
-    api('/api/stocks/alerts'),
-  ]);
-  hideLoader();
-  if (!stocks) return;
-  state.stocks = stocks;
-
-  // Alertes
-  const alertsEl = document.getElementById('stock-alerts-list');
-  if (!alerts || alerts.length === 0) {
-    alertsEl.innerHTML = '<p style="color:var(--success);font-size:.85rem"><i class="fas fa-check"></i> Tous les stocks sont suffisants</p>';
-  } else {
-    alertsEl.innerHTML = alerts.map(s => `
-      <div class="alert-item">
-        <i class="fas fa-exclamation-triangle"></i>
-        <span>${s.nom} : <strong>${s.quantite}</strong> ${s.unite} (min. ${s.minimum})</span>
-      </div>`).join('');
-  }
-
-  // Table
-  const tbody = document.getElementById('stocks-tbody');
-  if (stocks.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--gray)">Aucun article en stock</td></tr>';
-    return;
-  }
-
-  tbody.innerHTML = stocks.map(s => {
-    const isBas = s.quantite < s.minimum;
-    return `
-    <tr style="${isBas ? 'background:#fff5f5' : ''}">
-      <td><strong>${s.nom}</strong></td>
-      <td style="color:var(--gray);font-size:.82rem">${s.categorie}</td>
-      <td><strong style="color:${isBas ? 'var(--danger)' : 'var(--dark)'}">${s.quantite}</strong></td>
-      <td style="color:var(--gray)">${s.minimum}</td>
-      <td style="color:var(--gray);font-size:.82rem">${s.unite}</td>
-      <td><span class="badge-status ${isBas ? 'bas' : 'disponible'}">${isBas ? '⚠️ Stock bas' : '✅ OK'}</span></td>
-      <td>
-        <button class="btn btn-secondary btn-sm" onclick="editStock('${s.id}')">
-          <i class="fas fa-edit"></i> Modifier
-        </button>
-      </td>
-    </tr>`;
-  }).join('');
 }
 
 window.editStock = (id) => {
@@ -1728,9 +1680,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Stocks ──
   document.getElementById('btn-save-plats-jour').addEventListener('click', saveStocksPlats);
-  document.getElementById('btn-new-stock').addEventListener('click', openNewStock);
-  document.getElementById('btn-save-stock').addEventListener('click', saveStock);
-  document.getElementById('btn-seed-stocks').addEventListener('click', seedStocks);
 
   // ── Rapports ──
   document.getElementById('btn-load-rapport').addEventListener('click', loadRapport);
