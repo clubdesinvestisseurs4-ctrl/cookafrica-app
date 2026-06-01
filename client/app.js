@@ -395,8 +395,9 @@ async function openNewCommande() {
   // Peupler le select menu avec les plats disponibles
   const sel = document.getElementById('cmd-menu-select');
   const menuDispo = state.menu.filter(m => m.disponible);
+  const cats = [...new Set(menuDispo.map(m => m.categorie).filter(Boolean))].sort();
   sel.innerHTML = '<option value="">Sélectionner un plat…</option>' +
-    ['Plats', 'Entrées', 'Desserts', 'Boissons'].map(cat => {
+    cats.map(cat => {
       const items = menuDispo.filter(m => m.categorie === cat);
       if (!items.length) return '';
       return `<optgroup label="${cat}">${items.map(m =>
@@ -831,6 +832,24 @@ async function loadMenu() {
   hideLoader();
   if (!menu) return;
   state.menu = menu;
+
+  // Reconstruire le filtre catégorie à partir des catégories existantes
+  const sel = document.getElementById('filter-menu-cat');
+  const currentVal = sel.value;
+  const cats = [...new Set(menu.map(m => m.categorie).filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">Toutes les catégories</option>' +
+    cats.map(c => `<option value="${c}"${c === currentVal ? ' selected' : ''}>${c}</option>`).join('');
+
+  // Synchroniser aussi le select du formulaire plat avec les catégories connues
+  const platCatSel = document.getElementById('plat-categorie');
+  if (platCatSel) {
+    const defaults = ['Plats (sauce)', 'Accompagnement', 'Boisson'];
+    const allCats  = [...new Set([...defaults, ...cats])].sort();
+    const prev = platCatSel.value;
+    platCatSel.innerHTML = allCats
+      .map(c => `<option value="${c}"${c === prev ? ' selected' : ''}>${c}</option>`).join('');
+  }
+
   renderMenu(menu);
 }
 
@@ -948,7 +967,7 @@ async function loadStocksPlats() {
   (platStocks || []).forEach(p => { platsMap[p.menuItemId] = p; });
 
   const tbody = document.getElementById('plats-jour-tbody');
-  const dishes = menu.filter(m => m.disponible !== false && ['Plats', 'Entrées', 'Desserts'].includes(m.categorie));
+  const dishes = menu.filter(m => m.disponible !== false);
 
   if (dishes.length === 0) {
     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--gray)">Aucun plat au menu</td></tr>';
