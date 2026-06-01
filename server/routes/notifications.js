@@ -20,7 +20,7 @@ router.get('/', authenticateToken, requireRole('directeur'), async (req, res) =>
 // PATCH /api/notifications/read — marquer toutes comme lues
 router.patch('/read', authenticateToken, requireRole('directeur'), async (req, res) => {
   try {
-    const snap = await db.collection('notifications').where('lu', '==', false).get();
+    const snap = await db.collection('notifications').where('lu', '==', false).limit(100).get();
     if (snap.empty) return res.json({ updated: 0 });
     const batch = db.batch();
     snap.docs.forEach(d => batch.update(d.ref, { lu: true }));

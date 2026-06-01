@@ -86,13 +86,18 @@ router.get('/', authenticateToken, async (req, res) => {
 router.get('/bar', authenticateToken, requireRole('directeur', 'barman'), async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
-    const snap = await db.collection('commandes').orderBy('createdAt', 'desc').limit(200).get();
-    const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    const active = all
-      .filter(c => c.boissonsStatut === 'en-attente')
+    const [activeSnap, todaySnap] = await Promise.all([
+      db.collection('commandes').where('boissonsStatut', '==', 'en-attente').get(),
+      db.collection('commandes').where('date', '==', today).orderBy('createdAt', 'desc').get(),
+    ]);
+
+    const active = activeSnap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-    const done = all.filter(c => c.date === today && c.boissonsStatut === 'prete');
+    const done = todaySnap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(c => c.boissonsStatut === 'prete');
 
     res.json({ active, done });
   } catch (err) {

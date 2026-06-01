@@ -4,45 +4,67 @@ const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
 
+const _cache = new Map();
+function getCached(key, ttlMs = 60000) {
+  const entry = _cache.get(key);
+  if (entry && Date.now() - entry.ts < ttlMs) return entry.data;
+  return null;
+}
+function setCache(key, data) {
+  _cache.set(key, { ts: Date.now(), data });
+}
+
 // GET /api/stats/dashboard
 router.get('/dashboard', authenticateToken, async (req, res) => {
   try {
+    const cached = getCached('dashboard');
+    if (cached) return res.json(cached);
+
     const today = new Date().toISOString().split('T')[0];
 
-    const [commandesSnap, facturesSnap, stocksSnap] = await Promise.all([
-      db.collection('commandes').get(),
-      db.collection('factures').get(),
+    const [todayCommandesSnap, activeCommandesSnap, facturesSnap, stocksSnap] = await Promise.all([
+      db.collection('commandes').where('date', '==', today).get(),
+      db.collection('commandes').where('statut', 'in', ['en-attente', 'en-preparation', 'prete']).get(),
+      db.collection('factures').where('date', '==', today).get(),
       db.collection('stocks').get(),
     ]);
 
-    const commandes = commandesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const factures  = facturesSnap.docs.map(d => d.data());
-    const stocks    = stocksSnap.docs.map(d => d.data());
+    // Merge and deduplicate commandes (today's + active from any date)
+    const commandesMap = new Map();
+    todayCommandesSnap.docs.forEach(d => commandesMap.set(d.id, { id: d.id, ...d.data() }));
+    activeCommandesSnap.docs.forEach(d => commandesMap.set(d.id, { id: d.id, ...d.data() }));
+    const commandes = Array.from(commandesMap.values());
 
-    const commandesJour = commandes.filter(c => c.date === today);
+    const factures = facturesSnap.docs.map(d => d.data());
+    const stocks   = stocksSnap.docs.map(d => d.data());
+
+    const commandesJour    = commandes.filter(c => c.date === today);
     const commandesActives = commandes.filter(c => ['en-attente', 'en-preparation'].includes(c.statut));
 
     const revenusJour = factures
-      .filter(f => f.date === today && f.statut === 'payee')
+      .filter(f => f.statut === 'payee')
       .reduce((s, f) => s + (f.total || 0), 0);
 
     const alertesStock = stocks.filter(s => s.quantite < s.minimum).length;
 
     const commandesParStatut = {
-      'en-attente':    commandes.filter(c => c.statut === 'en-attente').length,
-      'en-preparation':commandes.filter(c => c.statut === 'en-preparation').length,
-      'prete':         commandes.filter(c => c.statut === 'prete').length,
-      'servie':        commandes.filter(c => c.date === today && c.statut === 'servie').length,
+      'en-attente':      commandes.filter(c => c.statut === 'en-attente').length,
+      'en-preparation':  commandes.filter(c => c.statut === 'en-preparation').length,
+      'prete':           commandes.filter(c => c.statut === 'prete').length,
+      'servie':          commandesJour.filter(c => c.statut === 'servie').length,
     };
 
-    res.json({
+    const result = {
       commandesJour: commandesJour.length,
       commandesActives: commandesActives.length,
       revenusJour,
       alertesStock,
       commandesParStatut,
       commandesRecentes: commandesJour.slice(-5).reverse(),
-    });
+    };
+
+    setCache('dashboard', result);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -52,10 +74,13 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
 router.get('/rapport', authenticateToken, async (req, res) => {
   try {
     const { debut, fin } = req.query;
-    const snap = await db.collection('factures').get();
-    const factures = snap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .filter(f => (!debut || f.date >= debut) && (!fin || f.date <= fin));
+
+    let query = db.collection('factures');
+    if (debut) query = query.where('date', '>=', debut);
+    if (fin)   query = query.where('date', '<=', fin);
+    const snap = await query.get();
+
+    const factures = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
     const total = factures.reduce((s, f) => s + (f.total || 0), 0);
     const parMode = {};
@@ -66,7 +91,6 @@ router.get('/rapport', authenticateToken, async (req, res) => {
       if (parStatut[f.statut] !== undefined) parStatut[f.statut]++;
     });
 
-    // Ventes par catégorie
     const parCategorie = {};
     factures.forEach(f => {
       (f.items || []).forEach(item => {
@@ -74,7 +98,6 @@ router.get('/rapport', authenticateToken, async (req, res) => {
       });
     });
 
-    // Top plats vendus
     const topPlats = {};
     factures.forEach(f => {
       (f.items || []).forEach(item => {
@@ -106,10 +129,13 @@ router.get('/rapport', authenticateToken, async (req, res) => {
 // GET /api/stats/notifications
 router.get('/notifications', authenticateToken, async (req, res) => {
   try {
-    const [stocksSnap, commandesSnap, facturesSnap] = await Promise.all([
+    const cached = getCached('stats-notifications', 30000);
+    if (cached) return res.json(cached);
+
+    const [stocksSnap, activeCommandesSnap, partiellesSnap] = await Promise.all([
       db.collection('stocks').get(),
-      db.collection('commandes').get(),
-      db.collection('factures').get(),
+      db.collection('commandes').where('statut', 'in', ['en-attente', 'en-preparation']).get(),
+      db.collection('factures').where('statut', '==', 'partielle').get(),
     ]);
 
     const notifications = [];
@@ -125,30 +151,27 @@ router.get('/notifications', authenticateToken, async (req, res) => {
       }
     });
 
-    const actives = commandesSnap.docs
-      .map(d => d.data())
-      .filter(c => ['en-attente', 'en-preparation'].includes(c.statut));
-
-    if (actives.length > 0) {
+    const actives = activeCommandesSnap.size;
+    if (actives > 0) {
       notifications.push({
         type: 'info', icon: 'fire',
         title: 'Commandes en cours',
-        message: `${actives.length} commande(s) en attente / préparation`,
+        message: `${actives} commande(s) en attente / préparation`,
       });
     }
 
-    const partielles = facturesSnap.docs.filter(d => d.data().statut === 'partielle');
-    if (partielles.length > 0) {
+    if (partiellesSnap.size > 0) {
       notifications.push({
         type: 'danger', icon: 'receipt',
-        title: `${partielles.length} facture(s) impayée(s)`,
-        message: partielles.map(d => {
+        title: `${partiellesSnap.size} facture(s) impayée(s)`,
+        message: partiellesSnap.docs.slice(0, 3).map(d => {
           const f = d.data();
           return `${f.numero} – reste ${(f.reste || 0).toLocaleString('fr-FR')} FCFA`;
-        }).slice(0, 3).join(' | '),
+        }).join(' | '),
       });
     }
 
+    setCache('stats-notifications', notifications);
     res.json(notifications);
   } catch (err) {
     res.status(500).json({ error: err.message });

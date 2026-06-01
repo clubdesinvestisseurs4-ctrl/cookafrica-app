@@ -17,10 +17,26 @@
       ]
     },
     {
+      "collectionGroup": "commandes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "boissonsStatut", "order": "ASCENDING" },
+        { "fieldPath": "createdAt",      "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "factures",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "date",      "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "factures",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "statut",    "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     },
