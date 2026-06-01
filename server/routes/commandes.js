@@ -31,6 +31,31 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/commandes/bar — commandes avec boissons (pour le barman)
+router.get('/bar', authenticateToken, requireRole('directeur', 'barman'), async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const snap = await db.collection('commandes').orderBy('createdAt', 'desc').limit(200).get();
+    const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    const active = all
+      .filter(c => c.boissonsStatut === 'en-attente')
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const done = all.filter(c => c.date === today && c.boissonsStatut === 'prete');
+
+    const barFacturesSnap = await db.collection('factures_bar').where('date', '==', today).get();
+    const barFactures = {};
+    barFacturesSnap.docs.forEach(d => {
+      const data = d.data();
+      barFactures[data.commandeId] = { id: d.id, ...data };
+    });
+
+    res.json({ active, done, barFactures });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/commandes/cuisine — commandes actives + terminées du jour
 router.get('/cuisine', authenticateToken, async (req, res) => {
   try {
@@ -69,15 +94,20 @@ router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), 
     const numero = await getNextNumero();
     const now = new Date();
 
+    const mappedItems = items.map(i => ({
+      menuItemId: i.menuItemId || '',
+      nom: i.nom,
+      prix: Number(i.prix),
+      quantite: Number(i.quantite),
+      sousTotal: Number(i.prix) * Number(i.quantite),
+      categorie: i.categorie || '',
+    }));
+
+    const hasBoissons = mappedItems.some(i => i.categorie === 'Boissons');
+
     const data = {
       numero,
-      items: items.map(i => ({
-        menuItemId: i.menuItemId || '',
-        nom: i.nom,
-        prix: Number(i.prix),
-        quantite: Number(i.quantite),
-        sousTotal: Number(i.prix) * Number(i.quantite),
-      })),
+      items: mappedItems,
       total,
       note: note || '',
       tableNumero: tableNumero || '',
@@ -87,6 +117,8 @@ router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), 
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
     };
+
+    if (hasBoissons) data.boissonsStatut = 'en-attente';
 
     const ref = await db.collection('commandes').add(data);
 
@@ -98,6 +130,67 @@ router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), 
     });
 
     res.status(201).json({ id: ref.id, ...data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/commandes/:id/bar-pret — barman marque les boissons comme prêtes
+router.put('/:id/bar-pret', authenticateToken, requireRole('directeur', 'barman'), async (req, res) => {
+  try {
+    const docRef = db.collection('commandes').doc(req.params.id);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ error: 'Commande introuvable' });
+
+    const commande = doc.data();
+    if (commande.boissonsStatut !== 'en-attente') {
+      return res.status(400).json({ error: 'Boissons déjà traitées' });
+    }
+
+    const now = new Date();
+    await docRef.update({ boissonsStatut: 'prete', updatedAt: now.toISOString() });
+
+    const boissonsItems = (commande.items || []).filter(i => i.categorie === 'Boissons');
+    let factureBar = null;
+
+    if (boissonsItems.length > 0) {
+      const lastSnap = await db.collection('factures_bar').orderBy('createdAt', 'desc').limit(1).get();
+      const lastNum = lastSnap.empty
+        ? 0
+        : parseInt((lastSnap.docs[0].data().numero || 'BAR-0000').split('-')[1] || '0', 10);
+      const barNumero = `BAR-${String(lastNum + 1).padStart(4, '0')}`;
+
+      const sousTotal = boissonsItems.reduce((sum, i) => sum + i.sousTotal, 0);
+      const tva = Math.round(sousTotal * 0.18);
+      const total = sousTotal + tva;
+
+      const factureBarData = {
+        numero: barNumero,
+        commandeId: req.params.id,
+        commandeNumero: commande.numero,
+        items: boissonsItems,
+        tableNumero: commande.tableNumero || '',
+        note: commande.note || '',
+        sousTotal,
+        tva,
+        total,
+        date: now.toISOString().split('T')[0],
+        createdBy: req.user.username,
+        createdAt: now.toISOString(),
+      };
+
+      const ref = await db.collection('factures_bar').add(factureBarData);
+      factureBar = { id: ref.id, ...factureBarData };
+    }
+
+    pushNotification({
+      type: 'success', icon: 'wine-glass-alt',
+      titre: 'Boissons prêtes',
+      message: `${commande.numero} – boissons prêtes à servir !`,
+      createdBy: req.user.username,
+    });
+
+    res.json({ id: req.params.id, boissonsStatut: 'prete', factureBar });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -84,6 +84,11 @@
         <i class="fas fa-boxes"></i><span>Stocks</span>
       </a>
 
+      <div class="nav-section-label" id="nav-section-bar">Bar</div>
+      <a class="nav-item" data-page="barman" id="nav-barman">
+        <i class="fas fa-wine-glass-alt"></i><span>Écran Bar</span>
+      </a>
+
       <div class="nav-section-label" id="nav-section-admin">Administration</div>
       <a class="nav-item" data-page="menu" id="nav-menu">
         <i class="fas fa-book-open"></i><span>Menu</span>
@@ -249,6 +254,66 @@
             </button>
           </div>
           <div class="cuisine-grid" id="cuisine-bilan-grid"></div>
+        </div>
+      </section>
+
+      <!-- ── ÉCRAN BAR ──────────────────────────── -->
+      <section id="page-barman" class="page">
+        <div class="cuisine-header">
+          <div>
+            <h2 style="font-size:1.1rem;font-weight:800;color:#1565C0">
+              <i class="fas fa-wine-glass-alt"></i> Écran Bar
+            </h2>
+            <p style="font-size:.8rem;color:var(--gray);margin-top:4px">
+              Actualisation automatique toutes les 20 secondes
+            </p>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center">
+            <span id="barman-count" style="font-size:.85rem;color:var(--gray)"></span>
+            <button class="btn btn-secondary btn-sm" id="btn-refresh-barman">
+              <i class="fas fa-sync-alt"></i> Actualiser
+            </button>
+          </div>
+        </div>
+
+        <!-- Commandes boissons en attente -->
+        <div class="cuisine-grid" id="barman-grid">
+          <div class="empty-state">
+            <i class="fas fa-wine-glass-alt"></i>
+            <p>Aucune commande de boisson en attente</p>
+          </div>
+        </div>
+
+        <!-- Stock boissons -->
+        <div id="barman-stock-section" style="margin-top:28px">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-top:16px;border-top:2px solid var(--border)">
+            <h3 style="font-size:.95rem;font-weight:800;color:var(--dark);margin:0">
+              <i class="fas fa-boxes" style="color:#1565C0"></i> Stock Boissons
+            </h3>
+          </div>
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead><tr>
+                <th>Article</th><th>Quantité</th><th>Minimum</th><th>Unité</th><th>État</th>
+              </tr></thead>
+              <tbody id="barman-stock-tbody">
+                <tr><td colspan="5" style="text-align:center;padding:20px;color:var(--gray)">Chargement…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Boissons servies aujourd'hui -->
+        <div id="barman-bilan-section" style="display:none;margin-top:28px">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-top:16px;border-top:2px solid var(--border)">
+            <h3 style="font-size:.95rem;font-weight:800;color:var(--dark);margin:0">
+              <i class="fas fa-receipt" style="color:var(--success)"></i> Boissons Servies Aujourd'hui
+            </h3>
+            <span id="barman-bilan-count"
+              style="background:#1565C0;color:#fff;padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700">
+            </span>
+          </div>
+          <div class="cuisine-grid" id="barman-bilan-grid"></div>
         </div>
       </section>
 

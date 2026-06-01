@@ -35,9 +35,11 @@ const state = {
   factures:  [],
   stocks:    [],
   panier:    [],
+  barFactures: {},
   notifInterval:   null,
   cuisineInterval: null,
   dashInterval:    null,
+  barmanInterval:  null,
 };
 
 // ─── Visibilité des pages par rôle ────────────────────
@@ -50,6 +52,7 @@ const PAGE_ROLES = {
   stocks:      ['directeur', 'cuisinier'],
   rapports:    ['directeur'],
   sessions:    ['directeur'],
+  barman:      ['directeur', 'barman'],
 };
 
 const PAGE_TITLES = {
@@ -61,6 +64,7 @@ const PAGE_TITLES = {
   stocks:      'Gestion des Stocks',
   rapports:    'Rapports & Statistiques',
   sessions:    'Journal des Sessions',
+  barman:      'Écran Bar',
 };
 
 // ─── Utilitaires ──────────────────────────────────────
@@ -138,6 +142,7 @@ function clearIntervals() {
   clearInterval(state.notifInterval);
   clearInterval(state.cuisineInterval);
   clearInterval(state.dashInterval);
+  clearInterval(state.barmanInterval);
 }
 
 async function loginFlow(token, user) {
@@ -159,6 +164,7 @@ async function loginFlow(token, user) {
 function defaultPage() {
   const role = state.user?.role;
   if (role === 'cuisinier') return 'cuisine';
+  if (role === 'barman')    return 'barman';
   return 'dashboard';
 }
 
@@ -208,6 +214,7 @@ function navigateTo(page) {
     stocks:      loadStocks,
     rapports:    () => {},
     sessions:    loadSessions,
+    barman:      loadBarman,
   };
   if (loaders[page]) loaders[page]();
 }
@@ -235,6 +242,11 @@ function startPolling() {
   // Cuisine auto-refresh toutes les 20s
   state.cuisineInterval = setInterval(() => {
     if (state.currentPage === 'cuisine') loadCuisine();
+  }, 20_000);
+
+  // Bar auto-refresh toutes les 20s
+  state.barmanInterval = setInterval(() => {
+    if (state.currentPage === 'barman') loadBarman();
   }, 20_000);
 
   // Notifications (directeur uniquement) toutes les 25s
@@ -324,6 +336,11 @@ async function loadCommandes() {
     const alreadyFactured = state.factures.some(f => f.commandeId === c.id);
     const canFacture = ['servie', 'prete'].includes(c.statut) && !alreadyFactured;
     const canCancel  = state.user?.role === 'directeur' && !['annulee', 'servie'].includes(c.statut);
+    const boissonsInfo = c.boissonsStatut === 'en-attente'
+      ? '<br><small style="color:#1565C0;font-size:.72rem"><i class="fas fa-wine-glass-alt"></i> Boissons en attente</small>'
+      : c.boissonsStatut === 'prete'
+      ? '<br><small style="color:var(--success);font-size:.72rem"><i class="fas fa-check"></i> Boissons prêtes</small>'
+      : '';
     return `
     <tr>
       <td><strong>${c.numero}</strong></td>
@@ -331,7 +348,7 @@ async function loadCommandes() {
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.82rem">${items}</td>
       <td><strong>${fmt(c.total)} FCFA</strong></td>
       <td style="color:var(--gray);font-size:.82rem">${c.tableNumero || '—'}</td>
-      <td>${badgeStatus(c.statut)}</td>
+      <td>${badgeStatus(c.statut)}${boissonsInfo}</td>
       <td>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn btn-secondary btn-sm" onclick="viewCommande('${c.id}')">
@@ -401,7 +418,7 @@ async function openNewCommande() {
       const items = menuDispo.filter(m => m.categorie === cat);
       if (!items.length) return '';
       return `<optgroup label="${cat}">${items.map(m =>
-        `<option value="${m.id}" data-prix="${m.prix}" data-nom="${m.nom}">${m.nom} – ${fmt(m.prix)} FCFA</option>`
+        `<option value="${m.id}" data-prix="${m.prix}" data-nom="${m.nom}" data-categorie="${m.categorie || ''}">${m.nom} – ${fmt(m.prix)} FCFA</option>`
       ).join('')}</optgroup>`;
     }).join('');
   document.getElementById('cmd-table').value = '';
@@ -414,12 +431,13 @@ function addToPanier() {
   const opt = sel.selectedOptions[0];
   if (!opt || !opt.value) return;
 
-  const id   = opt.value;
-  const nom  = opt.dataset.nom;
-  const prix = Number(opt.dataset.prix);
+  const id       = opt.value;
+  const nom      = opt.dataset.nom;
+  const prix     = Number(opt.dataset.prix);
+  const categorie = opt.dataset.categorie || '';
   const existing = state.panier.find(p => p.menuItemId === id);
   if (existing) { existing.quantite++; existing.sousTotal = existing.prix * existing.quantite; }
-  else { state.panier.push({ menuItemId: id, nom, prix, quantite: 1, sousTotal: prix }); }
+  else { state.panier.push({ menuItemId: id, nom, prix, categorie, quantite: 1, sousTotal: prix }); }
   renderPanier();
 }
 
@@ -823,6 +841,198 @@ function printFacture() {
   w.document.close();
   w.print();
 }
+
+// ─── ÉCRAN BAR ─────────────────────────────────────────
+
+async function loadBarman() {
+  const data = await api('/api/commandes/bar');
+  if (!data) return;
+
+  const active      = data.active      || [];
+  const done        = data.done        || [];
+  const barFactures = data.barFactures || {};
+  state.barFactures = barFactures;
+
+  // ── Commandes boissons actives ──
+  const grid  = document.getElementById('barman-grid');
+  const count = document.getElementById('barman-count');
+
+  if (active.length === 0) {
+    grid.innerHTML = '<div class="empty-state"><i class="fas fa-wine-glass-alt" style="color:var(--success)"></i><p>Aucune commande de boisson en attente !</p></div>';
+    if (count) count.textContent = '0 boisson en attente';
+  } else {
+    if (count) count.textContent = `${active.length} commande(s) de boissons`;
+    grid.innerHTML = active.map(c => {
+      const minutesAgo = Math.floor((Date.now() - new Date(c.createdAt).getTime()) / 60000);
+      const boissonsItems = (c.items || []).filter(i => i.categorie === 'Boissons');
+      const items = boissonsItems.map(i => `
+        <div class="commande-item">
+          <span><span class="commande-item-qty">${i.quantite}</span> ${i.nom}</span>
+          <span style="color:var(--gray);font-size:.78rem">${fmt(i.prix)} FCFA</span>
+        </div>`).join('');
+      const total = boissonsItems.reduce((s, i) => s + i.sousTotal, 0);
+      return `
+      <div class="commande-card en-attente bar-card" id="bar-card-${c.id}">
+        <div class="commande-card-header">
+          <div>
+            <div class="commande-numero">${c.numero}</div>
+            ${c.tableNumero ? `<div class="commande-table"><i class="fas fa-chair"></i> ${c.tableNumero}</div>` : ''}
+          </div>
+          <div style="text-align:right">
+            ${badgeStatus(c.statut)}
+            <div class="commande-time">${minutesAgo < 1 ? "À l'instant" : `il y a ${minutesAgo} min`}</div>
+          </div>
+        </div>
+        <div class="commande-items">${items}</div>
+        ${c.note ? `<div class="commande-note"><i class="fas fa-sticky-note"></i> ${c.note}</div>` : ''}
+        <div class="commande-total">${fmt(total)} FCFA</div>
+        <div class="commande-actions">
+          <button class="btn btn-success btn-sm" style="background:#1565C0;border-color:#1565C0" onclick="barmanPret('${c.id}')">
+            <i class="fas fa-wine-glass-alt"></i> Prêt !
+          </button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Stock boissons ──
+  loadBarmanStock();
+
+  // ── Boissons servies du jour ──
+  const bilanSection = document.getElementById('barman-bilan-section');
+  const bilanGrid    = document.getElementById('barman-bilan-grid');
+  const bilanCount   = document.getElementById('barman-bilan-count');
+
+  if (done.length === 0) {
+    bilanSection.style.display = 'none';
+  } else {
+    bilanSection.style.display = 'block';
+    bilanCount.textContent = `${done.length}`;
+    bilanGrid.innerHTML = done.map(c => {
+      const f = barFactures[c.id];
+      const boissonsItems = (c.items || []).filter(i => i.categorie === 'Boissons');
+      const items = boissonsItems.map(i => `
+        <div class="commande-item" style="font-size:.8rem">
+          <span><span class="commande-item-qty">${i.quantite}</span> ${i.nom}</span>
+          <span style="color:var(--gray)">${fmt(i.sousTotal)} FCFA</span>
+        </div>`).join('');
+      const factureInfo = f
+        ? `<div style="margin-top:10px;padding:8px;background:#eff6ff;border-radius:6px;border:1px solid #bfdbfe">
+             <div style="font-size:.78rem;color:var(--gray);margin-bottom:4px">
+               <i class="fas fa-receipt"></i> <strong>${f.numero}</strong>
+             </div>
+             <div style="display:flex;justify-content:space-between;font-size:.82rem">
+               <span>HT ${fmt(f.sousTotal)} · TVA ${fmt(f.tva)}</span>
+               <strong style="color:#1565C0">${fmt(f.total)} FCFA</strong>
+             </div>
+           </div>`
+        : '';
+      const printBtn = f
+        ? `<button class="btn btn-secondary btn-sm" onclick="aperçuFactureBar('${c.id}')">
+             <i class="fas fa-print"></i> Imprimer
+           </button>`
+        : '';
+      return `
+      <div class="commande-card prete bar-card" style="opacity:.85;border-left:4px solid #1565C0">
+        <div class="commande-card-header">
+          <div>
+            <div class="commande-numero">${c.numero}</div>
+            ${c.tableNumero ? `<div class="commande-table"><i class="fas fa-chair"></i> ${c.tableNumero}</div>` : ''}
+          </div>
+          <div style="text-align:right">
+            <span class="badge-status prete">✅ Boissons servies</span>
+            <div class="commande-time" style="font-size:.7rem">${fmtDate(c.updatedAt)}</div>
+          </div>
+        </div>
+        <div class="commande-items">${items}</div>
+        ${c.note ? `<div class="commande-note"><i class="fas fa-sticky-note"></i> ${c.note}</div>` : ''}
+        ${factureInfo}
+        ${printBtn ? `<div class="commande-actions" style="margin-top:8px">${printBtn}</div>` : ''}
+      </div>`;
+    }).join('');
+  }
+}
+
+async function loadBarmanStock() {
+  const stocks = await api('/api/stocks');
+  if (!stocks) return;
+  const boissonsStocks = stocks.filter(s => s.categorie === 'Boissons');
+  const tbody = document.getElementById('barman-stock-tbody');
+  if (!tbody) return;
+
+  if (boissonsStocks.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--gray)">Aucun stock de boissons enregistré</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = boissonsStocks.map(s => {
+    const isBas = s.quantite < s.minimum;
+    return `
+    <tr style="${isBas ? 'background:#fff5f5' : ''}">
+      <td><strong>${s.nom}</strong></td>
+      <td><strong style="color:${isBas ? 'var(--danger)' : 'var(--dark)'}">${s.quantite}</strong></td>
+      <td style="color:var(--gray)">${s.minimum}</td>
+      <td style="color:var(--gray);font-size:.82rem">${s.unite}</td>
+      <td><span class="badge-status ${isBas ? 'bas' : 'disponible'}">${isBas ? '⚠️ Stock bas' : '✅ OK'}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+window.barmanPret = async (id) => {
+  const res = await api(`/api/commandes/${id}/bar-pret`, { method: 'PUT', body: '{}' });
+  if (res?.boissonsStatut === 'prete') {
+    toast('Boissons prêtes – Bon bar généré !', 'success');
+    if (res.factureBar) {
+      state.barFactures[id] = res.factureBar;
+    }
+    loadBarman();
+  } else {
+    toast(res?.error || 'Erreur', 'error');
+  }
+};
+
+window.aperçuFactureBar = (commandeId) => {
+  const f = state.barFactures?.[commandeId];
+  if (!f) { toast('Bon bar introuvable', 'error'); return; }
+
+  const items = (f.items || []).map(i => `
+    <tr>
+      <td>${i.nom}</td>
+      <td style="text-align:center">${i.quantite}</td>
+      <td style="text-align:right">${fmt(i.prix)}</td>
+      <td style="text-align:right"><strong>${fmt(i.sousTotal)}</strong></td>
+    </tr>`).join('');
+
+  document.getElementById('facture-print-area').innerHTML = `
+    <div class="facture-print">
+      <div class="facture-print-header">
+        <h2 style="color:#1565C0"><i class="fas fa-wine-glass-alt"></i> COOK AFRICA – BAR</h2>
+        <p>Bar &amp; Boissons</p>
+        <p style="margin-top:6px;font-size:.9rem"><strong>BON BAR N° ${f.numero}</strong></p>
+        <p style="font-size:.78rem;color:var(--gray)">Date : ${fmtDateOnly(f.date)}</p>
+        ${f.tableNumero ? `<p style="font-size:.78rem"><strong>Table :</strong> ${f.tableNumero}</p>` : ''}
+        ${f.commandeNumero ? `<p style="font-size:.78rem;color:var(--gray)">Commande : ${f.commandeNumero}</p>` : ''}
+      </div>
+      <table class="facture-items">
+        <thead><tr><th>Boisson</th><th>Qté</th><th>Prix unit.</th><th>Sous-total</th></tr></thead>
+        <tbody>${items}</tbody>
+      </table>
+      <table class="facture-totaux">
+        <tr><td>Sous-total</td><td>${fmt(f.sousTotal)} FCFA</td></tr>
+        <tr><td>TVA (18%)</td><td>${fmt(f.tva)} FCFA</td></tr>
+        <tr class="facture-total-final">
+          <td><strong>TOTAL</strong></td>
+          <td><strong>${fmt(f.total)} FCFA</strong></td>
+        </tr>
+      </table>
+      <div style="margin-top:16px;padding-top:12px;border-top:2px dashed var(--border);text-align:center;font-size:.8rem;color:var(--gray)">
+        <p>Bon de boissons – Usage interne</p>
+        <p style="font-size:.7rem;margin-top:4px">Cook Africa – Bar</p>
+      </div>
+    </div>`;
+
+  openModal('apercu-facture');
+};
 
 // ─── MENU ──────────────────────────────────────────────
 
@@ -1249,7 +1459,7 @@ async function loadSessions() {
     return;
   }
 
-  const roleColors = { directeur: '#8B1A1A', receptionniste: '#2C5F2E', cuisinier: '#D4891A' };
+  const roleColors = { directeur: '#8B1A1A', receptionniste: '#2C5F2E', cuisinier: '#D4891A', barman: '#1565C0' };
   tbody.innerHTML = sessions.map(s => `
     <tr>
       <td style="font-size:.8rem;white-space:nowrap">${fmtDate(s.timestamp)}</td>
@@ -1447,6 +1657,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Cuisine ──
   document.getElementById('btn-refresh-cuisine').addEventListener('click', loadCuisine);
+
+  // ── Bar ──
+  document.getElementById('btn-refresh-barman').addEventListener('click', loadBarman);
 
   // ── Facturation ──
   document.getElementById('btn-new-facture').addEventListener('click', openNewFacture);

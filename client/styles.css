@@ -451,6 +451,15 @@ body {
   background: linear-gradient(135deg, #fffbeb 0%, var(--white) 100%);
   animation: pulse-border 2s ease-in-out infinite;
 }
+.commande-card.bar-card.en-attente {
+  border-color: #1565C0;
+  background: linear-gradient(135deg, #eff6ff 0%, var(--white) 100%);
+  animation: pulse-border-bar 2s ease-in-out infinite;
+}
+@keyframes pulse-border-bar {
+  0%, 100% { box-shadow: var(--shadow); }
+  50% { box-shadow: 0 0 0 4px rgba(21,101,192,.2), var(--shadow); }
+}
 .commande-card.en-preparation { border-color: var(--info); }
 @keyframes pulse-border {
   0%, 100% { box-shadow: var(--shadow); }

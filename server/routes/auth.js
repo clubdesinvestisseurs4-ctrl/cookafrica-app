@@ -100,6 +100,7 @@ router.post('/seed', async (req, res) => {
       { username: 'admin',        nom: 'Admin Système',     role: 'directeur',      password: 'Admincookaf@2026!' },
       { username: 'receptio',     nom: 'Koné Aminata',      role: 'receptionniste', password: 'Receptcookaf@2026!' },
       { username: 'cuisinier',    nom: 'Diallo Moussa',     role: 'cuisinier',      password: 'Cuisincookaf@2026!' },
+      { username: 'barman',       nom: 'Barman Service',    role: 'barman',         password: 'Barmancookaf@2026!' },
     ];
 
     const batch = db.batch();
@@ -121,6 +122,31 @@ router.post('/seed', async (req, res) => {
     res.json({ message: 'Utilisateurs créés', count: utilisateurs.length });
   } catch (err) {
     console.error('Seed error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// POST /api/auth/seed-barman — ajouter le barman sur une installation existante
+router.post('/seed-barman', async (req, res) => {
+  try {
+    const existing = await db.collection('utilisateurs')
+      .where('username', '==', 'barman').limit(1).get();
+    if (!existing.empty) {
+      return res.status(409).json({ error: 'Barman déjà créé' });
+    }
+    const passwordHash = await bcrypt.hash('Barmancookaf@2026!', 10);
+    await db.collection('utilisateurs').add({
+      username: 'barman',
+      nom: 'Barman Service',
+      role: 'barman',
+      passwordHash,
+      actif: true,
+      createdAt: new Date().toISOString(),
+      lastLogin: null,
+    });
+    res.json({ message: 'Compte barman créé', username: 'barman', password: 'Barmancookaf@2026!' });
+  } catch (err) {
+    console.error('Seed barman error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
