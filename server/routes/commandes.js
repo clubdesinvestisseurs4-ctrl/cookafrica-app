@@ -13,6 +13,55 @@ async function getNextNumero() {
   return `CMD-${String(lastNum + 1).padStart(4, '0')}`;
 }
 
+async function getNextNumeroFacture() {
+  const snap = await db.collection('factures').orderBy('createdAt', 'desc').limit(1).get();
+  if (snap.empty) return 'FACT-0001';
+  const last = snap.docs[0].data();
+  const lastNum = parseInt((last.numero || 'FACT-0000').split('-')[1] || '0', 10);
+  return `FACT-${String(lastNum + 1).padStart(4, '0')}`;
+}
+
+// Génère une facture unifiée (plats + boissons, sans TVA) dès que les deux parties sont prêtes
+async function generateCombinedInvoice(commandeId, commande, validatedByCuisinier, validatedByBarman, now) {
+  const existing = await db.collection('factures').where('commandeId', '==', commandeId).limit(1).get();
+  if (!existing.empty) return null; // déjà générée
+
+  const allItems = commande.items || [];
+  if (allItems.length === 0) return null;
+
+  const total = allItems.reduce((sum, i) => sum + i.sousTotal, 0);
+  const numero = await getNextNumeroFacture();
+
+  const data = {
+    numero,
+    commandeId,
+    commandeNumero: commande.numero,
+    items: allItems,
+    tableNumero: commande.tableNumero || '',
+    note: commande.note || '',
+    total,
+    reste: total,
+    modePaiement: 'especes',
+    statut: 'partielle',
+    validatedByCuisinier: validatedByCuisinier || '',
+    validatedByBarman: validatedByBarman || '',
+    date: now.toISOString().split('T')[0],
+    createdBy: commande.createdBy || '',
+    createdAt: now.toISOString(),
+  };
+
+  const ref = await db.collection('factures').add(data);
+
+  pushNotification({
+    type: 'success', icon: 'receipt',
+    titre: `Facture ${numero} prête`,
+    message: `${commande.numero} – Total : ${total.toLocaleString('fr-FR')} FCFA`,
+    createdBy: validatedByCuisinier || validatedByBarman || 'système',
+  });
+
+  return { id: ref.id, ...data };
+}
+
 // GET /api/commandes
 router.get('/', authenticateToken, async (req, res) => {
   try {
@@ -43,14 +92,7 @@ router.get('/bar', authenticateToken, requireRole('directeur', 'barman'), async 
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     const done = all.filter(c => c.date === today && c.boissonsStatut === 'prete');
 
-    const barFacturesSnap = await db.collection('factures_bar').where('date', '==', today).get();
-    const barFactures = {};
-    barFacturesSnap.docs.forEach(d => {
-      const data = d.data();
-      barFactures[data.commandeId] = { id: d.id, ...data };
-    });
-
-    res.json({ active, done, barFactures });
+    res.json({ active, done });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -158,57 +200,40 @@ router.put('/:id/bar-pret', authenticateToken, requireRole('directeur', 'barman'
     }
 
     const now = new Date();
-
-    // Si la commande n'a que des boissons, la marquer comme prête côté plats aussi
     const allBoissons = (commande.items || []).every(i => i.categorie === 'Boissons');
-    const commandeUpdate = { boissonsStatut: 'prete', updatedAt: now.toISOString() };
+
+    const commandeUpdate = {
+      boissonsStatut: 'prete',
+      validatedByBarman: req.user.username,
+      updatedAt: now.toISOString(),
+    };
     if (allBoissons) commandeUpdate.statut = 'prete';
     await docRef.update(commandeUpdate);
 
-    const boissonsItems = (commande.items || []).filter(i => i.categorie === 'Boissons');
-    let factureBar = null;
+    // Générer la facture unifiée si les plats sont aussi prêts (ou absents)
+    const platsItems = (commande.items || []).filter(i => i.categorie !== 'Boissons');
+    const platsReady = platsItems.length === 0 || commande.statut === 'prete';
 
-    if (boissonsItems.length > 0) {
-      const lastSnap = await db.collection('factures_bar').orderBy('createdAt', 'desc').limit(1).get();
-      const lastNum = lastSnap.empty
-        ? 0
-        : parseInt((lastSnap.docs[0].data().numero || 'BAR-0000').split('-')[1] || '0', 10);
-      const barNumero = `BAR-${String(lastNum + 1).padStart(4, '0')}`;
-
-      const sousTotal = boissonsItems.reduce((sum, i) => sum + i.sousTotal, 0);
-      const tva = Math.round(sousTotal * 0.18);
-      const total = sousTotal + tva;
-
-      const factureBarData = {
-        numero: barNumero,
-        commandeId: req.params.id,
-        commandeNumero: commande.numero,
-        items: boissonsItems,
-        tableNumero: commande.tableNumero || '',
-        note: commande.note || '',
-        sousTotal,
-        tva,
-        total,
-        reste: total,
-        statut: 'partielle',
-        modePaiement: 'especes',
-        date: now.toISOString().split('T')[0],
-        createdBy: req.user.username,
-        createdAt: now.toISOString(),
-      };
-
-      const ref = await db.collection('factures_bar').add(factureBarData);
-      factureBar = { id: ref.id, ...factureBarData };
+    let factureUnifiee = null;
+    if (platsReady) {
+      const updatedCommande = { ...commande, ...commandeUpdate };
+      factureUnifiee = await generateCombinedInvoice(
+        req.params.id,
+        updatedCommande,
+        commande.validatedByCuisinier || '',
+        req.user.username,
+        now
+      );
     }
 
     pushNotification({
       type: 'success', icon: 'wine-glass-alt',
       titre: 'Boissons prêtes',
-      message: `${commande.numero} – boissons prêtes à servir !`,
+      message: `${commande.numero} – boissons prêtes à servir !${factureUnifiee ? ` Facture ${factureUnifiee.numero} générée.` : ''}`,
       createdBy: req.user.username,
     });
 
-    res.json({ id: req.params.id, boissonsStatut: 'prete', factureBar });
+    res.json({ id: req.params.id, boissonsStatut: 'prete', factureUnifiee });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -226,6 +251,11 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const update = { ...req.body, updatedAt: now.toISOString() };
     delete update.id;
 
+    // Stocker le nom du cuisinier qui valide
+    if (update.statut === 'prete') {
+      update.validatedByCuisinier = req.user.username;
+    }
+
     await docRef.update(update);
 
     // Notifications selon changement de statut
@@ -239,52 +269,23 @@ router.put('/:id', authenticateToken, async (req, res) => {
       const notif = messages[update.statut];
       if (notif) pushNotification({ type: notif.type, icon: notif.icon, titre: notif.titre, message: notif.msg, createdBy: req.user.username });
 
-      // Auto-générer la facture plats dès que la commande est prête
+      // Générer la facture unifiée quand les plats sont prêts
       if (update.statut === 'prete') {
-        // Ne générer une facture plats que s'il y a au moins un article non-Boissons
-        const platsItems = (existing.items || []).filter(i => i.categorie !== 'Boissons');
-        if (platsItems.length > 0) {
-          const alreadyExists = await db.collection('factures')
-            .where('commandeId', '==', req.params.id).limit(1).get();
+        const hasBoissons = (existing.items || []).some(i => i.categorie === 'Boissons');
+        // Pour une commande mixte, attendre que le bar valide aussi
+        const boissonsReady = !hasBoissons || existing.boissonsStatut === 'prete';
 
-          if (alreadyExists.empty) {
-            const lastSnap = await db.collection('factures').orderBy('createdAt', 'desc').limit(1).get();
-            const lastNum = lastSnap.empty
-              ? 0
-              : parseInt((lastSnap.docs[0].data().numero || 'FACT-0000').split('-')[1] || '0', 10);
-            const factureNumero = `FACT-${String(lastNum + 1).padStart(4, '0')}`;
-
-            const TVA = 0.18;
-            const sousTotal = platsItems.reduce((sum, i) => sum + i.sousTotal, 0);
-            const tva       = Math.round(sousTotal * TVA);
-            const total     = sousTotal + tva;
-
-            await db.collection('factures').add({
-              numero:          factureNumero,
-              commandeId:      req.params.id,
-              commandeNumero:  existing.numero,
-              items:           platsItems,
-              tableNumero:     existing.tableNumero || '',
-              note:            existing.note || '',
-              sousTotal,
-              tva,
-              total,
-              reste:           total,
-              modePaiement:    'especes',
-              statut:          'partielle',
-              date:            now.toISOString().split('T')[0],
-              createdBy:       req.user.username,
-              createdAt:       now.toISOString(),
-            });
-
-            pushNotification({
-              type: 'success', icon: 'receipt',
-              titre: `Facture ${factureNumero} générée`,
-              message: `${existing.numero} – Total TTC : ${total.toLocaleString('fr-FR')} FCFA`,
-              createdBy: req.user.username,
-            });
-          }
+        if (boissonsReady) {
+          const updatedCommande = { ...existing, ...update };
+          await generateCombinedInvoice(
+            req.params.id,
+            updatedCommande,
+            req.user.username,
+            existing.validatedByBarman || '',
+            now
+          );
         }
+        // Si hasBoissons && !boissonsReady : la facture sera générée dans bar-pret
       }
     }
 

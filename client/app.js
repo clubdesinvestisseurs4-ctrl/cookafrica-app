@@ -334,7 +334,11 @@ async function loadCommandes() {
   tbody.innerHTML = commandes.map(c => {
     const items = (c.items || []).map(i => `${i.quantite}x ${i.nom}`).join(', ');
     const alreadyFactured = state.factures.some(f => f.commandeId === c.id);
-    const canFacture = ['servie', 'prete'].includes(c.statut) && !alreadyFactured;
+    const hasBoissons = (c.items || []).some(i => i.categorie === 'Boissons');
+    const hasPlats    = (c.items || []).some(i => i.categorie !== 'Boissons');
+    const kitchenOk   = !hasPlats || ['prete', 'servie'].includes(c.statut);
+    const barOk       = !hasBoissons || c.boissonsStatut === 'prete';
+    const canFacture  = kitchenOk && barOk && !alreadyFactured;
     const canCancel  = state.user?.role === 'directeur' && !['annulee', 'servie'].includes(c.statut);
     const boissonsInfo = c.boissonsStatut === 'en-attente'
       ? '<br><small style="color:#1565C0;font-size:.72rem"><i class="fas fa-wine-glass-alt"></i> Boissons en attente</small>'
@@ -672,30 +676,17 @@ async function loadFactures() {
   if (fin)    url += `fin=${fin}&`;
   if (statut) url += `statut=${statut}`;
 
-  let urlBar = '/api/factures/bar?';
-  if (debut)  urlBar += `debut=${debut}&`;
-  if (fin)    urlBar += `fin=${fin}&`;
-  if (statut) urlBar += `statut=${statut}`;
-
-  const [factures, facturesBar] = await Promise.all([api(url), api(urlBar)]);
+  const factures = await api(url);
   hideLoader();
   if (!factures) return;
   state.factures = factures;
 
-  // Mettre à jour state.barFactures pour que aperçuFactureBar fonctionne depuis la caisse
-  if (facturesBar) {
-    facturesBar.forEach(f => { state.barFactures[f.commandeId] = f; });
-  }
-
-  // Exclure les factures qui ne contiennent que des boissons (données historiques mal créées)
-  const facturesPlats = factures.filter(f => (f.items || []).some(i => i.categorie !== 'Boissons'));
-
   const tbody = document.getElementById('factures-tbody');
-  if (facturesPlats.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--gray)">Aucune facture</td></tr>';
+  if (factures.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--gray)">Aucune facture</td></tr>';
   } else {
-    tbody.innerHTML = facturesPlats.map(f => {
-      const nbArticles = (f.items || []).filter(i => i.categorie !== 'Boissons').length;
+    tbody.innerHTML = factures.map(f => {
+      const nbArticles = (f.items || []).length;
       const canPay     = f.statut === 'partielle';
       return `
       <tr>
@@ -712,39 +703,7 @@ async function loadFactures() {
             <button class="btn btn-secondary btn-sm" onclick="aperçuFacture('${f.id}')">
               <i class="fas fa-print"></i>
             </button>
-            ${canPay ? `<button class="btn btn-success btn-sm" onclick="openPayFacture('${f.id}','${fmt(f.reste)}','plat')">
-              <i class="fas fa-check"></i> Payer
-            </button>` : ''}
-          </div>
-        </td>
-      </tr>`;
-    }).join('');
-  }
-
-  const tbodyBar = document.getElementById('factures-bar-tbody');
-  if (!facturesBar || facturesBar.length === 0) {
-    tbodyBar.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--gray)">Aucun bon bar</td></tr>';
-  } else {
-    tbodyBar.innerHTML = facturesBar.map(f => {
-      const nbArticles = (f.items || []).length;
-      const canPay     = !f.statut || f.statut === 'partielle';
-      const reste      = f.reste != null ? f.reste : f.total;
-      return `
-      <tr>
-        <td><strong style="color:#1565C0">${f.numero}</strong></td>
-        <td style="font-size:.8rem">${fmtDateOnly(f.date)}</td>
-        <td style="font-size:.82rem;color:var(--gray)">${f.commandeNumero || '—'}</td>
-        <td style="font-size:.82rem">${nbArticles} boisson(s)</td>
-        <td><strong>${fmt(f.total)} FCFA</strong></td>
-        <td style="color:${reste > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:700">${fmt(reste)} FCFA</td>
-        <td style="font-size:.82rem;color:var(--gray)">${f.modePaiement || '—'}</td>
-        <td>${badgeStatus(f.statut || 'partielle')}</td>
-        <td>
-          <div style="display:flex;gap:6px">
-            <button class="btn btn-secondary btn-sm" onclick="aperçuFactureBar('${f.commandeId}')">
-              <i class="fas fa-print"></i>
-            </button>
-            ${canPay ? `<button class="btn btn-success btn-sm" onclick="openPayFacture('${f.id}','${fmt(reste)}','bar')">
+            ${canPay ? `<button class="btn btn-success btn-sm" onclick="openPayFacture('${f.id}','${fmt(f.reste)}')">
               <i class="fas fa-check"></i> Payer
             </button>` : ''}
           </div>
@@ -755,11 +714,15 @@ async function loadFactures() {
 }
 
 function openNewFacture() {
-  const cmdsEligibles = state.commandes.filter(c =>
-    ['servie', 'prete'].includes(c.statut) &&
-    !state.factures.some(f => f.commandeId === c.id) &&
-    (c.items || []).some(i => i.categorie !== 'Boissons')
-  );
+  // Commande éligible : toutes les parties validées + pas encore facturée
+  const cmdsEligibles = state.commandes.filter(c => {
+    if (state.factures.some(f => f.commandeId === c.id)) return false;
+    const hasBoissons = (c.items || []).some(i => i.categorie === 'Boissons');
+    const hasPlats    = (c.items || []).some(i => i.categorie !== 'Boissons');
+    const kitchenOk   = !hasPlats || ['prete', 'servie'].includes(c.statut);
+    const barOk       = !hasBoissons || c.boissonsStatut === 'prete';
+    return kitchenOk && barOk;
+  });
   const sel = document.getElementById('new-facture-commande');
   sel.innerHTML = '<option value="">Sélectionner une commande…</option>' +
     cmdsEligibles.map(c => `<option value="${c.id}">${c.numero} – ${fmt(c.total)} FCFA${c.tableNumero ? ' – ' + c.tableNumero : ''}</option>`).join('');
@@ -798,23 +761,17 @@ async function saveNewFacture() {
   }
 }
 
-window.openPayFacture = (id, reste, type = 'plat') => {
+window.openPayFacture = (id, reste) => {
   document.getElementById('pay-facture-id').value   = id;
-  document.getElementById('pay-facture-type').value = type;
-  const label = type === 'bar' ? 'Bon bar' : 'Facture';
-  document.getElementById('pay-facture-info').textContent = `${label} – Reste à payer : ${reste} FCFA`;
+  document.getElementById('pay-facture-info').textContent = `Facture – Reste à payer : ${reste} FCFA`;
   openModal('pay-facture');
 };
 
 async function confirmPayFacture() {
   const id   = document.getElementById('pay-facture-id').value;
-  const type = document.getElementById('pay-facture-type').value;
   const mode = document.getElementById('pay-facture-mode').value;
-  const endpoint = type === 'bar'
-    ? `/api/factures/bar/${id}/pay`
-    : `/api/factures/${id}/pay`;
   showLoader();
-  const res = await api(endpoint, {
+  const res = await api(`/api/factures/${id}/pay`, {
     method: 'PUT',
     body: JSON.stringify({ modePaiement: mode }),
   });
@@ -836,7 +793,13 @@ window.aperçuFacture = async (id) => {
     f = res;
   }
 
-  const items = (f.items || []).map(i => `
+  const logoUrl = window.location.origin + '/logo-cookafrica.png';
+
+  // Grouper les articles par catégorie pour un affichage clair
+  const platsItems    = (f.items || []).filter(i => i.categorie !== 'Boissons');
+  const boissonsItems = (f.items || []).filter(i => i.categorie === 'Boissons');
+
+  const renderRows = items => items.map(i => `
     <tr>
       <td>${i.nom}</td>
       <td style="text-align:center">${i.quantite}</td>
@@ -844,33 +807,54 @@ window.aperçuFacture = async (id) => {
       <td style="text-align:right"><strong>${fmt(i.sousTotal)}</strong></td>
     </tr>`).join('');
 
+  const sectionBoissons = boissonsItems.length > 0 ? `
+    <tr style="background:#eff6ff">
+      <td colspan="4" style="font-weight:700;font-size:.8rem;color:#1565C0;padding:6px 8px">
+        <i class="fas fa-wine-glass-alt"></i> Boissons
+      </td>
+    </tr>
+    ${renderRows(boissonsItems)}` : '';
+
+  const sectionPlats = platsItems.length > 0 ? `
+    <tr style="background:#fdf4f0">
+      <td colspan="4" style="font-weight:700;font-size:.8rem;color:var(--primary);padding:6px 8px">
+        <i class="fas fa-utensils"></i> Plats
+      </td>
+    </tr>
+    ${renderRows(platsItems)}` : '';
+
+  const validateurs = [];
+  if (f.validatedByCuisinier) validateurs.push(`<span><i class="fas fa-fire" style="color:var(--primary)"></i> Cuisine : <strong>${f.validatedByCuisinier}</strong></span>`);
+  if (f.validatedByBarman)    validateurs.push(`<span><i class="fas fa-wine-glass-alt" style="color:#1565C0"></i> Bar : <strong>${f.validatedByBarman}</strong></span>`);
+
   document.getElementById('facture-print-area').innerHTML = `
     <div class="facture-print">
       <div class="facture-print-header">
-        <h2><i class="fas fa-utensils"></i> COOK AFRICA</h2>
-        <p>Restaurant – Gestion Interne</p>
-        <p style="margin-top:6px;font-size:.9rem"><strong>FACTURE N° ${f.numero}</strong></p>
+        <img src="${logoUrl}" alt="Cook Africa" style="height:72px;margin-bottom:6px;display:block;margin-left:auto;margin-right:auto"
+             onerror="this.style.display='none'">
+        <p style="margin-top:4px;font-size:.9rem"><strong>FACTURE N° ${f.numero}</strong></p>
         <p style="font-size:.78rem;color:var(--gray)">Date : ${fmtDateOnly(f.date)}</p>
         ${f.tableNumero ? `<p style="font-size:.78rem"><strong>Table :</strong> ${f.tableNumero}</p>` : ''}
         ${f.commandeNumero ? `<p style="font-size:.78rem;color:var(--gray)">Commande : ${f.commandeNumero}</p>` : ''}
       </div>
       <table class="facture-items">
         <thead><tr><th>Article</th><th>Qté</th><th>Prix unit.</th><th>Sous-total</th></tr></thead>
-        <tbody>${items}</tbody>
+        <tbody>${sectionPlats}${sectionBoissons}</tbody>
       </table>
       <table class="facture-totaux">
-        <tr><td>Sous-total</td><td>${fmt(f.sousTotal)} FCFA</td></tr>
-        <tr><td>TVA (18%)</td><td>${fmt(f.tva)} FCFA</td></tr>
         <tr class="facture-total-final">
           <td><strong>TOTAL</strong></td>
           <td><strong>${fmt(f.total)} FCFA</strong></td>
         </tr>
-        ${f.reste > 0 ? `<tr><td style="color:var(--danger)"><strong>RESTE À PAYER</strong></td><td style="color:var(--danger)"><strong>${fmt(f.reste)} FCFA</strong></td></tr>` : `<tr><td style="color:var(--success)"><strong>PAYÉE</strong></td><td style="color:var(--success)"><strong>✓</strong></td></tr>`}
+        ${f.reste > 0
+          ? `<tr><td style="color:var(--danger)"><strong>RESTE À PAYER</strong></td><td style="color:var(--danger)"><strong>${fmt(f.reste)} FCFA</strong></td></tr>`
+          : `<tr><td style="color:var(--success)"><strong>PAYÉE ✓</strong></td><td></td></tr>`}
       </table>
-      <div style="margin-top:16px;padding-top:12px;border-top:2px dashed var(--border);text-align:center;font-size:.8rem;color:var(--gray)">
-        <p>Mode de paiement : <strong>${f.modePaiement}</strong></p>
-        <p style="margin-top:6px">Merci de votre visite !</p>
-        <p style="font-size:.7rem;margin-top:4px">Cook Africa – Bonne dégustation</p>
+      <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border);font-size:.78rem;color:var(--gray)">
+        ${validateurs.length ? `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:6px">${validateurs.join('')}</div>` : ''}
+        <p>Mode de paiement : <strong>${f.modePaiement || '—'}</strong></p>
+        <p style="margin-top:6px;text-align:center">Merci de votre visite !</p>
+        <p style="font-size:.7rem;text-align:center;margin-top:4px">Cook Africa – Le restaurant qui rassemble</p>
       </div>
     </div>`;
 
@@ -879,18 +863,21 @@ window.aperçuFacture = async (id) => {
 
 function printFacture() {
   const content = document.getElementById('facture-print-area').innerHTML;
+  const logoUrl = window.location.origin + '/logo-cookafrica.png';
   const w = window.open('', '_blank');
   w.document.write(`<!DOCTYPE html><html><head><title>Facture Cook Africa</title>
     <style>
       body { font-family: Arial, sans-serif; max-width: 480px; margin: 20px auto; font-size: 13px; }
-      h2 { color: #8B1A1A; } p { margin: 3px 0; }
+      p { margin: 3px 0; }
       .facture-print-header { text-align: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px dashed #ccc; }
       .facture-items { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
       .facture-items th { background: #8B1A1A; color: white; padding: 6px; text-align: left; }
       .facture-items td { padding: 6px; border-bottom: 1px solid #eee; }
-      .facture-totaux { margin-left: auto; width: 200px; }
+      .facture-totaux { margin-left: auto; width: 220px; }
       .facture-totaux td { padding: 4px; }
       .facture-totaux td:last-child { text-align: right; font-weight: bold; }
+      .facture-total-final td { font-size: 1.05rem; border-top: 2px solid #333; padding-top: 6px; }
+      @media print { button { display: none; } }
     </style>
   </head><body>${content}</body></html>`);
   w.document.close();
@@ -964,29 +951,13 @@ async function loadBarman() {
     bilanSection.style.display = 'block';
     bilanCount.textContent = `${done.length}`;
     bilanGrid.innerHTML = done.map(c => {
-      const f = barFactures[c.id];
       const boissonsItems = (c.items || []).filter(i => i.categorie === 'Boissons');
+      const total = boissonsItems.reduce((s, i) => s + i.sousTotal, 0);
       const items = boissonsItems.map(i => `
         <div class="commande-item" style="font-size:.8rem">
           <span><span class="commande-item-qty">${i.quantite}</span> ${i.nom}</span>
           <span style="color:var(--gray)">${fmt(i.sousTotal)} FCFA</span>
         </div>`).join('');
-      const factureInfo = f
-        ? `<div style="margin-top:10px;padding:8px;background:#eff6ff;border-radius:6px;border:1px solid #bfdbfe">
-             <div style="font-size:.78rem;color:var(--gray);margin-bottom:4px">
-               <i class="fas fa-receipt"></i> <strong>${f.numero}</strong>
-             </div>
-             <div style="display:flex;justify-content:space-between;font-size:.82rem">
-               <span>HT ${fmt(f.sousTotal)} · TVA ${fmt(f.tva)}</span>
-               <strong style="color:#1565C0">${fmt(f.total)} FCFA</strong>
-             </div>
-           </div>`
-        : '';
-      const printBtn = f
-        ? `<button class="btn btn-secondary btn-sm" onclick="aperçuFactureBar('${c.id}')">
-             <i class="fas fa-print"></i> Imprimer
-           </button>`
-        : '';
       return `
       <div class="commande-card prete bar-card" style="opacity:.85;border-left:4px solid #1565C0">
         <div class="commande-card-header">
@@ -1001,8 +972,7 @@ async function loadBarman() {
         </div>
         <div class="commande-items">${items}</div>
         ${c.note ? `<div class="commande-note"><i class="fas fa-sticky-note"></i> ${c.note}</div>` : ''}
-        ${factureInfo}
-        ${printBtn ? `<div class="commande-actions" style="margin-top:8px">${printBtn}</div>` : ''}
+        <div class="commande-total">${fmt(total)} FCFA</div>
       </div>`;
     }).join('');
   }
@@ -1036,10 +1006,10 @@ async function loadBarmanStock() {
 window.barmanPret = async (id) => {
   const res = await api(`/api/commandes/${id}/bar-pret`, { method: 'PUT', body: '{}' });
   if (res?.boissonsStatut === 'prete') {
-    toast('Boissons prêtes – Bon bar généré !', 'success');
-    if (res.factureBar) {
-      state.barFactures[id] = res.factureBar;
-    }
+    const msg = res.factureUnifiee
+      ? `Boissons prêtes – Facture ${res.factureUnifiee.numero} générée !`
+      : 'Boissons prêtes – en attente de la cuisine.';
+    toast(msg, 'success');
     loadBarman();
   } else {
     toast(res?.error || 'Erreur', 'error');

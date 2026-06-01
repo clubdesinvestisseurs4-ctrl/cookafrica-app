@@ -5,8 +5,6 @@ const { pushNotification } = require('../utils/notifications');
 
 const router = express.Router();
 
-const TVA_RATE = 0.18;
-
 async function getNextNumeroFacture() {
   const snap = await db.collection('factures').orderBy('createdAt', 'desc').limit(1).get();
   if (snap.empty) return 'FACT-0001';
@@ -32,21 +30,6 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/factures/bar — lister les bons bar
-router.get('/bar', authenticateToken, async (req, res) => {
-  try {
-    const { debut, fin, statut } = req.query;
-    const snap = await db.collection('factures_bar').orderBy('createdAt', 'desc').limit(300).get();
-    let factures = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    if (debut)  factures = factures.filter(f => f.date >= debut);
-    if (fin)    factures = factures.filter(f => f.date <= fin);
-    if (statut) factures = factures.filter(f => f.statut === statut);
-    res.json(factures);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // GET /api/factures/:id
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
@@ -58,7 +41,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// POST /api/factures — générer une facture depuis une commande
+// POST /api/factures — générer manuellement une facture unifiée depuis une commande
 router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), async (req, res) => {
   try {
     const { commandeId, modePaiement } = req.body;
@@ -69,20 +52,25 @@ router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), 
 
     const commande = cmdDoc.data();
 
-    // Vérifier qu'une facture n'existe pas déjà pour cette commande
+    // Vérifier qu'une facture n'existe pas déjà
     const existing = await db.collection('factures').where('commandeId', '==', commandeId).limit(1).get();
     if (!existing.empty) return res.status(409).json({ error: 'Une facture existe déjà pour cette commande' });
 
-    // Ne facturer que les plats (pas les boissons — gérées par le bon bar)
-    const platsItems = (commande.items || []).filter(i => i.categorie !== 'Boissons');
-    if (platsItems.length === 0) {
-      return res.status(400).json({ error: 'Cette commande ne contient que des boissons, utilisez le bon bar' });
+    // Vérifier que toutes les parties sont prêtes
+    const hasBoissons = (commande.items || []).some(i => i.categorie === 'Boissons');
+    const hasPlats    = (commande.items || []).some(i => i.categorie !== 'Boissons');
+
+    if (hasPlats && !['prete', 'servie'].includes(commande.statut)) {
+      return res.status(400).json({ error: 'Les plats ne sont pas encore prêts (la cuisine n\'a pas validé)' });
+    }
+    if (hasBoissons && commande.boissonsStatut !== 'prete') {
+      return res.status(400).json({ error: 'Les boissons ne sont pas encore prêtes (le barman n\'a pas validé)' });
     }
 
-    const sousTotal = platsItems.reduce((sum, i) => sum + i.sousTotal, 0);
-    const tva = Math.round(sousTotal * TVA_RATE);
-    const total = sousTotal + tva;
+    const allItems = commande.items || [];
+    if (allItems.length === 0) return res.status(400).json({ error: 'La commande est vide' });
 
+    const total = allItems.reduce((sum, i) => sum + i.sousTotal, 0);
     const numero = await getNextNumeroFacture();
     const now = new Date();
 
@@ -90,15 +78,15 @@ router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), 
       numero,
       commandeId,
       commandeNumero: commande.numero,
-      items: platsItems,
+      items: allItems,
       tableNumero: commande.tableNumero || '',
       note: commande.note || '',
-      sousTotal,
-      tva,
       total,
       reste: total,
       modePaiement: modePaiement || 'especes',
       statut: 'partielle',
+      validatedByCuisinier: commande.validatedByCuisinier || '',
+      validatedByBarman: commande.validatedByBarman || '',
       date: now.toISOString().split('T')[0],
       createdBy: req.user.username,
       createdAt: now.toISOString(),
@@ -106,18 +94,10 @@ router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), 
 
     const ref = await db.collection('factures').add(data);
 
-    // Marquer la commande comme servie si pas encore fait
-    if (!['servie', 'annulee'].includes(commande.statut)) {
-      await db.collection('commandes').doc(commandeId).update({
-        statut: 'servie',
-        updatedAt: now.toISOString(),
-      });
-    }
-
     pushNotification({
       type: 'success', icon: 'receipt',
       titre: `Facture ${numero} générée`,
-      message: `${commande.numero} – Total: ${total.toLocaleString('fr-FR')} FCFA – ${data.statut}`,
+      message: `${commande.numero} – Total: ${total.toLocaleString('fr-FR')} FCFA`,
       createdBy: req.user.username,
     });
 
@@ -127,27 +107,27 @@ router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), 
   }
 });
 
-// PUT /api/factures/bar/:id/pay — payer un bon bar + déduire boissons du stock
-router.put('/bar/:id/pay', authenticateToken, requireRole('directeur', 'receptionniste'), async (req, res) => {
+// PUT /api/factures/:id/pay — enregistrer le paiement de la facture unifiée
+router.put('/:id/pay', authenticateToken, requireRole('directeur', 'receptionniste'), async (req, res) => {
   try {
     const { modePaiement } = req.body;
-    const docRef = db.collection('factures_bar').doc(req.params.id);
+    const docRef = db.collection('factures').doc(req.params.id);
     const doc = await docRef.get();
-    if (!doc.exists) return res.status(404).json({ error: 'Bon bar introuvable' });
+    if (!doc.exists) return res.status(404).json({ error: 'Facture introuvable' });
 
     const facture = doc.data();
-    if (facture.statut === 'payee') return res.status(400).json({ error: 'Déjà payé' });
+    if (facture.statut === 'payee') return res.status(400).json({ error: 'Facture déjà payée' });
 
     const now = new Date();
     const update = {
       statut: 'payee',
       reste: 0,
-      modePaiement: modePaiement || facture.modePaiement || 'especes',
+      modePaiement: modePaiement || facture.modePaiement,
       updatedAt: now.toISOString(),
     };
     await docRef.update(update);
 
-    // Déduire les boissons du stock journalier
+    // Déduire tous les articles (plats + boissons) du stock journalier
     const factureDate = facture.date || now.toISOString().split('T')[0];
     for (const item of (facture.items || [])) {
       if (!item.menuItemId) continue;
@@ -165,84 +145,14 @@ router.put('/bar/:id/pay', authenticateToken, requireRole('directeur', 'receptio
       }
     }
 
-    // Marquer la commande "servie" si la partie plats est aussi payée (ou absente)
+    // Marquer la commande comme servie
     if (facture.commandeId) {
       const cmdDoc = await db.collection('commandes').doc(facture.commandeId).get();
       if (cmdDoc.exists && !['servie', 'annulee'].includes(cmdDoc.data().statut)) {
-        const platsSnap = await db.collection('factures')
-          .where('commandeId', '==', facture.commandeId).limit(1).get();
-        const platsPaid = platsSnap.empty || platsSnap.docs[0].data().statut === 'payee';
-        if (platsPaid) {
-          await db.collection('commandes').doc(facture.commandeId).update({
-            statut: 'servie',
-            updatedAt: now.toISOString(),
-          });
-        }
-      }
-    }
-
-    pushNotification({
-      type: 'success', icon: 'money-bill-wave',
-      titre: 'Paiement bar enregistré',
-      message: `${facture.numero} – ${(facture.total || 0).toLocaleString('fr-FR')} FCFA encaissés`,
-      createdBy: req.user.username,
-    });
-
-    res.json({ id: req.params.id, ...facture, ...update });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// PUT /api/factures/:id/pay — enregistrer paiement complet (plats)
-router.put('/:id/pay', authenticateToken, requireRole('directeur', 'receptionniste'), async (req, res) => {
-  try {
-    const { modePaiement } = req.body;
-    const docRef = db.collection('factures').doc(req.params.id);
-    const doc = await docRef.get();
-    if (!doc.exists) return res.status(404).json({ error: 'Facture introuvable' });
-
-    const facture = doc.data();
-    const now = new Date();
-    const update = {
-      statut: 'payee',
-      reste: 0,
-      modePaiement: modePaiement || facture.modePaiement,
-      updatedAt: now.toISOString(),
-    };
-    await docRef.update(update);
-
-    // Déduire les plats du stock journalier (uniquement les non-Boissons)
-    const factureDate = facture.date || now.toISOString().split('T')[0];
-    for (const item of (facture.items || [])) {
-      if (!item.menuItemId || item.categorie === 'Boissons') continue;
-      const snapPlat = await db.collection('stocks_plats')
-        .where('menuItemId', '==', item.menuItemId)
-        .where('date', '==', factureDate)
-        .limit(1).get();
-      if (!snapPlat.empty) {
-        const platDoc = snapPlat.docs[0];
-        const restante = platDoc.data().quantiteRestante || 0;
-        await platDoc.ref.update({
-          quantiteRestante: Math.max(0, restante - (item.quantite || 1)),
+        await db.collection('commandes').doc(facture.commandeId).update({
+          statut: 'servie',
           updatedAt: now.toISOString(),
         });
-      }
-    }
-
-    // Marquer la commande "servie" si la partie bar est aussi payée (ou absente)
-    if (facture.commandeId) {
-      const cmdDoc = await db.collection('commandes').doc(facture.commandeId).get();
-      if (cmdDoc.exists && !['servie', 'annulee'].includes(cmdDoc.data().statut)) {
-        const barSnap = await db.collection('factures_bar')
-          .where('commandeId', '==', facture.commandeId).limit(1).get();
-        const barPaid = barSnap.empty || barSnap.docs[0].data().statut === 'payee';
-        if (barPaid) {
-          await db.collection('commandes').doc(facture.commandeId).update({
-            statut: 'servie',
-            updatedAt: now.toISOString(),
-          });
-        }
       }
     }
 
