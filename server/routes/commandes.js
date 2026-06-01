@@ -31,14 +31,26 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/commandes/cuisine — commandes actives pour l'écran cuisine
+// GET /api/commandes/cuisine — commandes actives + terminées du jour
 router.get('/cuisine', authenticateToken, async (req, res) => {
   try {
-    const snap = await db.collection('commandes')
-      .where('statut', 'in', ['en-attente', 'en-preparation'])
-      .orderBy('createdAt', 'asc')
-      .get();
-    res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    const today = new Date().toISOString().split('T')[0];
+
+    const [activeSnap, todaySnap] = await Promise.all([
+      db.collection('commandes')
+        .where('statut', 'in', ['en-attente', 'en-preparation'])
+        .orderBy('createdAt', 'asc').get(),
+      db.collection('commandes')
+        .where('date', '==', today)
+        .orderBy('createdAt', 'desc').get(),
+    ]);
+
+    const active = activeSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const terminee = todaySnap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(c => ['prete', 'servie'].includes(c.statut));
+
+    res.json({ active, terminee });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -99,7 +111,8 @@ router.put('/:id', authenticateToken, async (req, res) => {
     if (!doc.exists) return res.status(404).json({ error: 'Commande introuvable' });
 
     const existing = doc.data();
-    const update = { ...req.body, updatedAt: new Date().toISOString() };
+    const now = new Date();
+    const update = { ...req.body, updatedAt: now.toISOString() };
     delete update.id;
 
     await docRef.update(update);
@@ -107,13 +120,57 @@ router.put('/:id', authenticateToken, async (req, res) => {
     // Notifications selon changement de statut
     if (update.statut && update.statut !== existing.statut) {
       const messages = {
-        'en-preparation': { type: 'info',    icon: 'fire',      titre: 'En préparation', msg: `${existing.numero} – démarré en cuisine` },
-        'prete':          { type: 'success', icon: 'check-circle', titre: 'Commande prête', msg: `${existing.numero} – prête à servir !` },
+        'en-preparation': { type: 'info',    icon: 'fire',           titre: 'En préparation', msg: `${existing.numero} – démarré en cuisine` },
+        'prete':          { type: 'success', icon: 'check-circle',   titre: 'Commande prête', msg: `${existing.numero} – prête à servir !` },
         'servie':         { type: 'success', icon: 'concierge-bell', titre: 'Commande servie', msg: `${existing.numero} – servie au client` },
-        'annulee':        { type: 'danger',  icon: 'times-circle', titre: 'Commande annulée', msg: `${existing.numero} – annulée` },
+        'annulee':        { type: 'danger',  icon: 'times-circle',   titre: 'Commande annulée', msg: `${existing.numero} – annulée` },
       };
       const notif = messages[update.statut];
       if (notif) pushNotification({ type: notif.type, icon: notif.icon, titre: notif.titre, message: notif.msg, createdBy: req.user.username });
+
+      // Auto-générer la facture dès que la commande est prête
+      if (update.statut === 'prete') {
+        const alreadyExists = await db.collection('factures')
+          .where('commandeId', '==', req.params.id).limit(1).get();
+
+        if (alreadyExists.empty) {
+          const lastSnap = await db.collection('factures').orderBy('createdAt', 'desc').limit(1).get();
+          const lastNum = lastSnap.empty
+            ? 0
+            : parseInt((lastSnap.docs[0].data().numero || 'FACT-0000').split('-')[1] || '0', 10);
+          const factureNumero = `FACT-${String(lastNum + 1).padStart(4, '0')}`;
+
+          const TVA = 0.18;
+          const sousTotal = existing.total || 0;
+          const tva       = Math.round(sousTotal * TVA);
+          const total     = sousTotal + tva;
+
+          await db.collection('factures').add({
+            numero:          factureNumero,
+            commandeId:      req.params.id,
+            commandeNumero:  existing.numero,
+            items:           existing.items,
+            tableNumero:     existing.tableNumero || '',
+            note:            existing.note || '',
+            sousTotal,
+            tva,
+            total,
+            reste:           total,
+            modePaiement:    'especes',
+            statut:          'partielle',
+            date:            now.toISOString().split('T')[0],
+            createdBy:       req.user.username,
+            createdAt:       now.toISOString(),
+          });
+
+          pushNotification({
+            type: 'success', icon: 'receipt',
+            titre: `Facture ${factureNumero} générée`,
+            message: `${existing.numero} – Total TTC : ${total.toLocaleString('fr-FR')} FCFA`,
+            createdBy: req.user.username,
+          });
+        }
+      }
     }
 
     res.json({ id: req.params.id, ...existing, ...update });

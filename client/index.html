@@ -234,6 +234,22 @@
             <p>Aucune commande en attente</p>
           </div>
         </div>
+
+        <!-- ── Bilan du Jour ── -->
+        <div id="cuisine-bilan-section" style="display:none;margin-top:28px">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-top:16px;border-top:2px solid var(--border)">
+            <h3 style="font-size:.95rem;font-weight:800;color:var(--dark);margin:0">
+              <i class="fas fa-receipt" style="color:var(--success)"></i> Factures du Jour
+            </h3>
+            <span id="cuisine-bilan-count"
+              style="background:var(--success);color:#fff;padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700">
+            </span>
+            <button class="btn btn-secondary btn-sm" onclick="printBilanJour()" style="margin-left:auto">
+              <i class="fas fa-print"></i> Imprimer le bilan
+            </button>
+          </div>
+          <div class="cuisine-grid" id="cuisine-bilan-grid"></div>
+        </div>
       </section>
 
       <!-- ── FACTURATION ───────────────────────── -->

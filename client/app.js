@@ -483,52 +483,118 @@ async function saveCommande() {
 // ─── CUISINE ───────────────────────────────────────────
 
 async function loadCuisine() {
-  const commandes = await api('/api/commandes/cuisine');
-  const grid = document.getElementById('cuisine-grid');
+  const today = new Date().toISOString().split('T')[0];
+  const [data, factures] = await Promise.all([
+    api('/api/commandes/cuisine'),
+    api(`/api/factures?debut=${today}&fin=${today}`),
+  ]);
+
+  const active   = data?.active   || [];
+  const terminee = data?.terminee || [];
+  const factureMap = {};
+  (factures || []).forEach(f => { factureMap[f.commandeId] = f; });
+
+  // ── Section commandes actives ──
+  const grid  = document.getElementById('cuisine-grid');
   const count = document.getElementById('cuisine-count');
 
-  if (!commandes || commandes.length === 0) {
+  if (active.length === 0) {
     grid.innerHTML = '<div class="empty-state"><i class="fas fa-check-circle" style="color:var(--success)"></i><p>Aucune commande en cours – tout est calme !</p></div>';
     if (count) count.textContent = '0 commande';
-    return;
+  } else {
+    if (count) count.textContent = `${active.length} commande(s) en cours`;
+    grid.innerHTML = active.map(c => {
+      const minutesAgo = Math.floor((Date.now() - new Date(c.createdAt).getTime()) / 60000);
+      const items = (c.items || []).map(i => `
+        <div class="commande-item">
+          <span><span class="commande-item-qty">${i.quantite}</span> ${i.nom}</span>
+          <span style="color:var(--gray);font-size:.78rem">${fmt(i.prix)} FCFA</span>
+        </div>`).join('');
+      const actionBtn = c.statut === 'en-attente'
+        ? `<button class="btn btn-warning btn-sm" onclick="updateStatutCommande('${c.id}','en-preparation')">
+             <i class="fas fa-fire"></i> Démarrer
+           </button>`
+        : `<button class="btn btn-success btn-sm" onclick="updateStatutCommande('${c.id}','prete')">
+             <i class="fas fa-check"></i> Prête !
+           </button>`;
+      return `
+      <div class="commande-card ${c.statut}" id="card-${c.id}">
+        <div class="commande-card-header">
+          <div>
+            <div class="commande-numero">${c.numero}</div>
+            ${c.tableNumero ? `<div class="commande-table"><i class="fas fa-chair"></i> ${c.tableNumero}</div>` : ''}
+          </div>
+          <div style="text-align:right">
+            ${badgeStatus(c.statut)}
+            <div class="commande-time">${minutesAgo < 1 ? 'À l\'instant' : `il y a ${minutesAgo} min`}</div>
+          </div>
+        </div>
+        <div class="commande-items">${items}</div>
+        ${c.note ? `<div class="commande-note"><i class="fas fa-sticky-note"></i> ${c.note}</div>` : ''}
+        <div class="commande-total">${fmt(c.total)} FCFA</div>
+        <div class="commande-actions">${actionBtn}</div>
+      </div>`;
+    }).join('');
   }
 
-  if (count) count.textContent = `${commandes.length} commande(s) en cours`;
+  // ── Section factures du jour ──
+  const bilanSection = document.getElementById('cuisine-bilan-section');
+  const bilanGrid    = document.getElementById('cuisine-bilan-grid');
+  const bilanCount   = document.getElementById('cuisine-bilan-count');
 
-  grid.innerHTML = commandes.map(c => {
-    const minutesAgo = Math.floor((Date.now() - new Date(c.createdAt).getTime()) / 60000);
-    const items = (c.items || []).map(i => `
-      <div class="commande-item">
-        <span><span class="commande-item-qty">${i.quantite}</span> ${i.nom}</span>
-        <span style="color:var(--gray);font-size:.78rem">${fmt(i.prix)} FCFA</span>
-      </div>`).join('');
+  if (terminee.length === 0) {
+    bilanSection.style.display = 'none';
+  } else {
+    bilanSection.style.display = 'block';
+    bilanCount.textContent = `${terminee.length} facture(s)`;
 
-    const actionBtn = c.statut === 'en-attente'
-      ? `<button class="btn btn-warning btn-sm" onclick="updateStatutCommande('${c.id}','en-preparation')">
-           <i class="fas fa-fire"></i> Démarrer
-         </button>`
-      : `<button class="btn btn-success btn-sm" onclick="updateStatutCommande('${c.id}','prete')">
-           <i class="fas fa-check"></i> Prête !
-         </button>`;
-
-    return `
-    <div class="commande-card ${c.statut}" id="card-${c.id}">
-      <div class="commande-card-header">
-        <div>
-          <div class="commande-numero">${c.numero}</div>
-          ${c.tableNumero ? `<div class="commande-table"><i class="fas fa-chair"></i> ${c.tableNumero}</div>` : ''}
+    bilanGrid.innerHTML = terminee.map(c => {
+      const f = factureMap[c.id];
+      const items = (c.items || []).map(i => `
+        <div class="commande-item" style="font-size:.8rem">
+          <span><span class="commande-item-qty">${i.quantite}</span> ${i.nom}</span>
+          <span style="color:var(--gray)">${fmt(i.sousTotal)} FCFA</span>
+        </div>`).join('');
+      const factureInfo = f
+        ? `<div style="margin-top:10px;padding:8px;background:#f0fdf4;border-radius:6px;border:1px solid #bbf7d0">
+             <div style="font-size:.78rem;color:var(--gray);margin-bottom:4px">
+               <i class="fas fa-receipt"></i> <strong>${f.numero}</strong>
+             </div>
+             <div style="display:flex;justify-content:space-between;font-size:.82rem">
+               <span>HT ${fmt(f.sousTotal)} · TVA ${fmt(f.tva)}</span>
+               <strong style="color:var(--success)">${fmt(f.total)} FCFA</strong>
+             </div>
+             <div style="font-size:.75rem;color:var(--gray);margin-top:2px">
+               ${f.statut === 'payee' ? '<span style="color:var(--success)">✓ Payée</span>' : '<span style="color:var(--warning)">⏳ En attente paiement</span>'}
+             </div>
+           </div>`
+        : `<div style="margin-top:10px;padding:8px;background:#fef9c3;border-radius:6px;font-size:.78rem;color:var(--gray)">
+             <i class="fas fa-spinner fa-spin"></i> Facture en cours de génération…
+           </div>`;
+      const printBtn = f
+        ? `<button class="btn btn-secondary btn-sm" onclick="aperçuFacture('${f.id}')">
+             <i class="fas fa-print"></i> Imprimer
+           </button>`
+        : '';
+      return `
+      <div class="commande-card prete" style="opacity:.85;border-left:4px solid var(--success)">
+        <div class="commande-card-header">
+          <div>
+            <div class="commande-numero">${c.numero}</div>
+            ${c.tableNumero ? `<div class="commande-table"><i class="fas fa-chair"></i> ${c.tableNumero}</div>` : ''}
+          </div>
+          <div style="text-align:right">
+            ${badgeStatus(c.statut)}
+            <div class="commande-time" style="font-size:.7rem">${fmtDate(c.updatedAt)}</div>
+          </div>
         </div>
-        <div style="text-align:right">
-          ${badgeStatus(c.statut)}
-          <div class="commande-time">${minutesAgo < 1 ? 'À l\'instant' : `il y a ${minutesAgo} min`}</div>
-        </div>
-      </div>
-      <div class="commande-items">${items}</div>
-      ${c.note ? `<div class="commande-note"><i class="fas fa-sticky-note"></i> ${c.note}</div>` : ''}
-      <div class="commande-total">${fmt(c.total)} FCFA</div>
-      <div class="commande-actions">${actionBtn}</div>
-    </div>`;
-  }).join('');
+        <div class="commande-items">${items}</div>
+        ${c.note ? `<div class="commande-note"><i class="fas fa-sticky-note"></i> ${c.note}</div>` : ''}
+        ${factureInfo}
+        ${printBtn ? `<div class="commande-actions" style="margin-top:8px">${printBtn}</div>` : ''}
+      </div>`;
+    }).join('');
+  }
 }
 
 window.updateStatutCommande = async (id, statut) => {
@@ -537,11 +603,39 @@ window.updateStatutCommande = async (id, statut) => {
     body: JSON.stringify({ statut }),
   });
   if (res?.id) {
-    const msgs = { 'en-preparation': 'Préparation démarrée !', 'prete': 'Commande marquée comme prête !' };
+    const msgs = {
+      'en-preparation': 'Préparation démarrée !',
+      'prete': 'Commande prête – facture générée automatiquement !',
+    };
     toast(msgs[statut] || 'Statut mis à jour', 'success');
     loadCuisine();
   }
 };
+
+// Impression du bilan complet du jour depuis la cuisine
+function printBilanJour() {
+  const today = new Date().toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+  const cards = document.getElementById('cuisine-bilan-grid').innerHTML;
+  const w = window.open('', '_blank');
+  w.document.write(`<!DOCTYPE html><html><head><title>Bilan du Jour – Cook Africa</title>
+    <style>
+      body { font-family: Arial, sans-serif; max-width: 860px; margin: 20px auto; font-size: 13px; }
+      h1  { color: #8B1A1A; font-size: 1.1rem; border-bottom: 2px solid #8B1A1A; padding-bottom: 8px; }
+      .cuisine-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px,1fr)); gap: 14px; }
+      .commande-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; page-break-inside: avoid; }
+      .commande-numero { font-weight: 800; font-size: .95rem; }
+      .commande-item  { display: flex; justify-content: space-between; padding: 3px 0; font-size: .8rem; }
+      .commande-item-qty { background: #8B1A1A; color: white; border-radius: 4px; padding: 1px 6px; font-size: .75rem; }
+      .badge-status   { padding: 2px 8px; border-radius: 12px; font-size: .72rem; }
+      @media print { button { display: none; } }
+    </style>
+  </head><body>
+    <h1><i>COOK AFRICA</i> – Bilan du ${today}</h1>
+    <div class="cuisine-grid">${cards}</div>
+  </body></html>`);
+  w.document.close();
+  w.print();
+}
 
 // ─── FACTURATION ───────────────────────────────────────
 
