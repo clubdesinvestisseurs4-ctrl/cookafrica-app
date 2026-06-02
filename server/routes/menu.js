@@ -15,7 +15,7 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // POST /api/menu
-router.post('/', authenticateToken, requireRole('directeur'), async (req, res) => {
+router.post('/', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const { nom, categorie, prix, description, disponible } = req.body;
     if (!nom || prix === undefined) {
@@ -38,7 +38,7 @@ router.post('/', authenticateToken, requireRole('directeur'), async (req, res) =
 });
 
 // PUT /api/menu/:id
-router.put('/:id', authenticateToken, requireRole('directeur'), async (req, res) => {
+router.put('/:id', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const update = { ...req.body, updatedAt: new Date().toISOString() };
     delete update.id;
@@ -51,7 +51,7 @@ router.put('/:id', authenticateToken, requireRole('directeur'), async (req, res)
 });
 
 // DELETE /api/menu/:id
-router.delete('/:id', authenticateToken, requireRole('directeur'), async (req, res) => {
+router.delete('/:id', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     await db.collection('menu').doc(req.params.id).delete();
     res.json({ message: 'Plat supprimé' });
@@ -61,7 +61,7 @@ router.delete('/:id', authenticateToken, requireRole('directeur'), async (req, r
 });
 
 // POST /api/menu/seed — plats par défaut
-router.post('/seed', authenticateToken, requireRole('directeur'), async (req, res) => {
+router.post('/seed', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const snap = await db.collection('menu').limit(1).get();
     if (!snap.empty) return res.status(409).json({ error: 'Menu déjà initialisé' });

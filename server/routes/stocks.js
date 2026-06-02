@@ -20,7 +20,7 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // POST /api/stocks
-router.post('/', authenticateToken, requireRole('directeur', 'cuisinier'), async (req, res) => {
+router.post('/', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const { nom, categorie, quantite, minimum, unite } = req.body;
     if (!nom || quantite === undefined || !minimum) {
@@ -51,7 +51,7 @@ router.post('/', authenticateToken, requireRole('directeur', 'cuisinier'), async
 });
 
 // PUT /api/stocks/:id
-router.put('/:id', authenticateToken, requireRole('directeur', 'cuisinier'), async (req, res) => {
+router.put('/:id', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const docRef = db.collection('stocks').doc(req.params.id);
     const doc = await docRef.get();
@@ -93,7 +93,7 @@ router.get('/plats', authenticateToken, async (req, res) => {
 });
 
 // POST /api/stocks/plats — sauvegarder les quantités de plats préparés du jour
-router.post('/plats', authenticateToken, requireRole('directeur', 'cuisinier'), async (req, res) => {
+router.post('/plats', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const { plats, date } = req.body;
     if (!Array.isArray(plats) || plats.length === 0) {
@@ -162,7 +162,7 @@ router.get('/alerts', authenticateToken, async (req, res) => {
 });
 
 // POST /api/stocks/seed
-router.post('/seed', authenticateToken, requireRole('directeur'), async (req, res) => {
+router.post('/seed', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const snap = await db.collection('stocks').limit(1).get();
     if (!snap.empty) return res.status(409).json({ error: 'Stocks déjà initialisés' });

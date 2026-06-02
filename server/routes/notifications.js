@@ -9,7 +9,7 @@ let _notifCacheTs = 0;
 const NOTIF_TTL = 60_000;
 
 // GET /api/notifications — 60 dernières (directeur uniquement)
-router.get('/', authenticateToken, requireRole('directeur'), async (req, res) => {
+router.get('/', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     if (_notifCache && Date.now() - _notifCacheTs < NOTIF_TTL) {
       return res.json(_notifCache);
@@ -29,7 +29,7 @@ router.get('/', authenticateToken, requireRole('directeur'), async (req, res) =>
 function invalidateNotifCache() { _notifCache = null; }
 
 // PATCH /api/notifications/read — marquer toutes comme lues
-router.patch('/read', authenticateToken, requireRole('directeur'), async (req, res) => {
+router.patch('/read', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const snap = await db.collection('notifications').where('lu', '==', false).limit(100).get();
     if (snap.empty) return res.json({ updated: 0 });
