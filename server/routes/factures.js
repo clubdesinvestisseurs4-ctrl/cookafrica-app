@@ -44,7 +44,6 @@ router.get('/', authenticateToken, async (req, res) => {
 // GET /api/factures/:id
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
-    // Chercher d'abord dans le cache liste avant de faire un appel BD
     const cached = cache.get('factures:list');
     if (cached) {
       const found = cached.find(f => f.id === req.params.id);
@@ -58,8 +57,8 @@ router.get('/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// POST /api/factures — générer manuellement une facture unifiée depuis une commande
-router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), async (req, res) => {
+// POST /api/factures — générer manuellement une facture depuis une commande
+router.post('/', authenticateToken, requireRole('admin', 'caissiere'), async (req, res) => {
   try {
     const { commandeId, modePaiement } = req.body;
     if (!commandeId) return res.status(400).json({ error: 'commandeId requis' });
@@ -69,11 +68,9 @@ router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), 
 
     const commande = cmdDoc.data();
 
-    // Vérifier qu'une facture n'existe pas déjà
     const existing = await db.collection('factures').where('commandeId', '==', commandeId).limit(1).get();
     if (!existing.empty) return res.status(409).json({ error: 'Une facture existe déjà pour cette commande' });
 
-    // Vérifier que toutes les parties sont prêtes
     const hasBoissons = (commande.items || []).some(i => i.categorie === 'Boissons');
     const hasPlats    = (commande.items || []).some(i => i.categorie !== 'Boissons');
 
@@ -102,6 +99,8 @@ router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), 
       reste: total,
       modePaiement: modePaiement || 'especes',
       statut: 'partielle',
+      serveurNom: commande.createdByNom || commande.createdBy || '',
+      caissiereName: req.user.nom || req.user.username || '',
       validatedByCuisinier: commande.validatedByCuisinier || '',
       validatedByCuisinierNom: commande.validatedByCuisinierNom || '',
       validatedByBarman: commande.validatedByBarman || '',
@@ -127,8 +126,8 @@ router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), 
   }
 });
 
-// PUT /api/factures/:id/pay — enregistrer le paiement de la facture unifiée
-router.put('/:id/pay', authenticateToken, requireRole('directeur', 'receptionniste'), async (req, res) => {
+// PUT /api/factures/:id/pay — enregistrer le paiement
+router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere'), async (req, res) => {
   try {
     const { modePaiement } = req.body;
     const docRef = db.collection('factures').doc(req.params.id);
@@ -143,21 +142,22 @@ router.put('/:id/pay', authenticateToken, requireRole('directeur', 'receptionnis
       statut: 'payee',
       reste: 0,
       modePaiement: modePaiement || facture.modePaiement,
+      caissiereName: req.user.nom || req.user.username || '',
       updatedAt: now.toISOString(),
     };
     await docRef.update(update);
     invalidate();
-    cache.del('commandes:list'); // la commande passera à 'servie'
+    cache.del('commandes:list');
 
-    // Déduire tous les articles du stock journalier via l'ID composé (pas d'index requis)
+    // Déduire les articles du stock journalier
     const factureDate = facture.date || now.toISOString().split('T')[0];
     for (const item of (facture.items || [])) {
       if (!item.menuItemId) continue;
-      const docRef = db.collection('stocks_plats').doc(`${item.menuItemId}_${factureDate}`);
-      const platDoc = await docRef.get();
+      const stockRef = db.collection('stocks_plats').doc(`${item.menuItemId}_${factureDate}`);
+      const platDoc = await stockRef.get();
       if (platDoc.exists) {
         const restante = platDoc.data().quantiteRestante || 0;
-        await docRef.update({
+        await stockRef.update({
           quantiteRestante: Math.max(0, restante - (item.quantite || 1)),
           updatedAt: now.toISOString(),
         });

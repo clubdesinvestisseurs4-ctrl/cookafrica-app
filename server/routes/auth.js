@@ -7,6 +7,13 @@ const { pushNotification } = require('../utils/notifications');
 
 const router = express.Router();
 
+// Normalise les anciens noms de rôles vers les nouveaux
+const ROLE_MIGRATION = {
+  directeur:       'admin',
+  receptionniste:  'caissiere',
+  cuisinier:       'cuisiniere',
+};
+
 // Supprime le préfixe IPv6 ::ffff: pour normaliser les adresses IPv4
 function normalizeIp(ip) {
   if (ip && ip.startsWith('::ffff:')) return ip.slice(7);
@@ -25,8 +32,7 @@ function ipInCidr(ip, cidr) {
   }
 }
 
-// Récupère la vraie IP du client en lisant X-Forwarded-For (première entrée = client original)
-// req.ip seul ne suffit pas sur Render car plusieurs proxies internes (10.x.x.x) s'intercalent
+// Récupère la vraie IP du client en lisant X-Forwarded-For
 function getClientIp(req) {
   const xff = req.headers['x-forwarded-for'];
   if (xff) {
@@ -57,15 +63,6 @@ async function logSession(userId, username, nom, role, action, ip) {
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
-    if (!isAllowedIp(req)) {
-      const clientIp = getClientIp(req);
-      console.warn(`[WiFi] Tentative bloquée depuis ${clientIp} (X-Forwarded-For: ${req.headers['x-forwarded-for'] || 'absent'})`);
-      return res.status(403).json({
-        error: 'wifi_restricted',
-        message: "Accès refusé : connectez-vous au réseau Wi-Fi de l'entreprise",
-      });
-    }
-
     const { username, password } = req.body;
     if (!username || !password) {
       return res.status(400).json({ error: 'Identifiants requis' });
@@ -88,24 +85,37 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Identifiants invalides' });
     }
 
+    // Normaliser le rôle (migration anciens → nouveaux noms)
+    const effectiveRole = ROLE_MIGRATION[user.role] || user.role;
+
+    // Restriction Wi-Fi : l'admin peut se connecter depuis n'importe quel réseau
+    if (effectiveRole !== 'admin' && !isAllowedIp(req)) {
+      const clientIp = getClientIp(req);
+      console.warn(`[WiFi] Tentative bloquée depuis ${clientIp} (X-Forwarded-For: ${req.headers['x-forwarded-for'] || 'absent'})`);
+      return res.status(403).json({
+        error: 'wifi_restricted',
+        message: "Accès refusé : connectez-vous au réseau Wi-Fi de l'entreprise",
+      });
+    }
+
     await userDoc.ref.update({ lastLogin: new Date().toISOString() });
-    await logSession(userDoc.id, user.username, user.nom, user.role, 'login', req.ip).catch(() => {});
+    await logSession(userDoc.id, user.username, user.nom, effectiveRole, 'login', req.ip).catch(() => {});
 
     pushNotification({
       type: 'info', icon: 'sign-in-alt',
       titre: 'Connexion utilisateur',
-      message: `${user.nom} (${user.role}) s'est connecté`,
+      message: `${user.nom} (${effectiveRole}) s'est connecté`,
       createdBy: user.username,
     });
 
     const nomComplet = user.prenom ? `${user.prenom} ${user.nom}`.trim() : user.nom;
     const token = jwt.sign(
-      { id: userDoc.id, username: user.username, nom: nomComplet, role: user.role },
+      { id: userDoc.id, username: user.username, nom: nomComplet, role: effectiveRole },
       process.env.JWT_SECRET,
       { expiresIn: '12h' }
     );
 
-    res.json({ token, user: { id: userDoc.id, username: user.username, nom: nomComplet, role: user.role } });
+    res.json({ token, user: { id: userDoc.id, username: user.username, nom: nomComplet, role: effectiveRole } });
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -123,7 +133,7 @@ router.post('/logout', authenticateToken, async (req, res) => {
 });
 
 // GET /api/auth/sessions
-router.get('/sessions', authenticateToken, requireRole('directeur'), async (req, res) => {
+router.get('/sessions', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const { debut, fin, username } = req.query;
     const snap = await db.collection('sessions').orderBy('timestamp', 'desc').limit(500).get();
@@ -146,10 +156,11 @@ router.post('/seed', async (req, res) => {
     }
 
     const utilisateurs = [
-      { username: 'admin',        nom: 'Admin Système',     role: 'directeur',      password: 'Admincookaf@2026!' },
-      { username: 'receptio',     nom: 'Koné Aminata',      role: 'receptionniste', password: 'Receptcookaf@2026!' },
-      { username: 'cuisinier',    nom: 'Diallo Moussa',     role: 'cuisinier',      password: 'Cuisincookaf@2026!' },
-      { username: 'barman',       nom: 'Barman Service',    role: 'barman',         password: 'Barmancookaf@2026!' },
+      { username: 'admin',      nom: 'Admin Système',   role: 'admin',      password: 'Admincookaf@2026!' },
+      { username: 'caissiere',  nom: 'Caissière',       role: 'caissiere',  password: 'Caissecookaf@2026!' },
+      { username: 'serveur',    nom: 'Serveur',          role: 'serveur',    password: 'Servcookaf@2026!' },
+      { username: 'cuisiniere', nom: 'Cuisinière',       role: 'cuisiniere', password: 'Cuisincookaf@2026!' },
+      { username: 'barman',     nom: 'Barman Service',   role: 'barman',     password: 'Barmancookaf@2026!' },
     ];
 
     const batch = db.batch();
@@ -175,8 +186,30 @@ router.post('/seed', async (req, res) => {
   }
 });
 
-// GET /api/auth/utilisateurs — liste des utilisateurs (directeur)
-router.get('/utilisateurs', authenticateToken, requireRole('directeur'), async (req, res) => {
+// POST /api/auth/migrate-roles — migration des anciens rôles vers les nouveaux
+router.post('/migrate-roles', async (req, res) => {
+  try {
+    const snap = await db.collection('utilisateurs').get();
+    const batch = db.batch();
+    let count = 0;
+    snap.docs.forEach(doc => {
+      const role = doc.data().role;
+      const newRole = ROLE_MIGRATION[role];
+      if (newRole) {
+        batch.update(doc.ref, { role: newRole, updatedAt: new Date().toISOString() });
+        count++;
+      }
+    });
+    if (count > 0) await batch.commit();
+    res.json({ message: `${count} utilisateur(s) migré(s)` });
+  } catch (err) {
+    console.error('Migrate roles error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// GET /api/auth/utilisateurs — liste des utilisateurs (admin)
+router.get('/utilisateurs', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const snap = await db.collection('utilisateurs').orderBy('createdAt', 'desc').get();
     const users = snap.docs.map(d => {
@@ -189,11 +222,11 @@ router.get('/utilisateurs', authenticateToken, requireRole('directeur'), async (
   }
 });
 
-// POST /api/auth/utilisateurs — créer un utilisateur (directeur)
-router.post('/utilisateurs', authenticateToken, requireRole('directeur'), async (req, res) => {
+// POST /api/auth/utilisateurs — créer un utilisateur (admin)
+router.post('/utilisateurs', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const { prenom, nom, username, password, role } = req.body;
-    const validRoles = ['directeur', 'receptionniste', 'cuisinier', 'barman'];
+    const validRoles = ['admin', 'caissiere', 'serveur', 'cuisiniere', 'barman'];
     if (!nom || !username || !password || !role) {
       return res.status(400).json({ error: 'Nom, identifiant, mot de passe et rôle requis' });
     }
@@ -224,11 +257,11 @@ router.post('/utilisateurs', authenticateToken, requireRole('directeur'), async 
   }
 });
 
-// PUT /api/auth/utilisateurs/:id — modifier un utilisateur (directeur)
-router.put('/utilisateurs/:id', authenticateToken, requireRole('directeur'), async (req, res) => {
+// PUT /api/auth/utilisateurs/:id — modifier un utilisateur (admin)
+router.put('/utilisateurs/:id', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const { prenom, nom, role, password, actif } = req.body;
-    const validRoles = ['directeur', 'receptionniste', 'cuisinier', 'barman'];
+    const validRoles = ['admin', 'caissiere', 'serveur', 'cuisiniere', 'barman'];
     const update = { updatedAt: new Date().toISOString() };
     if (nom !== undefined)   update.nom = nom.trim();
     if (prenom !== undefined) update.prenom = prenom.trim();
@@ -245,8 +278,8 @@ router.put('/utilisateurs/:id', authenticateToken, requireRole('directeur'), asy
   }
 });
 
-// DELETE /api/auth/utilisateurs/:id — désactiver un utilisateur (directeur)
-router.delete('/utilisateurs/:id', authenticateToken, requireRole('directeur'), async (req, res) => {
+// DELETE /api/auth/utilisateurs/:id — désactiver un utilisateur (admin)
+router.delete('/utilisateurs/:id', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     if (req.params.id === req.user.id) {
       return res.status(400).json({ error: 'Vous ne pouvez pas désactiver votre propre compte' });
@@ -258,31 +291,6 @@ router.delete('/utilisateurs/:id', authenticateToken, requireRole('directeur'), 
     res.json({ message: 'Utilisateur désactivé' });
   } catch (err) {
     res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /api/auth/seed-barman — ajouter le barman sur une installation existante
-router.post('/seed-barman', async (req, res) => {
-  try {
-    const existing = await db.collection('utilisateurs')
-      .where('username', '==', 'barman').limit(1).get();
-    if (!existing.empty) {
-      return res.status(409).json({ error: 'Barman déjà créé' });
-    }
-    const passwordHash = await bcrypt.hash('Barmancookaf@2026!', 10);
-    await db.collection('utilisateurs').add({
-      username: 'barman',
-      nom: 'Barman Service',
-      role: 'barman',
-      passwordHash,
-      actif: true,
-      createdAt: new Date().toISOString(),
-      lastLogin: null,
-    });
-    res.json({ message: 'Compte barman créé', username: 'barman', password: 'Barmancookaf@2026!' });
-  } catch (err) {
-    console.error('Seed barman error:', err);
-    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 

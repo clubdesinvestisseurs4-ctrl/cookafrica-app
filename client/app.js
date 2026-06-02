@@ -43,18 +43,27 @@ const state = {
   barmanInterval:  null,
 };
 
+// ─── Labels des rôles ─────────────────────────────────
+const ROLE_LABELS = {
+  admin:      'Administrateur',
+  caissiere:  'Caissière',
+  serveur:    'Serveur',
+  cuisiniere: 'Cuisinière',
+  barman:     'Barman',
+};
+
 // ─── Visibilité des pages par rôle ────────────────────
 const PAGE_ROLES = {
-  dashboard:    ['directeur', 'receptionniste', 'cuisinier'],
-  commandes:    ['directeur', 'receptionniste'],
-  cuisine:      ['directeur', 'cuisinier'],
-  facturation:  ['directeur', 'receptionniste'],
-  menu:         ['directeur'],
-  stocks:       ['directeur', 'cuisinier', 'barman'],
-  rapports:     ['directeur'],
-  sessions:     ['directeur'],
-  barman:       ['directeur', 'barman'],
-  utilisateurs: ['directeur'],
+  dashboard:    ['admin'],
+  commandes:    ['admin', 'serveur'],
+  cuisine:      ['admin', 'cuisiniere'],
+  facturation:  ['admin', 'caissiere'],
+  menu:         ['admin'],
+  stocks:       ['admin'],
+  rapports:     ['admin'],
+  sessions:     ['admin'],
+  barman:       ['admin', 'barman'],
+  utilisateurs: ['admin'],
 };
 
 const PAGE_TITLES = {
@@ -158,7 +167,7 @@ async function loginFlow(token, user) {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app-screen').style.display   = 'flex';
   document.getElementById('sidebar-user-name').textContent = user.nom;
-  document.getElementById('sidebar-user-role').textContent = user.role;
+  document.getElementById('sidebar-user-role').textContent = ROLE_LABELS[user.role] || user.role;
 
   applyRoleNav();
   navigateTo(defaultPage());
@@ -167,9 +176,11 @@ async function loginFlow(token, user) {
 
 function defaultPage() {
   const role = state.user?.role;
-  if (role === 'cuisinier') return 'cuisine';
-  if (role === 'barman')    return 'barman';
-  return 'dashboard';
+  if (role === 'cuisiniere') return 'cuisine';
+  if (role === 'barman')     return 'barman';
+  if (role === 'serveur')    return 'commandes';
+  if (role === 'caissiere')  return 'facturation';
+  return 'dashboard'; // admin
 }
 
 function applyRoleNav() {
@@ -236,26 +247,33 @@ function updateDateBadge() {
 // ─── Polling ────────────────────────────────────────────
 
 function startPolling() {
+  const role = state.user?.role;
   updateDateBadge();
   setInterval(updateDateBadge, 60_000);
 
-  // Rafraichir le dashboard actif toutes les 30s
-  state.dashInterval = setInterval(() => {
-    if (state.currentPage === 'dashboard') loadDashboard();
-  }, 30_000);
+  // Dashboard — admin seulement
+  if (role === 'admin') {
+    state.dashInterval = setInterval(() => {
+      if (state.currentPage === 'dashboard') loadDashboard();
+    }, 30_000);
+  }
 
   // Cuisine auto-refresh toutes les 20s
-  state.cuisineInterval = setInterval(() => {
-    if (state.currentPage === 'cuisine') loadCuisine();
-  }, 20_000);
+  if (role === 'admin' || role === 'cuisiniere') {
+    state.cuisineInterval = setInterval(() => {
+      if (state.currentPage === 'cuisine') loadCuisine();
+    }, 20_000);
+  }
 
   // Bar auto-refresh toutes les 20s
-  state.barmanInterval = setInterval(() => {
-    if (state.currentPage === 'barman') loadBarman();
-  }, 20_000);
+  if (role === 'admin' || role === 'barman') {
+    state.barmanInterval = setInterval(() => {
+      if (state.currentPage === 'barman') loadBarman();
+    }, 20_000);
+  }
 
-  // Notifications (directeur uniquement) toutes les 25s
-  if (state.user?.role === 'directeur') {
+  // Notifications — admin seulement
+  if (role === 'admin') {
     loadNotifBadge();
     state.notifInterval = setInterval(loadNotifBadge, 25_000);
   }
@@ -344,7 +362,7 @@ async function loadCommandes() {
     const kitchenOk   = !hasPlats || ['prete', 'servie'].includes(c.statut);
     const barOk       = !hasBoissons || c.boissonsStatut === 'prete';
     const canFacture  = kitchenOk && barOk && !alreadyFactured;
-    const canCancel  = state.user?.role === 'directeur' && !['annulee', 'servie'].includes(c.statut);
+    const canCancel  = state.user?.role === 'admin' && !['annulee', 'servie'].includes(c.statut);
     const boissonsInfo = c.boissonsStatut === 'en-attente'
       ? '<br><small style="color:#1565C0;font-size:.72rem"><i class="fas fa-wine-glass-alt"></i> Boissons en attente</small>'
       : c.boissonsStatut === 'prete'
@@ -848,6 +866,7 @@ window.aperçuFacture = async (id) => {
         <p style="font-size:.78rem;color:var(--gray)">Date : ${fmtDateOnly(f.date)}</p>
         ${f.tableNumero ? `<p style="font-size:.78rem"><strong>Table :</strong> ${f.tableNumero}</p>` : ''}
         ${f.commandeNumero ? `<p style="font-size:.78rem;color:var(--gray)">Commande : ${f.commandeNumero}</p>` : ''}
+        ${f.serveurNom ? `<p style="font-size:.78rem">Servi par : <strong>${f.serveurNom}</strong></p>` : ''}
       </div>
       <table class="facture-items">
         <thead><tr><th>Article</th><th>Qté</th><th>Prix unit.</th><th>Sous-total</th></tr></thead>
@@ -864,6 +883,7 @@ window.aperçuFacture = async (id) => {
       </table>
       <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border);font-size:.78rem;color:var(--gray)">
         ${validateurs.length ? `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:6px">${validateurs.join('')}</div>` : ''}
+        ${f.caissiereName ? `<p style="margin-bottom:4px"><i class="fas fa-user-tie"></i> Caissière : <strong>${f.caissiereName}</strong></p>` : ''}
         <p>Mode de paiement : <strong>${f.modePaiement || '—'}</strong></p>
         <p style="margin-top:6px;text-align:center">Merci de votre visite !</p>
         <p style="font-size:.7rem;text-align:center;margin-top:4px">Cook Africa – Le restaurant qui rassemble</p>
@@ -1201,7 +1221,7 @@ function renderMenu(menu) {
           <span class="badge-status ${m.disponible ? 'disponible' : 'annulee'}" style="font-size:.7rem">
             ${m.disponible ? 'Dispo' : 'Indispo'}
           </span>
-          ${state.user?.role === 'directeur' ? `
+          ${state.user?.role === 'admin' ? `
             <button class="btn btn-secondary btn-sm" onclick="editPlat('${m.id}')">
               <i class="fas fa-edit"></i>
             </button>` : ''}
@@ -1504,8 +1524,8 @@ async function loadUtilisateurs() {
   if (!users) return;
   state.utilisateurs = users;
 
-  const roleLabels = { directeur: 'Directeur', receptionniste: 'Réceptionniste', cuisinier: 'Cuisinier', barman: 'Barman' };
-  const roleColors = { directeur: '#8B1A1A', receptionniste: '#2C5F2E', cuisinier: '#D4891A', barman: '#1565C0' };
+  const roleLabels = { admin: 'Admin', caissiere: 'Caissière', serveur: 'Serveur', cuisiniere: 'Cuisinière', barman: 'Barman' };
+  const roleColors = { admin: '#8B1A1A', caissiere: '#2C5F2E', serveur: '#9C27B0', cuisiniere: '#D4891A', barman: '#1565C0' };
 
   const tbody = document.getElementById('utilisateurs-tbody');
   if (users.length === 0) {
@@ -1658,7 +1678,7 @@ async function loadSessions() {
     return;
   }
 
-  const roleColors = { directeur: '#8B1A1A', receptionniste: '#2C5F2E', cuisinier: '#D4891A', barman: '#1565C0' };
+  const roleColors = { admin: '#8B1A1A', caissiere: '#2C5F2E', serveur: '#9C27B0', cuisiniere: '#D4891A', barman: '#1565C0' };
   tbody.innerHTML = sessions.map(s => `
     <tr>
       <td style="font-size:.8rem;white-space:nowrap">${fmtDate(s.timestamp)}</td>

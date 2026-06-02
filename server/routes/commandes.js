@@ -27,7 +27,7 @@ async function getNextNumeroFacture() {
   return `FACT-${String(lastNum + 1).padStart(4, '0')}`;
 }
 
-// Génère une facture unifiée (plats + boissons, sans TVA) dès que les deux parties sont prêtes
+// Génère une facture unifiée (plats + boissons) dès que les deux parties sont prêtes
 async function generateCombinedInvoice(commandeId, commande, validatedByCuisinier, validatedByBarman, now) {
   const existing = await db.collection('factures').where('commandeId', '==', commandeId).limit(1).get();
   if (!existing.empty) return null; // déjà générée
@@ -49,6 +49,7 @@ async function generateCombinedInvoice(commandeId, commande, validatedByCuisinie
     reste: total,
     modePaiement: 'especes',
     statut: 'partielle',
+    serveurNom: commande.createdByNom || commande.createdBy || '',
     validatedByCuisinier: validatedByCuisinier || '',
     validatedByCuisinierNom: commande.validatedByCuisinierNom || '',
     validatedByBarman: validatedByBarman || '',
@@ -59,7 +60,7 @@ async function generateCombinedInvoice(commandeId, commande, validatedByCuisinie
   };
 
   const ref = await db.collection('factures').add(data);
-  cache.del('factures:list', 'commandes:bar'); // la nouvelle facture doit apparaître dans /bar
+  cache.del('factures:list', 'commandes:bar');
 
   pushNotification({
     type: 'success', icon: 'receipt',
@@ -94,7 +95,7 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // GET /api/commandes/bar — commandes avec boissons (pour le barman)
-router.get('/bar', authenticateToken, requireRole('directeur', 'barman'), async (req, res) => {
+router.get('/bar', authenticateToken, requireRole('admin', 'barman'), async (req, res) => {
   try {
     const cached = cache.get('commandes:bar');
     if (cached) return res.json(cached);
@@ -114,7 +115,6 @@ router.get('/bar', authenticateToken, requireRole('directeur', 'barman'), async 
       .map(d => ({ id: d.id, ...d.data() }))
       .filter(c => c.boissonsStatut === 'prete');
 
-    // Factures du jour indexées par commandeId (pour les bons bar)
     const facturesMap = {};
     facturesSnap.docs.forEach(d => {
       const f = { id: d.id, ...d.data() };
@@ -146,7 +146,6 @@ router.get('/cuisine', authenticateToken, async (req, res) => {
         .orderBy('createdAt', 'desc').get(),
     ]);
 
-    // Exclure les boissons : la cuisine ne gère que les plats
     const active = activeSnap.docs
       .map(d => {
         const data = d.data();
@@ -170,7 +169,7 @@ router.get('/cuisine', authenticateToken, async (req, res) => {
 });
 
 // POST /api/commandes
-router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), async (req, res) => {
+router.post('/', authenticateToken, requireRole('admin', 'serveur'), async (req, res) => {
   try {
     const { items, note, tableNumero } = req.body;
 
@@ -202,6 +201,7 @@ router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), 
       statut: 'en-attente',
       date: now.toISOString().split('T')[0],
       createdBy: req.user.username,
+      createdByNom: req.user.nom || req.user.username,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
     };
@@ -225,7 +225,7 @@ router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), 
 });
 
 // PUT /api/commandes/:id/bar-pret — barman marque les boissons comme prêtes
-router.put('/:id/bar-pret', authenticateToken, requireRole('directeur', 'barman'), async (req, res) => {
+router.put('/:id/bar-pret', authenticateToken, requireRole('admin', 'barman'), async (req, res) => {
   try {
     const docRef = db.collection('commandes').doc(req.params.id);
     const doc = await docRef.get();
@@ -249,7 +249,6 @@ router.put('/:id/bar-pret', authenticateToken, requireRole('directeur', 'barman'
     await docRef.update(commandeUpdate);
     invalidate();
 
-    // Générer la facture unifiée si les plats sont aussi prêts (ou absents)
     const platsItems = (commande.items || []).filter(i => i.categorie !== 'Boissons');
     const platsReady = platsItems.length === 0 || commande.statut === 'prete';
 
@@ -290,7 +289,6 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const update = { ...req.body, updatedAt: now.toISOString() };
     delete update.id;
 
-    // Stocker le nom du cuisinier qui valide
     if (update.statut === 'prete') {
       update.validatedByCuisinier = req.user.username;
       update.validatedByCuisinierNom = req.user.nom;
@@ -299,7 +297,6 @@ router.put('/:id', authenticateToken, async (req, res) => {
     await docRef.update(update);
     invalidate();
 
-    // Notifications selon changement de statut
     if (update.statut && update.statut !== existing.statut) {
       const messages = {
         'en-preparation': { type: 'info',    icon: 'fire',           titre: 'En préparation', msg: `${existing.numero} – démarré en cuisine` },
@@ -310,10 +307,8 @@ router.put('/:id', authenticateToken, async (req, res) => {
       const notif = messages[update.statut];
       if (notif) pushNotification({ type: notif.type, icon: notif.icon, titre: notif.titre, message: notif.msg, createdBy: req.user.username });
 
-      // Générer la facture unifiée quand les plats sont prêts
       if (update.statut === 'prete') {
         const hasBoissons = (existing.items || []).some(i => i.categorie === 'Boissons');
-        // Pour une commande mixte, attendre que le bar valide aussi
         const boissonsReady = !hasBoissons || existing.boissonsStatut === 'prete';
 
         if (boissonsReady) {
@@ -326,7 +321,6 @@ router.put('/:id', authenticateToken, async (req, res) => {
             now
           );
         }
-        // Si hasBoissons && !boissonsReady : la facture sera générée dans bar-pret
       }
     }
 
@@ -336,8 +330,8 @@ router.put('/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// DELETE /api/commandes/:id — annulation (directeur uniquement)
-router.delete('/:id', authenticateToken, requireRole('directeur'), async (req, res) => {
+// DELETE /api/commandes/:id — annulation (admin uniquement)
+router.delete('/:id', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     await db.collection('commandes').doc(req.params.id).update({
       statut: 'annulee',
