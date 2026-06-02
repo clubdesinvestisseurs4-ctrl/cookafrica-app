@@ -297,3 +297,14 @@ npm run dev
 - JWT avec expiration 12h
 - Rate limiting : 200 req/15min global, 10 req/15min sur `/login`
 - CORS restreint à l'URL Vercel configurée
+
+
+Comportement résumé
+Situation	Résultat
+WIFI_RESTRICTION_ENABLED=false	Tout le monde peut se connecter (comportement actuel)
+
+WIFI_RESTRICTION_ENABLED=true + ALLOWED_IPS vide	Tout le monde bloqué (protection maximale par erreur)
+
+WIFI_RESTRICTION_ENABLED=true + IP correcte	Seuls les appareils sur le WiFi d'entreprise passent
+
+IP hors whitelist, identifiants corrects	Bloqué avant même la vérification du mot de passe

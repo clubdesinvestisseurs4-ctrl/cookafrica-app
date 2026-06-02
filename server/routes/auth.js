@@ -25,13 +25,24 @@ function ipInCidr(ip, cidr) {
   }
 }
 
+// Récupère la vraie IP du client en lisant X-Forwarded-For (première entrée = client original)
+// req.ip seul ne suffit pas sur Render car plusieurs proxies internes (10.x.x.x) s'intercalent
+function getClientIp(req) {
+  const xff = req.headers['x-forwarded-for'];
+  if (xff) {
+    const first = xff.split(',')[0].trim();
+    if (first) return normalizeIp(first);
+  }
+  return normalizeIp(req.ip);
+}
+
 // Retourne true si l'IP est autorisée selon ALLOWED_IPS
-function isAllowedIp(rawIp) {
+function isAllowedIp(req) {
   if (process.env.WIFI_RESTRICTION_ENABLED !== 'true') return true;
   const allowed = (process.env.ALLOWED_IPS || '')
     .split(',').map(s => s.trim()).filter(Boolean);
   if (allowed.length === 0) return true;
-  const ip = normalizeIp(rawIp);
+  const ip = getClientIp(req);
   return allowed.some(entry => entry.includes('/') ? ipInCidr(ip, entry) : ip === entry);
 }
 
@@ -46,8 +57,9 @@ async function logSession(userId, username, nom, role, action, ip) {
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
-    if (!isAllowedIp(req.ip)) {
-      console.warn(`[WiFi] Tentative bloquée depuis ${normalizeIp(req.ip)}`);
+    if (!isAllowedIp(req)) {
+      const clientIp = getClientIp(req);
+      console.warn(`[WiFi] Tentative bloquée depuis ${clientIp} (X-Forwarded-For: ${req.headers['x-forwarded-for'] || 'absent'})`);
       return res.status(403).json({
         error: 'wifi_restricted',
         message: "Accès refusé : connectez-vous au réseau Wi-Fi de l'entreprise",
