@@ -867,6 +867,7 @@ window.aperçuFacture = async (id) => {
         ${f.tableNumero ? `<p style="font-size:.78rem"><strong>Table :</strong> ${f.tableNumero}</p>` : ''}
         ${f.commandeNumero ? `<p style="font-size:.78rem;color:var(--gray)">Commande : ${f.commandeNumero}</p>` : ''}
         ${f.serveurNom ? `<p style="font-size:.78rem">Servi par : <strong>${f.serveurNom}</strong></p>` : ''}
+        ${f.caissiereName ? `<p style="font-size:.78rem"><i class="fas fa-user-tie"></i> Caissière : <strong>${f.caissiereName}</strong></p>` : ''}
       </div>
       <table class="facture-items">
         <thead><tr><th>Article</th><th>Qté</th><th>Prix unit.</th><th>Sous-total</th></tr></thead>
@@ -883,7 +884,6 @@ window.aperçuFacture = async (id) => {
       </table>
       <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border);font-size:.78rem;color:var(--gray)">
         ${validateurs.length ? `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:6px">${validateurs.join('')}</div>` : ''}
-        ${f.caissiereName ? `<p style="margin-bottom:4px"><i class="fas fa-user-tie"></i> Caissière : <strong>${f.caissiereName}</strong></p>` : ''}
         <p>Mode de paiement : <strong>${f.modePaiement || '—'}</strong></p>
         <p style="margin-top:6px;text-align:center">Merci de votre visite !</p>
         <p style="font-size:.7rem;text-align:center;margin-top:4px">Cook Africa – Le restaurant qui rassemble</p>
@@ -960,6 +960,8 @@ window.aperçuFactureCuisine = async (id) => {
         </tr>
       </table>
       <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border);font-size:.78rem;color:var(--gray)">
+        ${f.serveurNom ? `<p><i class="fas fa-user"></i> Servi par : <strong>${f.serveurNom}</strong></p>` : ''}
+        ${f.caissiereName ? `<p><i class="fas fa-user-tie"></i> Caissière : <strong>${f.caissiereName}</strong></p>` : ''}
         ${f.validatedByCuisinier ? `<p><i class="fas fa-fire" style="color:var(--primary)"></i> Cuisinier : <strong>${f.validatedByCuisinierNom || f.validatedByCuisinier}</strong></p>` : ''}
         <p style="margin-top:6px;text-align:center;font-style:italic">Bon interne – Usage cuisine uniquement</p>
         <p style="font-size:.7rem;text-align:center;margin-top:4px">Cook Africa – Le restaurant qui rassemble</p>
@@ -1162,6 +1164,8 @@ window.aperçuFactureBar = (commandeId) => {
         </tr>
       </table>
       <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border);font-size:.78rem;color:var(--gray)">
+        ${f.serveurNom ? `<p><i class="fas fa-user"></i> Servi par : <strong>${f.serveurNom}</strong></p>` : ''}
+        ${f.caissiereName ? `<p><i class="fas fa-user-tie"></i> Caissière : <strong>${f.caissiereName}</strong></p>` : ''}
         ${f.validatedByBarman ? `<p><i class="fas fa-wine-glass-alt" style="color:#1565C0"></i> Barman : <strong>${f.validatedByBarmanNom || f.validatedByBarman}</strong></p>` : ''}
         <p style="margin-top:6px;text-align:center;font-style:italic">Bon interne – Usage bar uniquement</p>
         <p style="font-size:.7rem;text-align:center;margin-top:4px">Cook Africa – Le restaurant qui rassemble</p>
