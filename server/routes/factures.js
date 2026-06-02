@@ -2,8 +2,13 @@ const express = require('express');
 const { db } = require('../firebase-admin');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { pushNotification } = require('../utils/notifications');
+const cache = require('../utils/cache');
 
 const router = express.Router();
+
+function invalidate() {
+  cache.del('factures:list', 'commandes:bar', 'commandes:cuisine');
+}
 
 async function getNextNumeroFacture() {
   const snap = await db.collection('factures').orderBy('createdAt', 'desc').limit(1).get();
@@ -17,9 +22,15 @@ async function getNextNumeroFacture() {
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const { debut, fin, statut } = req.query;
-    const snap = await db.collection('factures').orderBy('createdAt', 'desc').limit(300).get();
-    let factures = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
+    let all = cache.get('factures:list');
+    if (!all) {
+      const snap = await db.collection('factures').orderBy('createdAt', 'desc').limit(300).get();
+      all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      cache.set('factures:list', all, 60_000);
+    }
+
+    let factures = all;
     if (debut)  factures = factures.filter(f => f.date >= debut);
     if (fin)    factures = factures.filter(f => f.date <= fin);
     if (statut) factures = factures.filter(f => f.statut === statut);
@@ -33,6 +44,12 @@ router.get('/', authenticateToken, async (req, res) => {
 // GET /api/factures/:id
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
+    // Chercher d'abord dans le cache liste avant de faire un appel BD
+    const cached = cache.get('factures:list');
+    if (cached) {
+      const found = cached.find(f => f.id === req.params.id);
+      if (found) return res.json(found);
+    }
     const doc = await db.collection('factures').doc(req.params.id).get();
     if (!doc.exists) return res.status(404).json({ error: 'Facture introuvable' });
     res.json({ id: doc.id, ...doc.data() });
@@ -86,13 +103,16 @@ router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), 
       modePaiement: modePaiement || 'especes',
       statut: 'partielle',
       validatedByCuisinier: commande.validatedByCuisinier || '',
+      validatedByCuisinierNom: commande.validatedByCuisinierNom || '',
       validatedByBarman: commande.validatedByBarman || '',
+      validatedByBarmanNom: commande.validatedByBarmanNom || '',
       date: now.toISOString().split('T')[0],
       createdBy: req.user.username,
       createdAt: now.toISOString(),
     };
 
     const ref = await db.collection('factures').add(data);
+    invalidate();
 
     pushNotification({
       type: 'success', icon: 'receipt',
@@ -126,6 +146,8 @@ router.put('/:id/pay', authenticateToken, requireRole('directeur', 'receptionnis
       updatedAt: now.toISOString(),
     };
     await docRef.update(update);
+    invalidate();
+    cache.del('commandes:list'); // la commande passera à 'servie'
 
     // Déduire tous les articles (plats + boissons) du stock journalier
     const factureDate = facture.date || now.toISOString().split('T')[0];

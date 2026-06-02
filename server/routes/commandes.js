@@ -2,8 +2,14 @@ const express = require('express');
 const { db } = require('../firebase-admin');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { pushNotification } = require('../utils/notifications');
+const cache = require('../utils/cache');
 
 const router = express.Router();
+
+// Invalide tous les caches commandes + factures (à appeler après chaque écriture)
+function invalidate() {
+  cache.del('commandes:list', 'commandes:cuisine', 'commandes:bar', 'factures:list');
+}
 
 async function getNextNumero() {
   const snap = await db.collection('commandes').orderBy('createdAt', 'desc').limit(1).get();
@@ -53,6 +59,7 @@ async function generateCombinedInvoice(commandeId, commande, validatedByCuisinie
   };
 
   const ref = await db.collection('factures').add(data);
+  cache.del('factures:list', 'commandes:bar'); // la nouvelle facture doit apparaître dans /bar
 
   pushNotification({
     type: 'success', icon: 'receipt',
@@ -68,15 +75,19 @@ async function generateCombinedInvoice(commandeId, commande, validatedByCuisinie
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const { statut, date } = req.query;
-    let query = db.collection('commandes').orderBy('createdAt', 'desc').limit(200);
 
-    const snap = await query.get();
-    let commandes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    let all = cache.get('commandes:list');
+    if (!all) {
+      const snap = await db.collection('commandes').orderBy('createdAt', 'desc').limit(200).get();
+      all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      cache.set('commandes:list', all, 15_000);
+    }
 
-    if (statut) commandes = commandes.filter(c => c.statut === statut);
-    if (date)   commandes = commandes.filter(c => c.date === date);
+    let result = all;
+    if (statut) result = result.filter(c => c.statut === statut);
+    if (date)   result = result.filter(c => c.date === date);
 
-    res.json(commandes);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -85,11 +96,15 @@ router.get('/', authenticateToken, async (req, res) => {
 // GET /api/commandes/bar — commandes avec boissons (pour le barman)
 router.get('/bar', authenticateToken, requireRole('directeur', 'barman'), async (req, res) => {
   try {
+    const cached = cache.get('commandes:bar');
+    if (cached) return res.json(cached);
+
     const today = new Date().toISOString().split('T')[0];
 
-    const [activeSnap, todaySnap] = await Promise.all([
+    const [activeSnap, todaySnap, facturesSnap] = await Promise.all([
       db.collection('commandes').where('boissonsStatut', '==', 'en-attente').get(),
       db.collection('commandes').where('date', '==', today).orderBy('createdAt', 'desc').get(),
+      db.collection('factures').where('date', '==', today).get(),
     ]);
 
     const active = activeSnap.docs
@@ -99,7 +114,16 @@ router.get('/bar', authenticateToken, requireRole('directeur', 'barman'), async 
       .map(d => ({ id: d.id, ...d.data() }))
       .filter(c => c.boissonsStatut === 'prete');
 
-    res.json({ active, done });
+    // Factures du jour indexées par commandeId (pour les bons bar)
+    const facturesMap = {};
+    facturesSnap.docs.forEach(d => {
+      const f = { id: d.id, ...d.data() };
+      if (f.commandeId) facturesMap[f.commandeId] = f;
+    });
+
+    const result = { active, done, facturesMap };
+    cache.set('commandes:bar', result, 15_000);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -108,6 +132,9 @@ router.get('/bar', authenticateToken, requireRole('directeur', 'barman'), async 
 // GET /api/commandes/cuisine — commandes actives + terminées du jour (plats uniquement)
 router.get('/cuisine', authenticateToken, async (req, res) => {
   try {
+    const cached = cache.get('commandes:cuisine');
+    if (cached) return res.json(cached);
+
     const today = new Date().toISOString().split('T')[0];
 
     const [activeSnap, todaySnap] = await Promise.all([
@@ -134,7 +161,9 @@ router.get('/cuisine', authenticateToken, async (req, res) => {
       })
       .filter(c => ['prete', 'servie'].includes(c.statut) && c.items.length > 0);
 
-    res.json({ active, terminee });
+    const result = { active, terminee };
+    cache.set('commandes:cuisine', result, 15_000);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -180,6 +209,7 @@ router.post('/', authenticateToken, requireRole('directeur', 'receptionniste'), 
     if (hasBoissons) data.boissonsStatut = 'en-attente';
 
     const ref = await db.collection('commandes').add(data);
+    invalidate();
 
     pushNotification({
       type: 'info', icon: 'utensils',
@@ -217,6 +247,7 @@ router.put('/:id/bar-pret', authenticateToken, requireRole('directeur', 'barman'
     };
     if (allBoissons) commandeUpdate.statut = 'prete';
     await docRef.update(commandeUpdate);
+    invalidate();
 
     // Générer la facture unifiée si les plats sont aussi prêts (ou absents)
     const platsItems = (commande.items || []).filter(i => i.categorie !== 'Boissons');
@@ -266,6 +297,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     }
 
     await docRef.update(update);
+    invalidate();
 
     // Notifications selon changement de statut
     if (update.statut && update.statut !== existing.statut) {
@@ -311,6 +343,7 @@ router.delete('/:id', authenticateToken, requireRole('directeur'), async (req, r
       statut: 'annulee',
       updatedAt: new Date().toISOString(),
     });
+    invalidate();
     res.json({ message: 'Commande annulée' });
   } catch (err) {
     res.status(500).json({ error: err.message });
