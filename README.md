@@ -233,7 +233,7 @@ Sinon, copier manuellement le contenu de `firestore.rules` et `firestore.indexes
 | Directeur | `admin` | `Admincookaf@2026!` |
 | Réceptionniste | `receptio` | `Receptcookaf@2026!` |
 | Cuisinier | `cuisinier` | `Cuisincookaf@2026!` |
-| barman    |    `barman`        | `Barmancookaf@2026!`            |
+| barman    |  `barman`   | `Barmancookaf@2026!` |
 
 > **Changer ces mots de passe avant le déploiement en production.**  
 > Modifier les valeurs dans `server/routes/auth.js` (tableau `utilisateurs`) avant d'appeler `/api/auth/seed`.

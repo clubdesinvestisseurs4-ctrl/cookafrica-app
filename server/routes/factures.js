@@ -149,18 +149,15 @@ router.put('/:id/pay', authenticateToken, requireRole('directeur', 'receptionnis
     invalidate();
     cache.del('commandes:list'); // la commande passera à 'servie'
 
-    // Déduire tous les articles (plats + boissons) du stock journalier
+    // Déduire tous les articles du stock journalier via l'ID composé (pas d'index requis)
     const factureDate = facture.date || now.toISOString().split('T')[0];
     for (const item of (facture.items || [])) {
       if (!item.menuItemId) continue;
-      const snapPlat = await db.collection('stocks_plats')
-        .where('menuItemId', '==', item.menuItemId)
-        .where('date', '==', factureDate)
-        .limit(1).get();
-      if (!snapPlat.empty) {
-        const platDoc = snapPlat.docs[0];
+      const docRef = db.collection('stocks_plats').doc(`${item.menuItemId}_${factureDate}`);
+      const platDoc = await docRef.get();
+      if (platDoc.exists) {
         const restante = platDoc.data().quantiteRestante || 0;
-        await platDoc.ref.update({
+        await docRef.update({
           quantiteRestante: Math.max(0, restante - (item.quantite || 1)),
           updatedAt: now.toISOString(),
         });

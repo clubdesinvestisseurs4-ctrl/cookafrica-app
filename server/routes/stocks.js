@@ -103,22 +103,22 @@ router.post('/plats', authenticateToken, requireRole('directeur', 'cuisinier'), 
     const now = new Date().toISOString();
 
     for (const plat of plats) {
-      const existing = await db.collection('stocks_plats')
-        .where('menuItemId', '==', plat.menuItemId)
-        .where('date', '==', dateStr)
-        .limit(1).get();
+      // ID composé déterministe : évite les requêtes composées (pas d'index requis)
+      const docId  = `${plat.menuItemId}_${dateStr}`;
+      const docRef = db.collection('stocks_plats').doc(docId);
+      const existing = await docRef.get();
 
-      if (!existing.empty) {
-        const doc = existing.docs[0];
-        const data = doc.data();
+      if (existing.exists) {
+        const data = existing.data();
         const consomme = data.quantitePrepare - data.quantiteRestante;
-        await doc.ref.update({
+        await docRef.update({
           quantitePrepare: plat.quantitePrepare,
           quantiteRestante: Math.max(0, plat.quantitePrepare - consomme),
+          nom: plat.nom,
           updatedAt: now,
         });
       } else {
-        await db.collection('stocks_plats').add({
+        await docRef.set({
           menuItemId: plat.menuItemId,
           nom: plat.nom,
           categorie: plat.categorie || '',

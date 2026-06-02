@@ -1283,17 +1283,24 @@ async function loadStocksPlats() {
   if (!dateInput.value) dateInput.value = new Date().toISOString().split('T')[0];
   const date = dateInput.value;
 
+  const tbody = document.getElementById('plats-jour-tbody');
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--gray)"><i class="fas fa-spinner fa-spin"></i> Chargement…</td></tr>';
+
   const [menu, platStocks] = await Promise.all([
     state.menu.length ? Promise.resolve(state.menu) : api('/api/menu'),
     api(`/api/stocks/plats?date=${date}`),
   ]);
-  if (!menu) return;
+
+  if (!menu) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--danger)"><i class="fas fa-exclamation-triangle"></i> Impossible de charger le menu.</td></tr>';
+    toast('Erreur de chargement du menu', 'error');
+    return;
+  }
   if (state.menu.length === 0) state.menu = menu;
 
   const platsMap = {};
   (platStocks || []).forEach(p => { platsMap[p.menuItemId] = p; });
 
-  const tbody = document.getElementById('plats-jour-tbody');
   const dishes = menu.filter(m => m.disponible !== false);
 
   if (dishes.length === 0) {
