@@ -7,6 +7,34 @@ const { pushNotification } = require('../utils/notifications');
 
 const router = express.Router();
 
+// Supprime le préfixe IPv6 ::ffff: pour normaliser les adresses IPv4
+function normalizeIp(ip) {
+  if (ip && ip.startsWith('::ffff:')) return ip.slice(7);
+  return ip || '';
+}
+
+// Vérifie si une IP appartient à un bloc CIDR (ex: 192.168.1.0/24)
+function ipInCidr(ip, cidr) {
+  try {
+    const [range, bits] = cidr.split('/');
+    const mask = ~((1 << (32 - parseInt(bits, 10))) - 1) >>> 0;
+    const toNum = s => s.split('.').reduce((acc, oct) => (acc << 8) + parseInt(oct, 10), 0) >>> 0;
+    return (toNum(ip) & mask) === (toNum(range) & mask);
+  } catch {
+    return false;
+  }
+}
+
+// Retourne true si l'IP est autorisée selon ALLOWED_IPS
+function isAllowedIp(rawIp) {
+  if (process.env.WIFI_RESTRICTION_ENABLED !== 'true') return true;
+  const allowed = (process.env.ALLOWED_IPS || '')
+    .split(',').map(s => s.trim()).filter(Boolean);
+  if (allowed.length === 0) return true;
+  const ip = normalizeIp(rawIp);
+  return allowed.some(entry => entry.includes('/') ? ipInCidr(ip, entry) : ip === entry);
+}
+
 async function logSession(userId, username, nom, role, action, ip) {
   await db.collection('sessions').add({
     userId, username, nom, role, action,
@@ -18,6 +46,14 @@ async function logSession(userId, username, nom, role, action, ip) {
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
+    if (!isAllowedIp(req.ip)) {
+      console.warn(`[WiFi] Tentative bloquée depuis ${normalizeIp(req.ip)}`);
+      return res.status(403).json({
+        error: 'wifi_restricted',
+        message: "Accès refusé : connectez-vous au réseau Wi-Fi de l'entreprise",
+      });
+    }
+
     const { username, password } = req.body;
     if (!username || !password) {
       return res.status(400).json({ error: 'Identifiants requis' });

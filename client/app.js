@@ -1801,7 +1801,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (data.token) {
         await loginFlow(data.token, data.user);
       } else {
-        err.textContent = data.error || 'Identifiants invalides';
+        err.textContent = data.error === 'wifi_restricted'
+          ? '⚠️ Accès refusé : vous devez être connecté au Wi-Fi de l\'entreprise'
+          : (data.message || data.error || 'Identifiants invalides');
         err.style.display = 'block';
       }
     } catch {
