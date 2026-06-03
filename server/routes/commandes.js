@@ -211,12 +211,35 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur'), async (req,
     const ref = await db.collection('commandes').add(data);
     invalidate();
 
+    // Décrémenter quantiteRestante dans stocks_plats pour chaque article commandé
+    const today = now.toISOString().split('T')[0];
+    const epuises = [];
+    for (const item of mappedItems) {
+      if (!item.menuItemId) continue;
+      const stockRef = db.collection('stocks_plats').doc(`${item.menuItemId}_${today}`);
+      const stockDoc = await stockRef.get();
+      if (stockDoc.exists) {
+        const newRestante = Math.max(0, stockDoc.data().quantiteRestante - item.quantite);
+        await stockRef.update({ quantiteRestante: newRestante, updatedAt: now.toISOString() });
+        if (newRestante === 0) epuises.push(item.nom);
+      }
+    }
+
     pushNotification({
       type: 'info', icon: 'utensils',
       titre: `Nouvelle commande ${numero}`,
       message: `${items.length} article(s) – Total: ${total.toLocaleString('fr-FR')} FCFA`,
       createdBy: req.user.username,
     });
+
+    if (epuises.length > 0) {
+      pushNotification({
+        type: 'danger', icon: 'exclamation-circle',
+        titre: '⚠️ Stock épuisé',
+        message: `Plus de stock : ${epuises.join(', ')}`,
+        createdBy: req.user.username,
+      });
+    }
 
     res.status(201).json({ id: ref.id, ...data });
   } catch (err) {

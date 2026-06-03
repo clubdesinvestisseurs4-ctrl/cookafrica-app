@@ -1335,15 +1335,16 @@ async function loadStocksPlats() {
   tbody.innerHTML = dishes.map(m => {
     const ps = platsMap[m.id];
     const isFromPrev = !!ps?.fromPreviousDate;
+    const isBoisson  = m.categorie === 'Boissons';
     const prepare  = ps ? ps.quantitePrepare  : 0;
-    // Pour un jour sans données, quantiteRestante = quantitePrepare (journée fraîche)
+    // Pour un jour sans données : Boissons reportent leur quantiteRestante, autres partent à 0
     const restante = (ps && !isFromPrev) ? ps.quantiteRestante : prepare;
     const pct = prepare > 0 ? Math.round((restante / prepare) * 100) : 0;
     const etatColor = isFromPrev && prepare > 0 ? 'var(--gray)'
       : restante === 0 && prepare > 0 ? 'var(--danger)'
       : restante <= prepare * 0.3 ? 'var(--warning)'
       : 'var(--success)';
-    const etatLabel = isFromPrev && prepare > 0 ? '📋 Précédent'
+    const etatLabel = isFromPrev && prepare > 0 ? '📋 Report J-1'
       : restante === 0 && prepare > 0 ? '❌ Épuisé'
       : restante <= prepare * 0.3 && prepare > 0 ? '⚠️ Presque fini'
       : prepare === 0 ? '—' : '✅ Disponible';
@@ -1353,12 +1354,25 @@ async function loadStocksPlats() {
       <td style="color:var(--gray);font-size:.82rem">${m.categorie}</td>
       <td>
         <input type="number" min="0" class="plats-qty-input" id="plat-qty-${m.id}"
-          value="${prepare}" data-menu-id="${m.id}" data-nom="${m.nom}" data-categorie="${m.categorie}">
+          value="${prepare}" data-menu-id="${m.id}" data-nom="${m.nom}" data-categorie="${m.categorie}"
+          data-has-existing="${ps && !isFromPrev ? '1' : ''}">
       </td>
       <td><strong style="color:${etatColor}">${prepare > 0 ? (isFromPrev ? prepare : restante) : '—'}</strong>${prepare > 0 && !isFromPrev ? ` <small style="color:var(--gray)">(${pct}%)</small>` : ''}</td>
       <td><span style="color:${etatColor};font-weight:600">${etatLabel}</span></td>
     </tr>`;
   }).join('');
+
+  // Bannière d'alerte pour les stocks épuisés du jour (uniquement les données du jour)
+  const epuises = (platStocks || []).filter(p => !p.fromPreviousDate && p.quantiteRestante === 0 && p.quantitePrepare > 0);
+  const banner = document.getElementById('plats-alert-banner');
+  if (banner) {
+    if (epuises.length > 0) {
+      banner.style.display = '';
+      banner.innerHTML = `<i class="fas fa-exclamation-circle"></i> Stock épuisé : ${epuises.map(p => `<strong>${p.nom}</strong>`).join(', ')}`;
+    } else {
+      banner.style.display = 'none';
+    }
+  }
 }
 
 async function saveStocksPlats() {
@@ -1367,7 +1381,10 @@ async function saveStocksPlats() {
   const plats = [];
   inputs.forEach(inp => {
     const qty = parseInt(inp.value, 10);
-    if (!isNaN(qty) && qty > 0) {
+    const isBoisson = inp.dataset.categorie === 'Boissons';
+    const hasExisting = inp.dataset.hasExisting === '1';
+    // Sauvegarder si qty > 0, ou si Boisson avec données existantes (permet d'enregistrer "épuisé" = 0)
+    if (!isNaN(qty) && (qty > 0 || (isBoisson && hasExisting))) {
       plats.push({
         menuItemId: inp.dataset.menuId,
         nom: inp.dataset.nom,

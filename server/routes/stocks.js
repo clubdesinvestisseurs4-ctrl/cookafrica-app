@@ -91,18 +91,38 @@ router.get('/plats', authenticateToken, async (req, res) => {
       return res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }
 
-    // Aucune donnée pour cette date — retourne la plus récente par article de menu
+    // Nouveau jour — seules les Boissons sont reportées (non périssables)
+    // Plats et Accompagnements se réinitialisent à zéro chaque jour
     const allSnap = await db.collection('stocks_plats').get();
     const latestByItem = {};
     allSnap.docs.forEach(doc => {
       const data = doc.data();
+      if (data.categorie !== 'Boissons') return;
       const existing = latestByItem[data.menuItemId];
       if (!existing || data.date > existing.date) {
-        latestByItem[data.menuItemId] = { id: doc.id, ...data, fromPreviousDate: true };
+        latestByItem[data.menuItemId] = {
+          id: doc.id, ...data,
+          quantitePrepare: data.quantiteRestante, // Stock restant = nouveau point de départ
+          fromPreviousDate: true,
+        };
       }
     });
 
     res.json(Object.values(latestByItem));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/stocks/plats/alerts?date=YYYY-MM-DD
+router.get('/plats/alerts', authenticateToken, async (req, res) => {
+  try {
+    const date = req.query.date || new Date().toISOString().split('T')[0];
+    const snap = await db.collection('stocks_plats').where('date', '==', date).get();
+    const alerts = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(p => p.quantiteRestante === 0 && p.quantitePrepare > 0);
+    res.json(alerts);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -117,6 +137,7 @@ router.post('/plats', authenticateToken, requireRole('admin'), async (req, res) 
     }
     const dateStr = date || new Date().toISOString().split('T')[0];
     const now = new Date().toISOString();
+    const epuises = [];
 
     for (const plat of plats) {
       // ID composé déterministe : évite les requêtes composées (pas d'index requis)
@@ -124,27 +145,32 @@ router.post('/plats', authenticateToken, requireRole('admin'), async (req, res) 
       const docRef = db.collection('stocks_plats').doc(docId);
       const existing = await docRef.get();
 
+      let newRestante;
       if (existing.exists) {
         const data = existing.data();
         const consomme = data.quantitePrepare - data.quantiteRestante;
+        newRestante = Math.max(0, plat.quantitePrepare - consomme);
         await docRef.update({
           quantitePrepare: plat.quantitePrepare,
-          quantiteRestante: Math.max(0, plat.quantitePrepare - consomme),
+          quantiteRestante: newRestante,
           nom: plat.nom,
           updatedAt: now,
         });
       } else {
+        newRestante = plat.quantitePrepare;
         await docRef.set({
           menuItemId: plat.menuItemId,
           nom: plat.nom,
           categorie: plat.categorie || '',
           date: dateStr,
           quantitePrepare: plat.quantitePrepare,
-          quantiteRestante: plat.quantitePrepare,
+          quantiteRestante: newRestante,
           createdAt: now,
           updatedAt: now,
         });
       }
+
+      if (newRestante === 0 && plat.quantitePrepare > 0) epuises.push(plat.nom);
     }
 
     pushNotification({
@@ -154,7 +180,16 @@ router.post('/plats', authenticateToken, requireRole('admin'), async (req, res) 
       createdBy: req.user.username,
     });
 
-    res.json({ message: `Stock de ${plats.length} plat(s) enregistré`, date: dateStr });
+    if (epuises.length > 0) {
+      pushNotification({
+        type: 'danger', icon: 'exclamation-circle',
+        titre: '⚠️ Stock épuisé',
+        message: `Plus de stock : ${epuises.join(', ')}`,
+        createdBy: req.user.username,
+      });
+    }
+
+    res.json({ message: `Stock de ${plats.length} plat(s) enregistré`, date: dateStr, epuises });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
