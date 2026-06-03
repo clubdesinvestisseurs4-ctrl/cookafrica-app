@@ -1334,20 +1334,28 @@ async function loadStocksPlats() {
 
   tbody.innerHTML = dishes.map(m => {
     const ps = platsMap[m.id];
+    const isFromPrev = !!ps?.fromPreviousDate;
     const prepare  = ps ? ps.quantitePrepare  : 0;
-    const restante = ps ? ps.quantiteRestante : 0;
+    // Pour un jour sans données, quantiteRestante = quantitePrepare (journée fraîche)
+    const restante = (ps && !isFromPrev) ? ps.quantiteRestante : prepare;
     const pct = prepare > 0 ? Math.round((restante / prepare) * 100) : 0;
-    const etatColor = restante === 0 && prepare > 0 ? 'var(--danger)' : restante <= prepare * 0.3 ? 'var(--warning)' : 'var(--success)';
-    const etatLabel = restante === 0 && prepare > 0 ? '❌ Épuisé' : restante <= prepare * 0.3 && prepare > 0 ? '⚠️ Presque fini' : prepare === 0 ? '—' : '✅ Disponible';
+    const etatColor = isFromPrev && prepare > 0 ? 'var(--gray)'
+      : restante === 0 && prepare > 0 ? 'var(--danger)'
+      : restante <= prepare * 0.3 ? 'var(--warning)'
+      : 'var(--success)';
+    const etatLabel = isFromPrev && prepare > 0 ? '📋 Précédent'
+      : restante === 0 && prepare > 0 ? '❌ Épuisé'
+      : restante <= prepare * 0.3 && prepare > 0 ? '⚠️ Presque fini'
+      : prepare === 0 ? '—' : '✅ Disponible';
     return `
-    <tr>
+    <tr${isFromPrev ? ' style="opacity:.85"' : ''}>
       <td><strong>${m.nom}</strong></td>
       <td style="color:var(--gray);font-size:.82rem">${m.categorie}</td>
       <td>
         <input type="number" min="0" class="plats-qty-input" id="plat-qty-${m.id}"
           value="${prepare}" data-menu-id="${m.id}" data-nom="${m.nom}" data-categorie="${m.categorie}">
       </td>
-      <td><strong style="color:${etatColor}">${prepare > 0 ? restante : '—'}</strong>${prepare > 0 ? ` <small style="color:var(--gray)">(${pct}%)</small>` : ''}</td>
+      <td><strong style="color:${etatColor}">${prepare > 0 ? (isFromPrev ? prepare : restante) : '—'}</strong>${prepare > 0 && !isFromPrev ? ` <small style="color:var(--gray)">(${pct}%)</small>` : ''}</td>
       <td><span style="color:${etatColor};font-weight:600">${etatLabel}</span></td>
     </tr>`;
   }).join('');
@@ -1359,7 +1367,7 @@ async function saveStocksPlats() {
   const plats = [];
   inputs.forEach(inp => {
     const qty = parseInt(inp.value, 10);
-    if (!isNaN(qty) && qty >= 0) {
+    if (!isNaN(qty) && qty > 0) {
       plats.push({
         menuItemId: inp.dataset.menuId,
         nom: inp.dataset.nom,

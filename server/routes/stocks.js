@@ -86,7 +86,23 @@ router.get('/plats', authenticateToken, async (req, res) => {
   try {
     const date = req.query.date || new Date().toISOString().split('T')[0];
     const snap = await db.collection('stocks_plats').where('date', '==', date).get();
-    res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+    if (!snap.empty) {
+      return res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }
+
+    // Aucune donnée pour cette date — retourne la plus récente par article de menu
+    const allSnap = await db.collection('stocks_plats').get();
+    const latestByItem = {};
+    allSnap.docs.forEach(doc => {
+      const data = doc.data();
+      const existing = latestByItem[data.menuItemId];
+      if (!existing || data.date > existing.date) {
+        latestByItem[data.menuItemId] = { id: doc.id, ...data, fromPreviousDate: true };
+      }
+    });
+
+    res.json(Object.values(latestByItem));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -228,12 +228,15 @@ Sinon, copier manuellement le contenu de `firestore.rules` et `firestore.indexes
 
 ## Comptes par défaut
 
-| Rôle | Identifiant | Mot de passe |
-|------|-------------|-------------|
-| Directeur | `admin` | `Admincookaf@2026!` |
-| Réceptionniste | `receptio` | `Receptcookaf@2026!` |
-| Cuisinier | `cuisinier` | `Cuisincookaf@2026!` |
-| barman    |  `barman`   | `Barmancookaf@2026!` |
+
+Identifiant	Mot de passe	Rôle
+
+admin	Admincookaf@2026!	Admin
+caisse	Caissecookaf@2026!	Caissière
+serve	Serveurcookaf@2026!	Serveur
+cuisinier	Cuisincookaf@2026!	Cuisinière
+barman	Barmancookaf@2026!	Barman
+
 
 > **Changer ces mots de passe avant le déploiement en production.**  
 > Modifier les valeurs dans `server/routes/auth.js` (tableau `utilisateurs`) avant d'appeler `/api/auth/seed`.
