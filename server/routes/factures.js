@@ -2,7 +2,8 @@ const express = require('express');
 const { db } = require('../firebase-admin');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { pushNotification } = require('../utils/notifications');
-const cache = require('../utils/cache');
+const cache    = require('../utils/cache');
+const eventBus = require('../utils/eventBus');
 
 const router = express.Router();
 
@@ -112,6 +113,8 @@ router.post('/', authenticateToken, requireRole('admin', 'caissiere'), async (re
 
     const ref = await db.collection('factures').add(data);
     invalidate();
+    eventBus.emit('factures');
+    eventBus.emit('commandes');
 
     pushNotification({
       type: 'success', icon: 'receipt',
@@ -148,6 +151,9 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere'), asy
     await docRef.update(update);
     invalidate();
     cache.del('commandes:list');
+    eventBus.emit('factures');
+    eventBus.emit('commandes');
+    eventBus.emit('stocks');
 
     // Déduire les articles du stock journalier
     const factureDate = facture.date || now.toISOString().split('T')[0];

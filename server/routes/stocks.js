@@ -2,6 +2,7 @@ const express = require('express');
 const { db } = require('../firebase-admin');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { pushNotification } = require('../utils/notifications');
+const eventBus = require('../utils/eventBus');
 
 const router = express.Router();
 
@@ -75,6 +76,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), async (req, res) => 
     });
 
     _alertsCache = null;
+    eventBus.emit('stocks');
     res.json({ id: req.params.id, ...update });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -189,6 +191,7 @@ router.post('/plats', authenticateToken, requireRole('admin'), async (req, res) 
       });
     }
 
+    eventBus.emit('stocks');
     res.json({ message: `Stock de ${plats.length} plat(s) enregistré`, date: dateStr, epuises });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -2,7 +2,8 @@ const express = require('express');
 const { db } = require('../firebase-admin');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { pushNotification } = require('../utils/notifications');
-const cache = require('../utils/cache');
+const cache    = require('../utils/cache');
+const eventBus = require('../utils/eventBus');
 
 const router = express.Router();
 
@@ -210,6 +211,7 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur'), async (req,
 
     const ref = await db.collection('commandes').add(data);
     invalidate();
+    eventBus.emit('commandes');
 
     // Décrémenter quantiteRestante dans stocks_plats pour chaque article commandé
     const today = now.toISOString().split('T')[0];
@@ -271,6 +273,7 @@ router.put('/:id/bar-pret', authenticateToken, requireRole('admin', 'barman'), a
     if (allBoissons) commandeUpdate.statut = 'prete';
     await docRef.update(commandeUpdate);
     invalidate();
+    eventBus.emit('commandes');
 
     const platsItems = (commande.items || []).filter(i => i.categorie !== 'Boissons');
     const platsReady = platsItems.length === 0 || commande.statut === 'prete';
@@ -319,6 +322,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
 
     await docRef.update(update);
     invalidate();
+    eventBus.emit('commandes');
 
     if (update.statut && update.statut !== existing.statut) {
       const messages = {
@@ -361,6 +365,7 @@ router.delete('/:id', authenticateToken, requireRole('admin'), async (req, res) 
       updatedAt: new Date().toISOString(),
     });
     invalidate();
+    eventBus.emit('commandes');
     res.json({ message: 'Commande annulée' });
   } catch (err) {
     res.status(500).json({ error: err.message });

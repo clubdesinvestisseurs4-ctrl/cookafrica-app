@@ -1,4 +1,5 @@
 const { db } = require('../firebase-admin');
+const eventBus = require('./eventBus');
 
 async function pushNotification({ type, icon, titre, message, createdBy }) {
   try {
@@ -11,6 +12,7 @@ async function pushNotification({ type, icon, titre, message, createdBy }) {
       lu: false,
       createdAt: new Date().toISOString(),
     });
+    eventBus.emit('notifications');
   } catch (_) {
     // Non bloquant
   }

@@ -1,6 +1,6 @@
 const express = require('express');
 const { db } = require('../firebase-admin');
-const { authenticateToken, requireRole } = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -8,8 +8,9 @@ let _notifCache = null;
 let _notifCacheTs = 0;
 const NOTIF_TTL = 60_000;
 
-// GET /api/notifications — 60 dernières (directeur uniquement)
-router.get('/', authenticateToken, requireRole('admin'), async (req, res) => {
+// GET /api/notifications — admin voit tout, les autres reçoivent une liste vide (pas de 403)
+router.get('/', authenticateToken, async (req, res) => {
+  if (req.user.role !== 'admin') return res.json([]);
   try {
     if (_notifCache && Date.now() - _notifCacheTs < NOTIF_TTL) {
       return res.json(_notifCache);
@@ -28,8 +29,9 @@ router.get('/', authenticateToken, requireRole('admin'), async (req, res) => {
 
 function invalidateNotifCache() { _notifCache = null; }
 
-// PATCH /api/notifications/read — marquer toutes comme lues
-router.patch('/read', authenticateToken, requireRole('admin'), async (req, res) => {
+// PATCH /api/notifications/read — silencieux pour les non-admin
+router.patch('/read', authenticateToken, async (req, res) => {
+  if (req.user.role !== 'admin') return res.json({ updated: 0 });
   try {
     const snap = await db.collection('notifications').where('lu', '==', false).limit(100).get();
     if (snap.empty) return res.json({ updated: 0 });

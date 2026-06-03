@@ -1,7 +1,9 @@
 require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
+const cors    = require('cors');
 const rateLimit = require('express-rate-limit');
+const jwt     = require('jsonwebtoken');
+const eventBus = require('./utils/eventBus');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -34,6 +36,31 @@ const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   message: { error: 'Trop de tentatives de connexion.' },
+});
+
+// ─── SSE — temps réel (avant rate-limiter global) ─────────────────────────────
+// Token JWT transmis en query string car EventSource ne supporte pas les headers.
+// Les événements ne transportent que le TYPE (ex. "commandes"), jamais de données.
+app.get('/api/events', (req, res) => {
+  const token = req.query.token;
+  if (!token) return res.status(401).end();
+  try { jwt.verify(token, process.env.JWT_SECRET); } catch { return res.status(401).end(); }
+
+  res.setHeader('Content-Type',  'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection',    'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // désactive la mise en mémoire tampon Nginx
+  res.flushHeaders();
+
+  res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
+  eventBus.addClient(res);
+
+  // Heartbeat toutes les 25 s — garde la connexion vivante (Render, proxies)
+  const hb = setInterval(() => {
+    try { res.write(': ping\n\n'); } catch { clearInterval(hb); }
+  }, 25_000);
+
+  req.on('close', () => { clearInterval(hb); eventBus.removeClient(res); });
 });
 
 // ─── Routes ───────────────────────────────────────────────────────────────────

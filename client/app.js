@@ -37,10 +37,14 @@ const state = {
   utilisateurs: [],
   panier:    [],
   barFactures: {},
-  notifInterval:   null,
-  cuisineInterval: null,
-  dashInterval:    null,
-  barmanInterval:  null,
+  notifInterval:       null,
+  cuisineInterval:     null,
+  dashInterval:        null,
+  barmanInterval:      null,
+  commandesInterval:   null,
+  facturationInterval: null,
+  eventSource:         null,
+  sseConnected:        false,
 };
 
 // ─── Labels des rôles ─────────────────────────────────
@@ -89,7 +93,7 @@ async function api(path, opts = {}) {
     const tid = setTimeout(() => controller.abort(), 15000);
     const res = await fetch(API + path, { signal: controller.signal, headers, ...opts });
     clearTimeout(tid);
-    if (res.status === 401 || res.status === 403) { logout(); return null; }
+    if (res.status === 401) { logout(); return null; }
     if (!res.ok) return null;
     return res.json();
   } catch {
@@ -156,6 +160,10 @@ function clearIntervals() {
   clearInterval(state.cuisineInterval);
   clearInterval(state.dashInterval);
   clearInterval(state.barmanInterval);
+  clearInterval(state.commandesInterval);
+  clearInterval(state.facturationInterval);
+  if (state.eventSource) { state.eventSource.close(); state.eventSource = null; }
+  state.sseConnected = false;
 }
 
 async function loginFlow(token, user) {
@@ -244,38 +252,117 @@ function updateDateBadge() {
   });
 }
 
-// ─── Polling ────────────────────────────────────────────
+// ─── Temps réel : SSE + fallback polling ───────────────
+
+// Appelé à chaque événement SSE reçu du serveur.
+// Le serveur envoie uniquement le type (ex. "commandes") — jamais de données brutes.
+// Le client rafraîchit sa page courante en appelant l'API (qui tape le cache en mémoire).
+function handleSSEEvent(type) {
+  const page = state.currentPage;
+  if (!page) return;
+
+  if (type === '_reconnect') {
+    // Reconnexion après coupure — resynchroniser la page courante
+    const reloaders = {
+      cuisine:     loadCuisine,
+      barman:      loadBarman,
+      commandes:   loadCommandes,
+      facturation: loadFactures,
+      dashboard:   loadDashboard,
+      stocks:      loadStocks,
+    };
+    reloaders[page]?.();
+    return;
+  }
+
+  if (type === 'commandes') {
+    if      (page === 'cuisine')     loadCuisine();
+    else if (page === 'barman')      loadBarman();
+    else if (page === 'commandes')   loadCommandes();
+    else if (page === 'facturation') loadFactures();
+    else if (page === 'dashboard')   loadDashboard();
+  }
+  if (type === 'factures') {
+    if      (page === 'facturation') loadFactures();
+    else if (page === 'dashboard')   loadDashboard();
+  }
+  if (type === 'stocks') {
+    if (page === 'stocks') loadStocks();
+  }
+  if (type === 'notifications' && state.user?.role === 'admin') {
+    loadNotifBadge();
+  }
+}
+
+function startEventSource() {
+  if (!state.token || state.eventSource) return;
+  const es = new EventSource(`${API}/api/events?token=${encodeURIComponent(state.token)}`);
+  state.eventSource = es;
+
+  es.onmessage = (e) => {
+    try {
+      const { type } = JSON.parse(e.data);
+      if (type === 'connected') {
+        if (state.sseConnected) handleSSEEvent('_reconnect'); // reconnexion
+        state.sseConnected = true;
+        return;
+      }
+      handleSSEEvent(type);
+    } catch {}
+  };
+
+  es.onerror = () => { state.sseConnected = false; };
+  // EventSource se reconnecte automatiquement — pas besoin de logique manuelle
+}
 
 function startPolling() {
   const role = state.user?.role;
   updateDateBadge();
   setInterval(updateDateBadge, 60_000);
 
-  // Dashboard — admin seulement
+  // Démarrer la connexion SSE temps réel (tous les rôles)
+  startEventSource();
+
+  // ── Fallback polling (se déclenche uniquement si SSE manque un événement) ──
+  // Les intervalles sont délibérément longs : le cache en mémoire du serveur
+  // absorbe ces requêtes sans lecture Firebase si rien n'a changé.
+
   if (role === 'admin') {
     state.dashInterval = setInterval(() => {
       if (state.currentPage === 'dashboard') loadDashboard();
     }, 30_000);
   }
 
-  // Cuisine auto-refresh toutes les 20s
   if (role === 'admin' || role === 'cuisiniere') {
     state.cuisineInterval = setInterval(() => {
       if (state.currentPage === 'cuisine') loadCuisine();
-    }, 20_000);
+    }, 30_000);
   }
 
-  // Bar auto-refresh toutes les 20s
   if (role === 'admin' || role === 'barman') {
     state.barmanInterval = setInterval(() => {
       if (state.currentPage === 'barman') loadBarman();
-    }, 20_000);
+    }, 30_000);
+  }
+
+  // Serveur — actualisation commandes (nouveau avec SSE + fallback)
+  if (role === 'admin' || role === 'serveur') {
+    state.commandesInterval = setInterval(() => {
+      if (state.currentPage === 'commandes') loadCommandes();
+    }, 30_000);
+  }
+
+  // Caissière — actualisation facturation (nouveau avec SSE + fallback)
+  if (role === 'admin' || role === 'caissiere') {
+    state.facturationInterval = setInterval(() => {
+      if (state.currentPage === 'facturation') loadFactures();
+    }, 30_000);
   }
 
   // Notifications — admin seulement
   if (role === 'admin') {
     loadNotifBadge();
-    state.notifInterval = setInterval(loadNotifBadge, 25_000);
+    state.notifInterval = setInterval(loadNotifBadge, 60_000);
   }
 }
 
