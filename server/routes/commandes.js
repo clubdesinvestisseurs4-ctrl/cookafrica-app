@@ -28,10 +28,74 @@ async function getNextNumeroFacture() {
   return `FACT-${String(lastNum + 1).padStart(4, '0')}`;
 }
 
-// Génère une facture unifiée (plats + boissons) dès que les deux parties sont prêtes
+// Bon interne cuisine — créé dès que la cuisinière valide (plats uniquement)
+async function generateCuisineSubInvoice(commandeId, commande, validatedByCuisinier, now) {
+  const docRef = db.collection('factures').doc(`cui_${commandeId}`);
+  if ((await docRef.get()).exists) return null; // déjà créé
+
+  const platsItems = (commande.items || []).filter(i => i.categorie !== 'Boissons');
+  if (platsItems.length === 0) return null;
+
+  const data = {
+    numero: `CUI-${commande.numero}`,
+    type: 'cuisine',
+    commandeId,
+    commandeNumero: commande.numero,
+    items: platsItems,
+    tableNumero: commande.tableNumero || '',
+    note: commande.note || '',
+    total: platsItems.reduce((s, i) => s + i.sousTotal, 0),
+    validatedByCuisinier: validatedByCuisinier || '',
+    validatedByCuisinierNom: commande.validatedByCuisinierNom || '',
+    serveurNom: commande.createdByNom || commande.createdBy || '',
+    date: now.toISOString().split('T')[0],
+    createdBy: validatedByCuisinier || '',
+    createdAt: now.toISOString(),
+  };
+
+  await docRef.set(data);
+  cache.del('factures:list');
+  return { id: `cui_${commandeId}`, ...data };
+}
+
+// Bon interne bar — créé dès que le barman valide (boissons uniquement)
+async function generateBarSubInvoice(commandeId, commande, validatedByBarman, now) {
+  const docRef = db.collection('factures').doc(`bar_${commandeId}`);
+  if ((await docRef.get()).exists) return null; // déjà créé
+
+  const boissonsItems = (commande.items || []).filter(i => i.categorie === 'Boissons');
+  if (boissonsItems.length === 0) return null;
+
+  const data = {
+    numero: `BAR-${commande.numero}`,
+    type: 'bar',
+    commandeId,
+    commandeNumero: commande.numero,
+    items: boissonsItems,
+    tableNumero: commande.tableNumero || '',
+    total: boissonsItems.reduce((s, i) => s + i.sousTotal, 0),
+    validatedByBarman: validatedByBarman || '',
+    validatedByBarmanNom: commande.validatedByBarmanNom || '',
+    serveurNom: commande.createdByNom || commande.createdBy || '',
+    date: now.toISOString().split('T')[0],
+    createdBy: validatedByBarman || '',
+    createdAt: now.toISOString(),
+  };
+
+  await docRef.set(data);
+  cache.del('factures:list', 'commandes:bar');
+  return { id: `bar_${commandeId}`, ...data };
+}
+
+// Génère la facture unifiée (paiement) dès que les deux parties sont prêtes
 async function generateCombinedInvoice(commandeId, commande, validatedByCuisinier, validatedByBarman, now) {
-  const existing = await db.collection('factures').where('commandeId', '==', commandeId).limit(1).get();
-  if (!existing.empty) return null; // déjà générée
+  // Vérifier uniquement les factures de paiement (pas les bons internes cuisine/bar)
+  const existingSnap = await db.collection('factures').where('commandeId', '==', commandeId).get();
+  const hasPaymentFact = existingSnap.docs.some(d => {
+    const t = d.data().type;
+    return !t || t === 'facture';
+  });
+  if (hasPaymentFact) return null;
 
   const allItems = commande.items || [];
   if (allItems.length === 0) return null;
@@ -41,6 +105,7 @@ async function generateCombinedInvoice(commandeId, commande, validatedByCuisinie
 
   const data = {
     numero,
+    type: 'facture',
     commandeId,
     commandeNumero: commande.numero,
     items: allItems,
@@ -275,12 +340,16 @@ router.put('/:id/bar-pret', authenticateToken, requireRole('admin', 'barman'), a
     invalidate();
     eventBus.emit('commandes');
 
+    const updatedCommande = { ...commande, ...commandeUpdate };
     const platsItems = (commande.items || []).filter(i => i.categorie !== 'Boissons');
     const platsReady = platsItems.length === 0 || commande.statut === 'prete';
 
+    // Bon interne bar (stocké en BD dès la validation barman)
+    await generateBarSubInvoice(req.params.id, updatedCommande, req.user.username, now);
+
+    // Facture de paiement unifiée (seulement si la cuisine est déjà prête aussi)
     let factureUnifiee = null;
     if (platsReady) {
-      const updatedCommande = { ...commande, ...commandeUpdate };
       factureUnifiee = await generateCombinedInvoice(
         req.params.id,
         updatedCommande,
@@ -337,9 +406,13 @@ router.put('/:id', authenticateToken, async (req, res) => {
       if (update.statut === 'prete') {
         const hasBoissons = (existing.items || []).some(i => i.categorie === 'Boissons');
         const boissonsReady = !hasBoissons || existing.boissonsStatut === 'prete';
+        const updatedCommande = { ...existing, ...update };
 
+        // Bon interne cuisine (stocké en BD dès la validation cuisinière)
+        await generateCuisineSubInvoice(req.params.id, updatedCommande, req.user.username, now);
+
+        // Facture de paiement unifiée (seulement si le bar est déjà prêt aussi)
         if (boissonsReady) {
-          const updatedCommande = { ...existing, ...update };
           await generateCombinedInvoice(
             req.params.id,
             updatedCommande,

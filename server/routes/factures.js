@@ -20,9 +20,13 @@ async function getNextNumeroFacture() {
 }
 
 // GET /api/factures
+// ?type=facture (défaut) → factures de paiement uniquement
+// ?type=cuisine          → bons cuisine uniquement
+// ?type=bar              → bons bar uniquement
+// ?type=all              → tout (paiement + bons internes)
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const { debut, fin, statut } = req.query;
+    const { debut, fin, statut, type } = req.query;
 
     let all = cache.get('factures:list');
     if (!all) {
@@ -35,6 +39,12 @@ router.get('/', authenticateToken, async (req, res) => {
     if (debut)  factures = factures.filter(f => f.date >= debut);
     if (fin)    factures = factures.filter(f => f.date <= fin);
     if (statut) factures = factures.filter(f => f.statut === statut);
+
+    // Filtre par type : par défaut n'affiche que les factures de paiement
+    if (type === 'all')          { /* pas de filtre */ }
+    else if (type === 'cuisine') { factures = factures.filter(f => f.type === 'cuisine'); }
+    else if (type === 'bar')     { factures = factures.filter(f => f.type === 'bar'); }
+    else                         { factures = factures.filter(f => !f.type || f.type === 'facture'); }
 
     res.json(factures);
   } catch (err) {

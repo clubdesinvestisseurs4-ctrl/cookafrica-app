@@ -781,47 +781,63 @@ async function loadFactures() {
   const debut  = document.getElementById('filter-fact-start')?.value || '';
   const fin    = document.getElementById('filter-fact-end')?.value   || '';
   const statut = document.getElementById('filter-fact-statut')?.value || '';
+  const type   = document.getElementById('filter-fact-type')?.value  || '';
 
   let url = '/api/factures?';
   if (debut)  url += `debut=${debut}&`;
   if (fin)    url += `fin=${fin}&`;
-  if (statut) url += `statut=${statut}`;
+  if (statut) url += `statut=${statut}&`;
+  if (type)   url += `type=${type}`;
 
   const factures = await api(url);
   hideLoader();
   if (!factures) return;
   state.factures = factures;
 
+  const isBonus = type === 'cuisine' || type === 'bar';
   const tbody = document.getElementById('factures-tbody');
+
   if (factures.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--gray)">Aucune facture</td></tr>';
-  } else {
-    tbody.innerHTML = factures.map(f => {
-      const nbArticles = (f.items || []).length;
-      const canPay     = f.statut === 'partielle';
-      return `
-      <tr>
-        <td><strong>${f.numero}</strong></td>
-        <td style="font-size:.8rem">${fmtDateOnly(f.date)}</td>
-        <td style="font-size:.82rem;color:var(--gray)">${f.commandeNumero || '—'}</td>
-        <td style="font-size:.82rem">${nbArticles} article(s)</td>
-        <td><strong>${fmt(f.total)} FCFA</strong></td>
-        <td style="color:${f.reste > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:700">${fmt(f.reste)} FCFA</td>
-        <td style="font-size:.82rem;color:var(--gray)">${f.modePaiement || '—'}</td>
-        <td>${badgeStatus(f.statut)}</td>
-        <td>
-          <div style="display:flex;gap:6px">
-            <button class="btn btn-secondary btn-sm" onclick="aperçuFacture('${f.id}')">
-              <i class="fas fa-print"></i>
-            </button>
-            ${canPay ? `<button class="btn btn-success btn-sm" onclick="openPayFacture('${f.id}','${fmt(f.reste)}')">
-              <i class="fas fa-check"></i> Payer
-            </button>` : ''}
-          </div>
-        </td>
-      </tr>`;
-    }).join('');
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--gray)">Aucune facture</td></tr>`;
+    return;
   }
+
+  tbody.innerHTML = factures.map(f => {
+    const nbArticles = (f.items || []).length;
+    const fType      = f.type || 'facture';
+    const isPayFact  = !f.type || f.type === 'facture';
+    const canPay     = isPayFact && f.statut === 'partielle';
+
+    const typeBadge = fType === 'cuisine'
+      ? `<span style="background:#FFF3E0;color:#E65100;border:1px solid #FFCC02;border-radius:12px;padding:2px 8px;font-size:.72rem;font-weight:600"><i class="fas fa-fire"></i> Cuisine</span>`
+      : fType === 'bar'
+      ? `<span style="background:#E3F2FD;color:#1565C0;border:1px solid #90CAF9;border-radius:12px;padding:2px 8px;font-size:.72rem;font-weight:600"><i class="fas fa-wine-glass-alt"></i> Bar</span>`
+      : '';
+
+    const printAction = fType === 'cuisine'
+      ? `<button class="btn btn-secondary btn-sm" title="Bon cuisine" onclick="aperçuFactureCuisine('${f.id}')"><i class="fas fa-print"></i></button>`
+      : fType === 'bar'
+      ? `<button class="btn btn-secondary btn-sm" title="Bon bar" onclick="aperçuBonBar('${f.id}')"><i class="fas fa-print"></i></button>`
+      : `<button class="btn btn-secondary btn-sm" onclick="aperçuFacture('${f.id}')"><i class="fas fa-print"></i></button>`;
+
+    return `
+    <tr>
+      <td><strong>${f.numero}</strong>${typeBadge ? ' ' + typeBadge : ''}</td>
+      <td style="font-size:.8rem">${fmtDateOnly(f.date)}</td>
+      <td style="font-size:.82rem;color:var(--gray)">${f.commandeNumero || '—'}</td>
+      <td style="font-size:.82rem">${nbArticles} article(s)</td>
+      <td><strong>${fmt(f.total)} FCFA</strong></td>
+      <td style="color:${isPayFact && f.reste > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:700">${isPayFact ? fmt(f.reste) + ' FCFA' : '—'}</td>
+      <td style="font-size:.82rem;color:var(--gray)">${f.modePaiement || '—'}</td>
+      <td>${isPayFact ? badgeStatus(f.statut) : '<span style="color:var(--gray);font-size:.8rem">Bon interne</span>'}</td>
+      <td>
+        <div style="display:flex;gap:6px">
+          ${printAction}
+          ${canPay ? `<button class="btn btn-success btn-sm" onclick="openPayFacture('${f.id}','${fmt(f.reste)}')"><i class="fas fa-check"></i> Payer</button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
 }
 
 function openNewFacture() {
@@ -1051,6 +1067,60 @@ window.aperçuFactureCuisine = async (id) => {
         ${f.caissiereName ? `<p><i class="fas fa-user-tie"></i> Caissière : <strong>${f.caissiereName}</strong></p>` : ''}
         ${f.validatedByCuisinier ? `<p><i class="fas fa-fire" style="color:var(--primary)"></i> Cuisinier : <strong>${f.validatedByCuisinierNom || f.validatedByCuisinier}</strong></p>` : ''}
         <p style="margin-top:6px;text-align:center;font-style:italic">Bon interne – Usage cuisine uniquement</p>
+        <p style="font-size:.7rem;text-align:center;margin-top:4px">Cook Africa – Le restaurant qui rassemble</p>
+      </div>
+    </div>`;
+
+  openModal('apercu-facture');
+};
+
+// Aperçu + impression du bon bar depuis un ID de facture BD (bons stockés en BD)
+window.aperçuBonBar = async (id) => {
+  let f = state.factures.find(x => x.id === id);
+  if (!f) {
+    const res = await api(`/api/factures/${id}`);
+    if (!res) return;
+    f = res;
+  }
+
+  const logoUrl = window.location.origin + '/logo-cookafrica.png';
+  const boissonsItems = (f.items || []).filter(i => i.categorie === 'Boissons');
+  if (boissonsItems.length === 0) { toast('Aucune boisson dans ce bon', 'warning'); return; }
+  const totalBar = boissonsItems.reduce((s, i) => s + i.sousTotal, 0);
+
+  const rows = boissonsItems.map(i => `
+    <tr>
+      <td>${i.nom}</td>
+      <td style="text-align:center">${i.quantite}</td>
+      <td style="text-align:right">${fmt(i.prix)}</td>
+      <td style="text-align:right"><strong>${fmt(i.sousTotal)}</strong></td>
+    </tr>`).join('');
+
+  document.getElementById('facture-print-area').innerHTML = `
+    <div class="facture-print">
+      <div class="facture-print-header">
+        <img src="${logoUrl}" alt="Cook Africa" style="height:60px;margin-bottom:6px;display:block;margin-left:auto;margin-right:auto"
+             onerror="this.style.display='none'">
+        <p style="margin-top:4px;font-size:1rem;color:#1565C0"><strong><i class="fas fa-wine-glass-alt"></i> BON BAR</strong></p>
+        <p style="font-size:.78rem;color:var(--gray)">Réf. : ${f.numero}</p>
+        <p style="font-size:.78rem;color:var(--gray)">Date : ${fmtDateOnly(f.date)}</p>
+        ${f.tableNumero ? `<p style="font-size:.78rem"><strong>Table :</strong> ${f.tableNumero}</p>` : ''}
+        ${f.commandeNumero ? `<p style="font-size:.78rem;color:var(--gray)">Commande : ${f.commandeNumero}</p>` : ''}
+      </div>
+      <table class="facture-items">
+        <thead><tr><th>Boisson</th><th>Qté</th><th>Prix unit.</th><th>Sous-total</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <table class="facture-totaux">
+        <tr class="facture-total-final">
+          <td><strong>TOTAL BAR</strong></td>
+          <td><strong>${fmt(totalBar)} FCFA</strong></td>
+        </tr>
+      </table>
+      <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border);font-size:.78rem;color:var(--gray)">
+        ${f.serveurNom ? `<p><i class="fas fa-user"></i> Servi par : <strong>${f.serveurNom}</strong></p>` : ''}
+        ${f.validatedByBarman ? `<p><i class="fas fa-wine-glass-alt" style="color:#1565C0"></i> Barman : <strong>${f.validatedByBarmanNom || f.validatedByBarman}</strong></p>` : ''}
+        <p style="margin-top:6px;text-align:center;font-style:italic">Bon interne – Usage bar uniquement</p>
         <p style="font-size:.7rem;text-align:center;margin-top:4px">Cook Africa – Le restaurant qui rassemble</p>
       </div>
     </div>`;
