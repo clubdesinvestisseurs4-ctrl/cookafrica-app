@@ -2209,12 +2209,29 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('wifi-manual-ip')?.addEventListener('keydown', e => { if (e.key === 'Enter') addManualWifiIp(); });
 
   // ── Restauration session ──
+  // Vérifie le token côté serveur avant de restaurer la session.
+  // Évite que le navigateur normal reste bloqué avec un token expiré.
   const savedToken = localStorage.getItem('ca_token');
   const savedUser  = localStorage.getItem('ca_user');
   if (savedToken && savedUser) {
-    try {
-      loginFlow(savedToken, JSON.parse(savedUser));
-    } catch { logout(); }
+    state.token = savedToken;
+    const me = await api('/api/auth/me');
+    if (me?.id) {
+      try {
+        loginFlow(savedToken, JSON.parse(savedUser));
+      } catch {
+        logout();
+        hideLoader();
+      }
+    } else {
+      // Token expiré ou invalide — api() a déjà appelé logout() si 401
+      if (state.token) {
+        state.token = null;
+        localStorage.removeItem('ca_token');
+        localStorage.removeItem('ca_user');
+      }
+      hideLoader();
+    }
   } else {
     hideLoader();
   }

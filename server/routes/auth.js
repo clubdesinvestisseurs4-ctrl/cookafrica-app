@@ -53,7 +53,7 @@ router.post('/login', async (req, res) => {
     const effectiveRole = ROLE_MIGRATION[user.role] || user.role;
 
     // Restriction Wi-Fi : l'admin peut se connecter depuis n'importe quel réseau
-    if (effectiveRole !== 'admin' && !isAllowedIp(req)) {
+    if (effectiveRole !== 'admin' && !(await isAllowedIp(req))) {
       const clientIp = getClientIp(req);
       console.warn(`[WiFi] Tentative bloquée depuis ${clientIp} (X-Forwarded-For: ${req.headers['x-forwarded-for'] || 'absent'})`);
       return res.status(403).json({
@@ -256,6 +256,12 @@ router.delete('/utilisateurs/:id', authenticateToken, requireRole('admin'), asyn
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// GET /api/auth/me — vérifie si le token est valide et retourne l'utilisateur courant.
+// Utilisé par le client pour valider un token sauvegardé avant de restaurer la session.
+router.get('/me', authenticateToken, (req, res) => {
+  res.json({ id: req.user.id, username: req.user.username, nom: req.user.nom, role: req.user.role });
 });
 
 // GET /api/auth/check-wifi — vérifie si le client est sur le réseau Wi-Fi autorisé.
