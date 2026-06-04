@@ -831,6 +831,13 @@ async function loadFactures() {
     return;
   }
 
+  // Afficher le bouton de réparation s'il existe des numéros invalides
+  const repairBtn = document.getElementById('btn-repair-numeros');
+  if (repairBtn && state.user?.role === 'admin') {
+    const hasBroken = factures.some(f => (!f.type || f.type === 'facture') && f.numero && f.numero.includes('NaN'));
+    repairBtn.style.display = hasBroken ? 'inline-flex' : 'none';
+  }
+
   tbody.innerHTML = factures.map(f => {
     const nbArticles = (f.items || []).length;
     const fType      = f.type || 'facture';
@@ -865,6 +872,17 @@ async function loadFactures() {
       </td>
     </tr>`;
   }).join('');
+}
+
+async function repairNumeros() {
+  if (!confirm('Réparer les numéros de facture invalides (FACT-0NaN) en base ? Cette action est irréversible.')) return;
+  showLoader();
+  const res = await api('/api/factures/repair-numeros', { method: 'POST', body: '{}' });
+  hideLoader();
+  if (!res) { toast('Erreur lors de la réparation', 'error'); return; }
+  toast(res.message || 'Réparation terminée', 'success');
+  document.getElementById('btn-repair-numeros').style.display = 'none';
+  loadFactures();
 }
 
 function openNewFacture() {
@@ -2182,6 +2200,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-confirm-pay-facture').addEventListener('click', confirmPayFacture);
   document.getElementById('btn-filter-fact').addEventListener('click', loadFactures);
   document.getElementById('btn-print-facture').addEventListener('click', printFacture);
+  document.getElementById('btn-repair-numeros')?.addEventListener('click', repairNumeros);
 
   // ── Menu ──
   document.getElementById('btn-new-plat').addEventListener('click', openNewPlat);

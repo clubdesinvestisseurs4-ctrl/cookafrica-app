@@ -75,6 +75,49 @@ router.get('/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// POST /api/factures/repair-numeros — corrige les numéros invalides (FACT-0NaN) en base
+router.post('/repair-numeros', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    const allSnap = await db.collection('factures').orderBy('createdAt', 'asc').get();
+
+    let maxNum = 0;
+    const broken = [];
+
+    allSnap.docs.forEach(doc => {
+      const data = doc.data();
+      // Ignorer les bons cuisine/bar — ils ont leurs propres formats
+      if (data.type && data.type !== 'facture') return;
+      const numero = data.numero || '';
+      if (!numero.startsWith('FACT-')) return;
+      const n = parseInt(numero.slice(5), 10);
+      if (!isNaN(n)) {
+        if (n > maxNum) maxNum = n;
+      } else {
+        broken.push({ id: doc.id, oldNumero: numero });
+      }
+    });
+
+    if (broken.length === 0) {
+      return res.json({ message: 'Aucune facture à réparer.', details: [] });
+    }
+
+    const batch = db.batch();
+    const details = [];
+    for (const item of broken) {
+      maxNum++;
+      const newNumero = `FACT-${String(maxNum).padStart(4, '0')}`;
+      batch.update(db.collection('factures').doc(item.id), { numero: newNumero });
+      details.push({ id: item.id, ancien: item.oldNumero, nouveau: newNumero });
+    }
+    await batch.commit();
+    invalidate();
+
+    res.json({ message: `${broken.length} facture(s) réparée(s)`, details });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/factures — générer manuellement une facture depuis une commande
 router.post('/', authenticateToken, requireRole('admin', 'caissiere'), async (req, res) => {
   try {
