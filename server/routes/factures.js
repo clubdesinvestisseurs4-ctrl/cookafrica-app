@@ -12,11 +12,18 @@ function invalidate() {
 }
 
 async function getNextNumeroFacture() {
-  const snap = await db.collection('factures').orderBy('createdAt', 'desc').limit(1).get();
-  if (snap.empty) return 'FACT-0001';
-  const last = snap.docs[0].data();
-  const lastNum = parseInt((last.numero || 'FACT-0000').split('-')[1] || '0', 10);
-  return `FACT-${String(lastNum + 1).padStart(4, '0')}`;
+  // Scan les 200 derniers documents et trouve le numéro FACT le plus élevé.
+  // Évite le bug où un bon cuisine/bar (CUI-CMD-0001, BAR-CMD-0001) est le
+  // document le plus récent, ce qui faisait parseInt("CMD", 10) → NaN → "FACT-0NaN".
+  const snap = await db.collection('factures').orderBy('createdAt', 'desc').limit(200).get();
+  let maxNum = 0;
+  snap.docs.forEach(doc => {
+    const { numero } = doc.data();
+    if (!numero || !numero.startsWith('FACT-')) return;
+    const n = parseInt(numero.slice(5), 10); // slice(5) = après "FACT-"
+    if (!isNaN(n) && n > maxNum) maxNum = n;
+  });
+  return `FACT-${String(maxNum + 1).padStart(4, '0')}`;
 }
 
 // GET /api/factures
@@ -101,6 +108,7 @@ router.post('/', authenticateToken, requireRole('admin', 'caissiere'), async (re
 
     const data = {
       numero,
+      type: 'facture',
       commandeId,
       commandeNumero: commande.numero,
       items: allItems,
