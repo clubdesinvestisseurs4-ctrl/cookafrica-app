@@ -1904,6 +1904,20 @@ async function addCurrentWifiIp() {
   else toast(res?.error || 'Erreur', 'error');
 }
 
+async function addManualWifiIp() {
+  const input = document.getElementById('wifi-manual-ip');
+  const ip = input?.value.trim();
+  if (!ip) { toast('Saisissez une adresse IP', 'warning'); return; }
+  const res = await api('/api/wifi-config/add', { method: 'POST', body: JSON.stringify({ ip }) });
+  if (res?.message) {
+    toast(`${ip} ajoutée`, 'success');
+    if (input) input.value = '';
+    loadWifiConfig();
+  } else {
+    toast(res?.error || 'Erreur', 'error');
+  }
+}
+
 window.removeWifiIp = async (ip) => {
   if (!confirm(`Supprimer ${ip} de la liste ?`)) return;
   const res = await api('/api/wifi-config/remove', { method: 'DELETE', body: JSON.stringify({ ip }) });
@@ -2197,6 +2211,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Config Wi-Fi ──
   document.getElementById('wifi-toggle')?.addEventListener('change', toggleWifiRestriction);
   document.getElementById('btn-add-wifi-ip')?.addEventListener('click', addCurrentWifiIp);
+  document.getElementById('btn-add-wifi-manual-ip')?.addEventListener('click', addManualWifiIp);
+  document.getElementById('wifi-manual-ip')?.addEventListener('keydown', e => { if (e.key === 'Enter') addManualWifiIp(); });
 
   // ── Restauration session ──
   const savedToken = localStorage.getItem('ca_token');
