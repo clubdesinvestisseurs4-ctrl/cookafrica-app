@@ -43,6 +43,7 @@ const state = {
   barmanInterval:      null,
   commandesInterval:   null,
   facturationInterval: null,
+  wifiInterval:        null,
   eventSource:         null,
   sseConnected:        false,
 };
@@ -94,6 +95,13 @@ async function api(path, opts = {}, _retry = false) {
     const res = await fetch(API + path, { signal: controller.signal, headers, ...opts });
     clearTimeout(tid);
     if (res.status === 401) { logout(); return null; }
+    if (res.status === 403) {
+      try {
+        const body = await res.json();
+        if (body.error === 'wifi_restricted') { wifiLogout(); return null; }
+      } catch {}
+      return null;
+    }
     if (res.status === 503 && !_retry) {
       await wakeUpServer();
       return api(path, opts, true);
@@ -159,6 +167,22 @@ function logout() {
   document.getElementById('login-screen').style.display = 'flex';
 }
 
+function wifiLogout() {
+  toast('Vous n\'êtes plus sur le Wi-Fi de l\'entreprise. Déconnexion automatique.', 'warning');
+  state.token = null; state.user = null;
+  localStorage.removeItem('ca_token');
+  localStorage.removeItem('ca_user');
+  clearIntervals();
+  document.getElementById('app-screen').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+}
+
+async function checkWifi() {
+  if (!state.token || state.user?.role === 'admin') return;
+  await api('/api/auth/check-wifi');
+  // Si hors Wi-Fi, api() détecte le 403 wifi_restricted et appelle wifiLogout().
+}
+
 function clearIntervals() {
   clearInterval(state.notifInterval);
   clearInterval(state.cuisineInterval);
@@ -166,6 +190,7 @@ function clearIntervals() {
   clearInterval(state.barmanInterval);
   clearInterval(state.commandesInterval);
   clearInterval(state.facturationInterval);
+  clearInterval(state.wifiInterval);
   if (state.eventSource) { state.eventSource.close(); state.eventSource = null; }
   state.sseConnected = false;
 }
@@ -242,7 +267,7 @@ function navigateTo(page) {
     rapports:     () => {},
     sessions:     loadSessions,
     barman:       loadBarman,
-    utilisateurs: loadUtilisateurs,
+    utilisateurs: () => { loadUtilisateurs(); loadWifiConfig(); },
   };
   if (loaders[page]) loaders[page]();
 }
@@ -367,6 +392,11 @@ function startPolling() {
   if (role === 'admin') {
     loadNotifBadge();
     state.notifInterval = setInterval(loadNotifBadge, 60_000);
+  }
+
+  // Vérification Wi-Fi — non-admin seulement (admin peut se connecter depuis n'importe où)
+  if (role !== 'admin') {
+    state.wifiInterval = setInterval(checkWifi, 30_000);
   }
 }
 
@@ -1827,6 +1857,60 @@ window.toggleUtilisateur = async (id, currentActif) => {
   }
 };
 
+// ─── CONFIG WI-FI ──────────────────────────────────────
+
+async function loadWifiConfig() {
+  const data = await api('/api/wifi-config');
+  if (!data) return;
+
+  const toggle = document.getElementById('wifi-toggle');
+  const status = document.getElementById('wifi-status');
+  const currentIpEl = document.getElementById('wifi-current-ip');
+  const listEl = document.getElementById('wifi-ips-list');
+  if (!toggle || !status || !currentIpEl || !listEl) return;
+
+  toggle.checked = data.enabled;
+  status.textContent = data.enabled ? 'Activée' : 'Désactivée';
+  status.style.color = data.enabled ? 'var(--success)' : 'var(--gray)';
+  currentIpEl.textContent = data.currentIp || '—';
+
+  if (!data.allowedIps || data.allowedIps.length === 0) {
+    listEl.innerHTML = '<li style="color:var(--gray);font-size:.83rem">Aucune adresse enregistrée</li>';
+  } else {
+    listEl.innerHTML = data.allowedIps.map(ip => `
+      <li style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
+        <span style="font-family:monospace;font-size:.88rem">${ip}</span>
+        <button class="btn btn-danger btn-sm" onclick="removeWifiIp('${ip}')">
+          <i class="fas fa-trash"></i>
+        </button>
+      </li>`).join('');
+  }
+}
+
+async function toggleWifiRestriction() {
+  const res = await api('/api/wifi-config/toggle', { method: 'PATCH' });
+  if (res?.message) {
+    toast(res.message, res.enabled ? 'success' : 'warning');
+    loadWifiConfig();
+  } else {
+    toast(res?.error || 'Erreur', 'error');
+    loadWifiConfig(); // remettre l'état du toggle
+  }
+}
+
+async function addCurrentWifiIp() {
+  const res = await api('/api/wifi-config/add', { method: 'POST', body: '{}' });
+  if (res?.message) { toast(res.message, 'success'); loadWifiConfig(); }
+  else toast(res?.error || 'Erreur', 'error');
+}
+
+window.removeWifiIp = async (ip) => {
+  if (!confirm(`Supprimer ${ip} de la liste ?`)) return;
+  const res = await api('/api/wifi-config/remove', { method: 'DELETE', body: JSON.stringify({ ip }) });
+  if (res?.message) { toast('Adresse supprimée', 'warning'); loadWifiConfig(); }
+  else toast(res?.error || 'Erreur', 'error');
+};
+
 // ─── SESSIONS ──────────────────────────────────────────
 
 async function loadSessions() {
@@ -2109,6 +2193,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Utilisateurs ──
   document.getElementById('btn-new-utilisateur')?.addEventListener('click', openNewUtilisateur);
   document.getElementById('btn-save-utilisateur')?.addEventListener('click', saveUtilisateur);
+
+  // ── Config Wi-Fi ──
+  document.getElementById('wifi-toggle')?.addEventListener('change', toggleWifiRestriction);
+  document.getElementById('btn-add-wifi-ip')?.addEventListener('click', addCurrentWifiIp);
 
   // ── Restauration session ──
   const savedToken = localStorage.getItem('ca_token');

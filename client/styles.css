@@ -61,6 +61,15 @@ body {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── Toggle Wi-Fi ──────────────────────────────── */
+#wifi-toggle + span::before {
+  content: ''; position: absolute;
+  width: 18px; height: 18px; left: 3px; bottom: 3px;
+  background: white; border-radius: 50%; transition: .3s;
+}
+#wifi-toggle:checked + span { background: var(--success); }
+#wifi-toggle:checked + span::before { transform: translateX(18px); }
+
 /* ── Toast ─────────────────────────────────────── */
 .toast-container {
   position: fixed; bottom: 24px; right: 24px;

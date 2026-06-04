@@ -176,6 +176,7 @@ router.get('/bar', authenticateToken, requireRole('admin', 'barman'), async (req
 
     const active = activeSnap.docs
       .map(d => ({ id: d.id, ...d.data() }))
+      .filter(c => c.statut !== 'annulee')
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     const done = todaySnap.docs
       .map(d => ({ id: d.id, ...d.data() }))

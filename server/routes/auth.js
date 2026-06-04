@@ -5,6 +5,8 @@ const { db } = require('../firebase-admin');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { pushNotification } = require('../utils/notifications');
 
+const { isAllowedIp, getClientIp } = require('../utils/wifi');
+
 const router = express.Router();
 
 // Normalise les anciens noms de rôles vers les nouveaux
@@ -13,44 +15,6 @@ const ROLE_MIGRATION = {
   receptionniste:  'caissiere',
   cuisinier:       'cuisiniere',
 };
-
-// Supprime le préfixe IPv6 ::ffff: pour normaliser les adresses IPv4
-function normalizeIp(ip) {
-  if (ip && ip.startsWith('::ffff:')) return ip.slice(7);
-  return ip || '';
-}
-
-// Vérifie si une IP appartient à un bloc CIDR (ex: 192.168.1.0/24)
-function ipInCidr(ip, cidr) {
-  try {
-    const [range, bits] = cidr.split('/');
-    const mask = ~((1 << (32 - parseInt(bits, 10))) - 1) >>> 0;
-    const toNum = s => s.split('.').reduce((acc, oct) => (acc << 8) + parseInt(oct, 10), 0) >>> 0;
-    return (toNum(ip) & mask) === (toNum(range) & mask);
-  } catch {
-    return false;
-  }
-}
-
-// Récupère la vraie IP du client en lisant X-Forwarded-For
-function getClientIp(req) {
-  const xff = req.headers['x-forwarded-for'];
-  if (xff) {
-    const first = xff.split(',')[0].trim();
-    if (first) return normalizeIp(first);
-  }
-  return normalizeIp(req.ip);
-}
-
-// Retourne true si l'IP est autorisée selon ALLOWED_IPS
-function isAllowedIp(req) {
-  if (process.env.WIFI_RESTRICTION_ENABLED !== 'true') return true;
-  const allowed = (process.env.ALLOWED_IPS || '')
-    .split(',').map(s => s.trim()).filter(Boolean);
-  if (allowed.length === 0) return true;
-  const ip = getClientIp(req);
-  return allowed.some(entry => entry.includes('/') ? ipInCidr(ip, entry) : ip === entry);
-}
 
 async function logSession(userId, username, nom, role, action, ip) {
   await db.collection('sessions').add({
@@ -292,6 +256,13 @@ router.delete('/utilisateurs/:id', authenticateToken, requireRole('admin'), asyn
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// GET /api/auth/check-wifi — vérifie si le client est sur le réseau Wi-Fi autorisé.
+// Utilisé par le client pour la vérification proactive toutes les 30 s.
+// Pour les non-admin, authenticateToken a déjà rejeté la requête si hors Wi-Fi.
+router.get('/check-wifi', authenticateToken, (_req, res) => {
+  res.json({ ok: true });
 });
 
 module.exports = router;

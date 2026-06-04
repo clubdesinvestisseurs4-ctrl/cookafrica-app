@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { isAllowedIp } = require('../utils/wifi');
 
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
@@ -8,11 +9,15 @@ function authenticateToken(req, res, next) {
     return res.status(401).json({ error: 'Token requis' });
   }
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+  jwt.verify(token, process.env.JWT_SECRET, async (err, user) => {
     if (err) {
       return res.status(403).json({ error: 'Token invalide ou expiré' });
     }
     req.user = user;
+    // L'admin peut se connecter depuis n'importe quel réseau.
+    if (user.role !== 'admin' && !(await isAllowedIp(req))) {
+      return res.status(403).json({ error: 'wifi_restricted' });
+    }
     next();
   });
 }
