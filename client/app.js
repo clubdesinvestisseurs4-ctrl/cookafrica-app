@@ -489,24 +489,22 @@ async function loadCommandes() {
       : '';
     return `
     <tr>
-      <td><strong>${c.numero}</strong></td>
-      <td style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
-      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.82rem">${items}</td>
-      <td><strong>${fmt(c.total)} FCFA</strong></td>
-      <td style="color:var(--gray);font-size:.82rem">${c.tableNumero || '—'}</td>
-      <td>${badgeStatus(c.statut)}${boissonsInfo}</td>
-      <td>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button class="btn btn-secondary btn-sm" onclick="viewCommande('${c.id}')">
-            <i class="fas fa-eye"></i>
-          </button>
-          ${canFacture ? `<button class="btn btn-accent btn-sm" onclick="openNewFactureForCmd('${c.id}')">
-            <i class="fas fa-receipt"></i> Facturer
-          </button>` : ''}
-          ${canCancel ? `<button class="btn btn-danger btn-sm" onclick="annulerCommande('${c.id}','${c.numero}')">
-            <i class="fas fa-times"></i>
-          </button>` : ''}
-        </div>
+      <td data-label="N°"><strong>${c.numero}</strong></td>
+      <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
+      <td data-label="Articles" style="font-size:.82rem">${items}</td>
+      <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
+      <td data-label="Table" style="color:var(--gray);font-size:.82rem">${c.tableNumero || '—'}</td>
+      <td data-label="Statut">${badgeStatus(c.statut)}${boissonsInfo}</td>
+      <td data-label="Actions">
+        <button class="btn btn-secondary btn-sm" onclick="viewCommande('${c.id}')">
+          <i class="fas fa-eye"></i>
+        </button>
+        ${canFacture ? `<button class="btn btn-accent btn-sm" onclick="openNewFactureForCmd('${c.id}')">
+          <i class="fas fa-receipt"></i> Facturer
+        </button>` : ''}
+        ${canCancel ? `<button class="btn btn-danger btn-sm" onclick="annulerCommande('${c.id}','${c.numero}')">
+          <i class="fas fa-times"></i>
+        </button>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -852,19 +850,17 @@ async function loadFactures() {
 
     return `
     <tr>
-      <td><strong>${f.numero}</strong>${typeBadge ? ' ' + typeBadge : ''}</td>
-      <td style="font-size:.8rem">${fmtDateOnly(f.date)}</td>
-      <td style="font-size:.82rem;color:var(--gray)">${f.commandeNumero || '—'}</td>
-      <td style="font-size:.82rem">${nbArticles} article(s)</td>
-      <td><strong>${fmt(f.total)} FCFA</strong></td>
-      <td style="color:${isPayFact && f.reste > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:700">${isPayFact ? fmt(f.reste) + ' FCFA' : '—'}</td>
-      <td style="font-size:.82rem;color:var(--gray)">${f.modePaiement || '—'}</td>
-      <td>${isPayFact ? badgeStatus(f.statut) : '<span style="color:var(--gray);font-size:.8rem">Bon interne</span>'}</td>
-      <td>
-        <div style="display:flex;gap:6px">
-          ${printAction}
-          ${canPay ? `<button class="btn btn-success btn-sm" onclick="openPayFacture('${f.id}','${fmt(f.reste)}')"><i class="fas fa-check"></i> Payer</button>` : ''}
-        </div>
+      <td data-label="N°"><strong>${f.numero}</strong>${typeBadge ? ' ' + typeBadge : ''}</td>
+      <td data-label="Date" style="font-size:.8rem">${fmtDateOnly(f.date)}</td>
+      <td data-label="Commande" style="font-size:.82rem;color:var(--gray)">${f.commandeNumero || '—'}</td>
+      <td data-label="Articles" style="font-size:.82rem">${nbArticles} article(s)</td>
+      <td data-label="Total"><strong>${fmt(f.total)} FCFA</strong></td>
+      <td data-label="Reste" style="color:${isPayFact && f.reste > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:700">${isPayFact ? fmt(f.reste) + ' FCFA' : '—'}</td>
+      <td data-label="Paiement" style="font-size:.82rem;color:var(--gray)">${f.modePaiement || '—'}</td>
+      <td data-label="Statut">${isPayFact ? badgeStatus(f.statut) : '<span style="color:var(--gray);font-size:.8rem">Bon interne</span>'}</td>
+      <td data-label="Actions">
+        ${printAction}
+        ${canPay ? `<button class="btn btn-success btn-sm" onclick="openPayFacture('${f.id}','${fmt(f.reste)}')"><i class="fas fa-check"></i> Payer</button>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -1290,11 +1286,11 @@ async function loadBarmanStock() {
     const isBas = s.quantite < s.minimum;
     return `
     <tr style="${isBas ? 'background:#fff5f5' : ''}">
-      <td><strong>${s.nom}</strong></td>
-      <td><strong style="color:${isBas ? 'var(--danger)' : 'var(--dark)'}">${s.quantite}</strong></td>
-      <td style="color:var(--gray)">${s.minimum}</td>
-      <td style="color:var(--gray);font-size:.82rem">${s.unite}</td>
-      <td><span class="badge-status ${isBas ? 'bas' : 'disponible'}">${isBas ? '⚠️ Stock bas' : '✅ OK'}</span></td>
+      <td data-label="Boisson"><strong>${s.nom}</strong></td>
+      <td data-label="Quantité"><strong style="color:${isBas ? 'var(--danger)' : 'var(--dark)'}">${s.quantite}</strong></td>
+      <td data-label="Minimum" style="color:var(--gray)">${s.minimum}</td>
+      <td data-label="Unité" style="color:var(--gray);font-size:.82rem">${s.unite}</td>
+      <td data-label="État"><span class="badge-status ${isBas ? 'bas' : 'disponible'}">${isBas ? '⚠️ Stock bas' : '✅ OK'}</span></td>
     </tr>`;
   }).join('');
 }
@@ -1537,15 +1533,15 @@ async function loadStocksPlats() {
       : prepare === 0 ? '—' : '✅ Disponible';
     return `
     <tr${isFromPrev ? ' style="opacity:.85"' : ''}>
-      <td><strong>${m.nom}</strong></td>
-      <td style="color:var(--gray);font-size:.82rem">${m.categorie}</td>
-      <td>
+      <td data-label="Plat"><strong>${m.nom}</strong></td>
+      <td data-label="Catégorie" style="color:var(--gray);font-size:.82rem">${m.categorie}</td>
+      <td data-label="Préparé">
         <input type="number" min="0" class="plats-qty-input" id="plat-qty-${m.id}"
           value="${prepare}" data-menu-id="${m.id}" data-nom="${m.nom}" data-categorie="${m.categorie}"
           data-has-existing="${ps && !isFromPrev ? '1' : ''}">
       </td>
-      <td><strong style="color:${etatColor}">${prepare > 0 ? (isFromPrev ? prepare : restante) : '—'}</strong>${prepare > 0 && !isFromPrev ? ` <small style="color:var(--gray)">(${pct}%)</small>` : ''}</td>
-      <td><span style="color:${etatColor};font-weight:600">${etatLabel}</span></td>
+      <td data-label="Restant"><strong style="color:${etatColor}">${prepare > 0 ? (isFromPrev ? prepare : restante) : '—'}</strong>${prepare > 0 && !isFromPrev ? ` <small style="color:var(--gray)">(${pct}%)</small>` : ''}</td>
+      <td data-label="État"><span style="color:${etatColor};font-weight:600">${etatLabel}</span></td>
     </tr>`;
   }).join('');
 
@@ -1705,13 +1701,13 @@ async function loadRapport() {
   }
   tbody.innerHTML = data.factures.map(f => `
     <tr>
-      <td><strong>${f.numero}</strong></td>
-      <td style="font-size:.8rem">${fmtDateOnly(f.date)}</td>
-      <td style="font-size:.82rem;color:var(--gray)">${f.commandeNumero || '—'}</td>
-      <td style="font-size:.82rem">${(f.items || []).length} article(s)</td>
-      <td><strong>${fmt(f.total)} FCFA</strong></td>
-      <td style="font-size:.82rem;color:var(--gray)">${f.modePaiement || '—'}</td>
-      <td>${badgeStatus(f.statut)}</td>
+      <td data-label="N°"><strong>${f.numero}</strong></td>
+      <td data-label="Date" style="font-size:.8rem">${fmtDateOnly(f.date)}</td>
+      <td data-label="Commande" style="font-size:.82rem;color:var(--gray)">${f.commandeNumero || '—'}</td>
+      <td data-label="Articles" style="font-size:.82rem">${(f.items || []).length} article(s)</td>
+      <td data-label="Total"><strong>${fmt(f.total)} FCFA</strong></td>
+      <td data-label="Paiement" style="font-size:.82rem;color:var(--gray)">${f.modePaiement || '—'}</td>
+      <td data-label="Statut">${badgeStatus(f.statut)}</td>
     </tr>`).join('');
 }
 
@@ -1751,23 +1747,21 @@ async function loadUtilisateurs() {
 
   tbody.innerHTML = users.map(u => `
     <tr style="${!u.actif ? 'opacity:.5' : ''}">
-      <td>${u.prenom || '—'}</td>
-      <td><strong>${u.nom}</strong></td>
-      <td style="font-size:.82rem;color:var(--gray)">${u.username}</td>
-      <td><span style="color:${roleColors[u.role] || '#666'};font-weight:700;font-size:.82rem">${roleLabels[u.role] || u.role}</span></td>
-      <td><span class="badge-status ${u.actif ? 'disponible' : 'annulee'}">${u.actif ? '✅ Actif' : '❌ Inactif'}</span></td>
-      <td style="font-size:.78rem;color:var(--gray)">${u.lastLogin ? fmtDate(u.lastLogin) : 'Jamais'}</td>
-      <td>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button class="btn btn-secondary btn-sm" onclick="editUtilisateur('${u.id}')">
-            <i class="fas fa-edit"></i>
-          </button>
-          ${u.id !== state.user?.id ? `
-          <button class="btn btn-${u.actif ? 'danger' : 'success'} btn-sm"
-            onclick="toggleUtilisateur('${u.id}',${u.actif})">
-            <i class="fas fa-${u.actif ? 'user-slash' : 'user-check'}"></i>
-          </button>` : '<span style="font-size:.72rem;color:var(--gray);padding:5px">(vous)</span>'}
-        </div>
+      <td data-label="Prénom">${u.prenom || '—'}</td>
+      <td data-label="Nom"><strong>${u.nom}</strong></td>
+      <td data-label="Identifiant" style="font-size:.82rem;color:var(--gray)">${u.username}</td>
+      <td data-label="Rôle"><span style="color:${roleColors[u.role] || '#666'};font-weight:700;font-size:.82rem">${roleLabels[u.role] || u.role}</span></td>
+      <td data-label="Statut"><span class="badge-status ${u.actif ? 'disponible' : 'annulee'}">${u.actif ? '✅ Actif' : '❌ Inactif'}</span></td>
+      <td data-label="Connexion" style="font-size:.78rem;color:var(--gray)">${u.lastLogin ? fmtDate(u.lastLogin) : 'Jamais'}</td>
+      <td data-label="Actions">
+        <button class="btn btn-secondary btn-sm" onclick="editUtilisateur('${u.id}')">
+          <i class="fas fa-edit"></i>
+        </button>
+        ${u.id !== state.user?.id ? `
+        <button class="btn btn-${u.actif ? 'danger' : 'success'} btn-sm"
+          onclick="toggleUtilisateur('${u.id}',${u.actif})">
+          <i class="fas fa-${u.actif ? 'user-slash' : 'user-check'}"></i>
+        </button>` : '<span style="font-size:.72rem;color:var(--gray);padding:5px">(vous)</span>'}
       </td>
     </tr>`).join('');
 }
@@ -1965,17 +1959,17 @@ async function loadSessions() {
   const roleColors = { admin: '#8B1A1A', caissiere: '#2C5F2E', serveur: '#9C27B0', cuisiniere: '#D4891A', barman: '#1565C0' };
   tbody.innerHTML = sessions.map(s => `
     <tr>
-      <td style="font-size:.8rem;white-space:nowrap">${fmtDate(s.timestamp)}</td>
-      <td><strong>${s.username}</strong></td>
-      <td style="font-size:.85rem">${s.nom || '—'}</td>
-      <td><span style="color:${roleColors[s.role] || '#666'};font-weight:700;font-size:.82rem">${s.role}</span></td>
-      <td>
+      <td data-label="Date" style="font-size:.8rem">${fmtDate(s.timestamp)}</td>
+      <td data-label="Identifiant"><strong>${s.username}</strong></td>
+      <td data-label="Nom" style="font-size:.85rem">${s.nom || '—'}</td>
+      <td data-label="Rôle"><span style="color:${roleColors[s.role] || '#666'};font-weight:700;font-size:.82rem">${s.role}</span></td>
+      <td data-label="Action">
         <span style="display:inline-flex;align-items:center;gap:5px;font-size:.82rem;font-weight:600;color:${s.action === 'login' ? 'var(--success)' : 'var(--gray)'}">
           <i class="fas fa-${s.action === 'login' ? 'sign-in-alt' : 'sign-out-alt'}"></i>
           ${s.action === 'login' ? 'Connexion' : 'Déconnexion'}
         </span>
       </td>
-      <td style="font-size:.78rem;color:var(--gray)">${s.ip || '—'}</td>
+      <td data-label="IP" style="font-size:.78rem;color:var(--gray)">${s.ip || '—'}</td>
     </tr>`).join('');
 }
 

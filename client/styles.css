@@ -689,9 +689,53 @@ body {
   /* Dashboard */
   .dashboard-grid { grid-template-columns: 1fr; gap: 12px; }
 
-  /* Tables : scroll horizontal */
-  .table-wrapper { overflow-x: auto; }
-  .data-table    { min-width: 540px; }
+  /* Tables → Cards */
+  .table-wrapper {
+    overflow: visible;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+  }
+  .data-table         { min-width: 0; }
+  .data-table thead   { display: none; }
+  .data-table tbody tr {
+    display: block;
+    margin-bottom: 10px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    background: var(--white);
+  }
+  .data-table tbody tr:hover { background: #fdf8f0; }
+  .data-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    max-width: none !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+  }
+  .data-table td:last-child { border-bottom: none; }
+  .data-table td::before {
+    content: attr(data-label);
+    font-weight: 700;
+    font-size: .7rem;
+    color: var(--gray);
+    text-transform: uppercase;
+    letter-spacing: .3px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .data-table td[data-label="Actions"] { justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
+  .data-table td[data-label="Actions"]::before { display: none; }
+  .data-table td[colspan] { display: block; text-align: center; }
+  .data-table td[colspan]::before { display: none; }
+  .data-table tr:has(td[colspan]) { box-shadow: none; border: 1px solid var(--border); background: var(--white); }
 
   /* Page actions */
   .page-actions { flex-direction: column; gap: 8px; }
