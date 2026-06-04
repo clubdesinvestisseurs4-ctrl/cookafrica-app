@@ -85,7 +85,7 @@ const PAGE_TITLES = {
 
 // ─── Utilitaires ──────────────────────────────────────
 
-async function api(path, opts = {}) {
+async function api(path, opts = {}, _retry = false) {
   try {
     const headers = { 'Content-Type': 'application/json' };
     if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
@@ -94,6 +94,10 @@ async function api(path, opts = {}) {
     const res = await fetch(API + path, { signal: controller.signal, headers, ...opts });
     clearTimeout(tid);
     if (res.status === 401) { logout(); return null; }
+    if (res.status === 503 && !_retry) {
+      await wakeUpServer();
+      return api(path, opts, true);
+    }
     if (!res.ok) return null;
     return res.json();
   } catch {
@@ -422,7 +426,6 @@ async function loadDashboard() {
 // ─── COMMANDES ─────────────────────────────────────────
 
 async function loadCommandes() {
-  showLoader();
   const statut = document.getElementById('filter-cmd-statut')?.value || '';
   const date   = document.getElementById('filter-cmd-date')?.value   || '';
   let url = '/api/commandes?';
@@ -430,7 +433,6 @@ async function loadCommandes() {
   if (date)   url += `date=${date}`;
 
   const [commandes, factures] = await Promise.all([api(url), api('/api/factures')]);
-  hideLoader();
   if (!commandes) return;
   state.commandes = commandes;
   if (factures) state.factures = factures;
@@ -777,7 +779,6 @@ window.printBilanJour = function printBilanJour() {
 // ─── FACTURATION ───────────────────────────────────────
 
 async function loadFactures() {
-  showLoader();
   const debut  = document.getElementById('filter-fact-start')?.value || '';
   const fin    = document.getElementById('filter-fact-end')?.value   || '';
   const statut = document.getElementById('filter-fact-statut')?.value || '';
@@ -790,7 +791,6 @@ async function loadFactures() {
   if (type)   url += `type=${type}`;
 
   const factures = await api(url);
-  hideLoader();
   if (!factures) return;
   state.factures = factures;
 
