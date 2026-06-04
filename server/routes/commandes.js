@@ -21,11 +21,17 @@ async function getNextNumero() {
 }
 
 async function getNextNumeroFacture() {
-  const snap = await db.collection('factures').orderBy('createdAt', 'desc').limit(1).get();
-  if (snap.empty) return 'FACT-0001';
-  const last = snap.docs[0].data();
-  const lastNum = parseInt((last.numero || 'FACT-0000').split('-')[1] || '0', 10);
-  return `FACT-${String(lastNum + 1).padStart(4, '0')}`;
+  // Scan 200 docs pour trouver le plus grand FACT-XXXX, en ignorant les bons CUI-/BAR-
+  // (limit(1) causait parseInt("CMD",10)→NaN→"FACT-0NaN" quand le dernier doc était un bon interne)
+  const snap = await db.collection('factures').orderBy('createdAt', 'desc').limit(200).get();
+  let maxNum = 0;
+  snap.docs.forEach(doc => {
+    const { numero } = doc.data();
+    if (!numero || !numero.startsWith('FACT-')) return;
+    const n = parseInt(numero.slice(5), 10);
+    if (!isNaN(n) && n > maxNum) maxNum = n;
+  });
+  return `FACT-${String(maxNum + 1).padStart(4, '0')}`;
 }
 
 // Bon interne cuisine — créé dès que la cuisinière valide (plats uniquement)
