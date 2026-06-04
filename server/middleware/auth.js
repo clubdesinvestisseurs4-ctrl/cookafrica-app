@@ -1,6 +1,12 @@
 const jwt = require('jsonwebtoken');
 const { isAllowedIp } = require('../utils/wifi');
 
+const ROLE_MIGRATION = {
+  directeur:      'admin',
+  receptionniste: 'caissiere',
+  cuisinier:      'cuisiniere',
+};
+
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -13,9 +19,9 @@ function authenticateToken(req, res, next) {
     if (err) {
       return res.status(401).json({ error: 'Token invalide ou expiré' });
     }
-    req.user = user;
+    req.user = { ...user, role: ROLE_MIGRATION[user.role] || user.role };
     // L'admin peut se connecter depuis n'importe quel réseau.
-    if (user.role !== 'admin' && !(await isAllowedIp(req))) {
+    if (req.user.role !== 'admin' && !(await isAllowedIp(req))) {
       return res.status(403).json({ error: 'wifi_restricted' });
     }
     next();

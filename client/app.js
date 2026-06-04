@@ -203,6 +203,7 @@ async function loginFlow(token, user) {
 
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app-screen').style.display   = 'flex';
+  hideLoader();
   document.getElementById('sidebar-user-name').textContent = user.nom;
   document.getElementById('sidebar-user-role').textContent = ROLE_LABELS[user.role] || user.role;
 
@@ -2217,8 +2218,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.token = savedToken;
     const me = await api('/api/auth/me');
     if (me?.id) {
+      // Utiliser l'objet user du serveur (rôle migré) plutôt que le cache localStorage
       try {
-        loginFlow(savedToken, JSON.parse(savedUser));
+        loginFlow(savedToken, me);
       } catch {
         logout();
         hideLoader();
