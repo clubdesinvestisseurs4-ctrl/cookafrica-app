@@ -610,37 +610,73 @@ async function openNewCommande() {
   }
   state.panier = [];
   renderPanier();
-  // Peupler le select menu avec les plats disponibles
-  const sel = document.getElementById('cmd-menu-select');
-  const menuDispo = state.menu.filter(m => m.disponible);
-  const cats = [...new Set(menuDispo.map(m => m.categorie).filter(Boolean))].sort();
-  sel.innerHTML = '<option value="">Sélectionner un plat…</option>' +
-    cats.map(cat => {
-      const items = menuDispo.filter(m => m.categorie === cat);
-      if (!items.length) return '';
-      return `<optgroup label="${cat}">${items.map(m =>
-        `<option value="${m.id}" data-prix="${m.prix}" data-nom="${m.nom}" data-categorie="${m.categorie || ''}">${m.nom} – ${fmt(m.prix)} FCFA</option>`
-      ).join('')}</optgroup>`;
-    }).join('');
+  const search = document.getElementById('cmd-menu-search');
+  search.value = '';
+  document.getElementById('cmd-menu-clear').style.display = 'none';
+  document.getElementById('menu-search-dropdown').style.display = 'none';
   document.getElementById('cmd-table').value = '';
   document.getElementById('cmd-note').value  = '';
   openModal('commande');
 }
 
-function addToPanier() {
-  const sel = document.getElementById('cmd-menu-select');
-  const opt = sel.selectedOptions[0];
-  if (!opt || !opt.value) return;
-
-  const id        = opt.value;
-  const nom       = opt.dataset.nom;
-  const prix      = Number(opt.dataset.prix);
-  const categorie = opt.dataset.categorie || '';
-  const existing  = state.panier.find(p => p.menuItemId === id);
+function addToPanier(id, nom, prix, categorie) {
+  const existing = state.panier.find(p => p.menuItemId === id);
   if (existing) { existing.quantite++; existing.sousTotal = existing.prix * existing.quantite; }
-  else { state.panier.push({ menuItemId: id, nom, prix, categorie, quantite: 1, sousTotal: prix }); }
-  sel.value = '';  // réinitialiser le select
+  else { state.panier.push({ menuItemId: id, nom, prix, categorie: categorie || '', quantite: 1, sousTotal: prix }); }
   renderPanier();
+}
+
+function renderMenuDropdown(query) {
+  const dropdown  = document.getElementById('menu-search-dropdown');
+  const menuDispo = state.menu.filter(m => m.disponible);
+  const q = query.toLowerCase();
+  const filtered  = q ? menuDispo.filter(m => m.nom.toLowerCase().includes(q)) : menuDispo;
+
+  if (!filtered.length) {
+    dropdown.innerHTML = '<div class="menu-search-empty"><i class="fas fa-search"></i> Aucun résultat</div>';
+    dropdown.style.display = 'block';
+    return;
+  }
+
+  const cats = [...new Set(filtered.map(m => m.categorie).filter(Boolean))].sort();
+  let html = '';
+  cats.forEach(cat => {
+    const items = filtered.filter(m => m.categorie === cat);
+    if (!items.length) return;
+    html += `<div class="menu-search-cat">${cat}</div>`;
+    items.forEach(m => {
+      html += `<div class="menu-search-item" data-id="${m.id}" data-nom="${m.nom}" data-prix="${m.prix}" data-cat="${m.categorie || ''}">
+        <span class="menu-search-item-nom">${hlSearch(m.nom, q)}</span>
+        <span class="menu-search-item-prix">${fmt(m.prix)} FCFA</span>
+      </div>`;
+    });
+  });
+  filtered.filter(m => !m.categorie).forEach(m => {
+    html += `<div class="menu-search-item" data-id="${m.id}" data-nom="${m.nom}" data-prix="${m.prix}" data-cat="">
+      <span class="menu-search-item-nom">${hlSearch(m.nom, q)}</span>
+      <span class="menu-search-item-prix">${fmt(m.prix)} FCFA</span>
+    </div>`;
+  });
+
+  dropdown.innerHTML = html;
+  dropdown.style.display = 'block';
+
+  dropdown.querySelectorAll('.menu-search-item').forEach(el => {
+    el.addEventListener('click', () => {
+      addToPanier(el.dataset.id, el.dataset.nom, Number(el.dataset.prix), el.dataset.cat);
+      document.getElementById('cmd-menu-search').value = '';
+      document.getElementById('cmd-menu-clear').style.display = 'none';
+      dropdown.style.display = 'none';
+    });
+  });
+}
+
+function hlSearch(text, query) {
+  if (!query) return text;
+  return text.replace(
+    new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+    '<mark class="search-hl">$1</mark>'
+  );
 }
 
 function renderPanier() {
@@ -2240,7 +2276,29 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Commandes ──
   document.getElementById('btn-new-commande').addEventListener('click', openNewCommande);
-  document.getElementById('cmd-menu-select').addEventListener('change', addToPanier);
+
+  // ── Recherche plat (commande) ──
+  const menuSearch   = document.getElementById('cmd-menu-search');
+  const menuDropdown = document.getElementById('menu-search-dropdown');
+  const menuClear    = document.getElementById('cmd-menu-clear');
+  menuSearch.addEventListener('input', () => {
+    const q = menuSearch.value.trim();
+    menuClear.style.display = q ? 'block' : 'none';
+    renderMenuDropdown(q);
+  });
+  menuSearch.addEventListener('focus', () => {
+    if (state.menu.length) renderMenuDropdown(menuSearch.value.trim());
+  });
+  menuClear.addEventListener('click', () => {
+    menuSearch.value = '';
+    menuClear.style.display = 'none';
+    menuDropdown.style.display = 'none';
+    menuSearch.focus();
+  });
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#menu-search-wrapper')) menuDropdown.style.display = 'none';
+  });
+
   document.getElementById('btn-save-commande').addEventListener('click', saveCommande);
   document.getElementById('btn-filter-cmd').addEventListener('click', loadCommandes);
 

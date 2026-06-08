@@ -604,9 +604,16 @@
 
       <div class="form-group">
         <label>Sélectionner un article <small style="color:var(--gray);font-weight:400">(ajout automatique au panier)</small></label>
-        <select id="cmd-menu-select" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem">
-          <option value="">— Choisir un plat ou une boisson —</option>
-        </select>
+        <div class="menu-search-wrapper" id="menu-search-wrapper">
+          <div class="menu-search-input-row">
+            <i class="fas fa-search menu-search-icon"></i>
+            <input type="text" id="cmd-menu-search" placeholder="Rechercher un plat ou une boisson…" autocomplete="off">
+            <button type="button" class="menu-search-clear" id="cmd-menu-clear" style="display:none" tabindex="-1">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+          <div class="menu-search-dropdown" id="menu-search-dropdown" style="display:none"></div>
+        </div>
       </div>
 
       <div class="panier-section">

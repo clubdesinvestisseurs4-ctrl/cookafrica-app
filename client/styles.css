@@ -533,6 +533,63 @@ body {
 }
 .menu-card-prix { font-size: 1.1rem; font-weight: 800; color: var(--secondary); }
 
+/* ── Recherche plat (sélecteur commande) ──────── */
+.menu-search-wrapper { position: relative; }
+.menu-search-input-row {
+  display: flex; align-items: center;
+  border: 1.5px solid var(--border); border-radius: 8px;
+  background: var(--white); transition: border-color .2s;
+  overflow: visible;
+}
+.menu-search-input-row:focus-within { border-color: var(--primary); }
+.menu-search-icon { padding: 0 11px; color: var(--gray); font-size: .85rem; flex-shrink: 0; }
+#cmd-menu-search {
+  flex: 1; border: none; outline: none;
+  padding: 9px 4px; font-size: .88rem; background: transparent;
+  min-width: 0;
+}
+#cmd-menu-search::placeholder { color: var(--gray); }
+.menu-search-clear {
+  background: none; border: none; cursor: pointer;
+  padding: 0 12px; color: var(--gray); font-size: .8rem; flex-shrink: 0;
+  transition: color .15s;
+}
+.menu-search-clear:hover { color: var(--danger); }
+
+.menu-search-dropdown {
+  position: absolute; top: calc(100% + 5px); left: 0; right: 0;
+  background: var(--white); border: 1.5px solid var(--border);
+  border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.13);
+  max-height: 270px; overflow-y: auto; z-index: 200;
+}
+.menu-search-cat {
+  padding: 8px 14px 3px;
+  font-size: .68rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .9px;
+  color: var(--gray); border-top: 1px solid var(--border);
+}
+.menu-search-cat:first-child { border-top: none; }
+.menu-search-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 14px; cursor: pointer; gap: 12px;
+  transition: background .12s;
+}
+.menu-search-item:hover { background: rgba(139,26,26,.06); }
+.menu-search-item-nom { font-weight: 500; color: var(--dark); font-size: .88rem; }
+.menu-search-item-prix {
+  color: var(--primary); font-weight: 700; font-size: .82rem;
+  white-space: nowrap; flex-shrink: 0;
+}
+.menu-search-empty {
+  padding: 18px; text-align: center;
+  color: var(--gray); font-size: .85rem;
+}
+mark.search-hl {
+  background: rgba(244,164,35,.3);
+  border-radius: 2px; padding: 0 1px;
+  font-style: normal;
+}
+
 /* ── Commande form (panier) ────────────────────── */
 .panier-section { margin-top: 16px; }
 .panier-item {
