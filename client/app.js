@@ -188,7 +188,28 @@ function badgeStatus(statut) {
 
 // ─── Auth ──────────────────────────────────────────────
 
-function logout() {
+function showLogoutTransition() {
+  return new Promise(resolve => {
+    const el = document.getElementById('logout-transition');
+    document.getElementById('lt-name').textContent = state.user?.nom ?? '';
+    el.style.opacity = '0';
+    el.style.display = 'flex';
+    el.style.transition = 'opacity .32s ease';
+    void el.offsetWidth; // force reflow pour déclencher la transition CSS
+    el.style.opacity = '1';
+    setTimeout(() => {
+      el.style.opacity = '0';
+      setTimeout(() => {
+        el.style.display = 'none';
+        el.style.transition = '';
+        resolve();
+      }, 380);
+    }, 950);
+  });
+}
+
+async function logout(animate = false) {
+  if (animate) await showLogoutTransition();
   if (state.token) api('/api/auth/logout', { method: 'POST' }).catch(() => {});
   state.token = null; state.user = null;
   localStorage.removeItem('ca_token');
@@ -2168,7 +2189,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Logout
   document.getElementById('logout-btn').addEventListener('click', () => {
-    if (confirm('Se déconnecter ?')) logout();
+    if (confirm('Se déconnecter ?')) logout(true);
   });
 
   // Navigation
