@@ -147,6 +147,7 @@ function showWelcomeTransition(user) {
     const el = document.getElementById('welcome-transition');
     document.getElementById('wt-name').textContent = user.nom;
     document.getElementById('wt-role').textContent = ROLE_LABELS[user.role] || user.role;
+    el.style.display = 'flex'; // écrase le style inline display:none
     el.classList.remove('wt-hide');
     el.classList.add('wt-show');
     setTimeout(() => {

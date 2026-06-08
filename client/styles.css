@@ -834,10 +834,18 @@ body {
   animation: spl-rise .9s cubic-bezier(.23,1,.32,1) both;
   margin-bottom: 4px;
 }
-.spl-logo img {
-  height: 84px; object-fit: contain; margin-bottom: 14px;
-  filter: brightness(0) invert(1);
+.spl-logo-badge {
+  background: rgba(255,255,255,.96);
+  border-radius: 18px;
+  padding: 14px 28px;
+  margin-bottom: 18px;
+  display: inline-flex;
+  align-items: center; justify-content: center;
+  box-shadow: 0 4px 28px rgba(0,0,0,.3);
   animation: spl-glow 3.5s ease-in-out infinite 2s;
+}
+.spl-logo img {
+  height: 72px; object-fit: contain; display: block;
 }
 .spl-logo h1 {
   color: #fff; font-size: 2rem; font-weight: 800;
@@ -931,8 +939,8 @@ body {
   to   { opacity: 1; transform: translateY(0); }
 }
 @keyframes spl-glow {
-  0%,100% { filter: brightness(0) invert(1) drop-shadow(0 0 0 rgba(244,164,35,0)); }
-  50%     { filter: brightness(0) invert(1) drop-shadow(0 0 20px rgba(244,164,35,.45)); }
+  0%,100% { box-shadow: 0 4px 28px rgba(0,0,0,.3); }
+  50%     { box-shadow: 0 4px 36px rgba(0,0,0,.35), 0 0 0 3px rgba(244,164,35,.3), 0 0 28px rgba(244,164,35,.25); }
 }
 @keyframes spl-icon-pop {
   from { opacity: 0; transform: scale(.35) translateY(14px); }
