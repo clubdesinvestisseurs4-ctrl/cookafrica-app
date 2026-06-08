@@ -11,7 +11,7 @@ const API = (window.location.hostname === 'localhost' || window.location.hostnam
 // Max 6 tentatives : ~4s, 6s, 9s, 14s, 20s = 6 requêtes sur ~55s
 async function wakeUpServer() {
   if (API.includes('localhost')) return;
-  const statusEl = document.getElementById('loader-status');
+  const statusEl = document.getElementById('splash-status');
   const delays = [0, 4000, 6000, 9000, 14000, 20000];
   for (let i = 0; i < delays.length; i++) {
     if (delays[i] > 0) await new Promise(r => setTimeout(r, delays[i]));
@@ -133,6 +133,36 @@ function today() { return new Date().toISOString().split('T')[0]; }
 function showLoader()  { document.getElementById('loader').classList.remove('hidden'); }
 function hideLoader()  { document.getElementById('loader').classList.add('hidden'); }
 
+function hideSplash() {
+  return new Promise(resolve => {
+    const el = document.getElementById('splash-screen');
+    if (!el || el.classList.contains('hidden')) { resolve(); return; }
+    el.classList.add('spl-out');
+    setTimeout(() => { el.classList.add('hidden'); resolve(); }, 720);
+  });
+}
+
+function showWelcomeTransition(user) {
+  return new Promise(resolve => {
+    const el = document.getElementById('welcome-transition');
+    document.getElementById('wt-name').textContent = user.nom;
+    document.getElementById('wt-role').textContent = ROLE_LABELS[user.role] || user.role;
+    el.classList.remove('wt-hide');
+    el.classList.add('wt-show');
+    setTimeout(() => {
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('app-screen').style.display   = 'flex';
+      el.classList.remove('wt-show');
+      el.classList.add('wt-hide');
+      setTimeout(() => {
+        el.classList.remove('wt-hide');
+        el.style.display = 'none';
+        resolve();
+      }, 650);
+    }, 1950);
+  });
+}
+
 function toast(msg, type = 'info') {
   const icons = { success: 'check-circle', error: 'times-circle', warning: 'exclamation-triangle', info: 'info-circle' };
   const el = document.createElement('div');
@@ -195,21 +225,25 @@ function clearIntervals() {
   state.sseConnected = false;
 }
 
-async function loginFlow(token, user) {
+async function loginFlow(token, user, skipWelcome = false) {
   state.token = token;
   state.user  = user;
   localStorage.setItem('ca_token', token);
   localStorage.setItem('ca_user', JSON.stringify(user));
 
-  document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('app-screen').style.display   = 'flex';
-  hideLoader();
   document.getElementById('sidebar-user-name').textContent = user.nom;
   document.getElementById('sidebar-user-role').textContent = ROLE_LABELS[user.role] || user.role;
-
   applyRoleNav();
   navigateTo(defaultPage());
   startPolling();
+
+  if (skipWelcome) {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app-screen').style.display   = 'flex';
+  } else {
+    await showWelcomeTransition(user);
+  }
+  hideLoader();
 }
 
 function defaultPage() {
@@ -2237,15 +2271,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.token = savedToken;
     const me = await api('/api/auth/me');
     if (me?.id) {
-      // Utiliser l'objet user du serveur (rôle migré) plutôt que le cache localStorage
+      await hideSplash();
       try {
-        loginFlow(savedToken, me);
+        await loginFlow(savedToken, me, true);
       } catch {
         logout();
         hideLoader();
       }
     } else {
-      // Token expiré ou invalide — api() a déjà appelé logout() si 401
+      await hideSplash();
       if (state.token) {
         state.token = null;
         localStorage.removeItem('ca_token');
@@ -2254,6 +2288,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       hideLoader();
     }
   } else {
+    await hideSplash();
     hideLoader();
   }
 });

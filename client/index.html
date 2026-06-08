@@ -18,10 +18,49 @@
 <!-- Offline banner -->
 <div class="offline-banner"><i class="fas fa-wifi-slash"></i> Mode hors ligne – données possiblement indisponibles</div>
 
-<!-- Loader -->
-<div class="loader-overlay" id="loader">
+<!-- ══ Splash Screen (chargement initial) ═══════════════ -->
+<div id="splash-screen">
+  <div class="spl-circle spl-c1"></div>
+  <div class="spl-circle spl-c2"></div>
+  <div class="spl-circle spl-c3"></div>
+  <div class="spl-logo">
+    <img src="logo-cookafrica.png" alt="Cook Africa" onerror="this.style.display='none'">
+    <h1>COOK AFRICA</h1>
+    <p>Application de Gestion</p>
+  </div>
+  <div class="spl-sep"></div>
+  <div class="spl-icons">
+    <div class="spl-icon spl-icon-1"><i class="fas fa-utensils"></i></div>
+    <div class="spl-icon spl-icon-2"><i class="fas fa-fire"></i></div>
+    <div class="spl-icon spl-icon-3"><i class="fas fa-drumstick-bite"></i></div>
+    <div class="spl-icon spl-icon-4"><i class="fas fa-leaf"></i></div>
+  </div>
+  <div class="spl-steam">
+    <span></span><span></span><span></span>
+  </div>
+  <div class="spl-dots">
+    <span></span><span></span><span></span>
+  </div>
+  <p class="spl-status" id="splash-status"></p>
+</div>
+
+<!-- ══ Welcome Transition (post-login) ══════════════════ -->
+<div id="welcome-transition" style="display:none">
+  <div class="wt-circle wt-c1"></div>
+  <div class="wt-circle wt-c2"></div>
+  <div class="wt-content">
+    <div class="wt-bell"><i class="fas fa-utensils"></i></div>
+    <p class="wt-label">Bienvenue</p>
+    <p class="wt-name" id="wt-name"></p>
+    <div class="wt-line"></div>
+    <p class="wt-role" id="wt-role"></p>
+  </div>
+</div>
+
+<!-- Loader (appels API) -->
+<div class="loader-overlay hidden" id="loader">
   <div class="spinner"></div>
-  <p id="loader-status" style="margin-top:1.2rem;color:rgba(255,255,255,.85);font-size:.88rem;text-align:center;max-width:260px"></p>
+  <p id="loader-status" style="margin-top:1.2rem;color:var(--gray);font-size:.88rem;text-align:center;max-width:260px"></p>
 </div>
 
 <!-- Toast container -->
