@@ -941,10 +941,10 @@ mark.search-hl {
   animation: spl-icon-pop .65s cubic-bezier(.23,1,.32,1) both .5s,
              spl-flicker 2.4s ease-in-out infinite 1.3s;
 }
-.spl-icon-3 {
+/* .spl-icon-3 {
   background: rgba(44,95,46,.28); color: #88d88a;
   animation: spl-icon-pop .65s cubic-bezier(.23,1,.32,1) both .65s;
-}
+} */
 .spl-icon-4 {
   background: rgba(244,164,35,.12); color: rgba(244,164,35,.75);
   animation: spl-icon-pop .65s cubic-bezier(.23,1,.32,1) both .8s;
