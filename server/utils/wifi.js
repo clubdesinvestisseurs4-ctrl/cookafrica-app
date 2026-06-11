@@ -23,12 +23,16 @@ function ipInCidr(ip, cidr) {
   }
 }
 
-// Avec `app.set('trust proxy', 1)`, Express calcule req.ip en faisant confiance
-// à un seul saut de proxy : il prend la dernière IP ajoutée par CE proxy dans
-// X-Forwarded-For, ce qui ne peut pas être falsifié par le client. Parser
-// X-Forwarded-For à la main (en prenant la 1ère valeur) permettrait à un
-// client d'usurper une IP autorisée pour contourner la restriction Wi-Fi.
+// Render expose l'app derrière Cloudflare pour tous les domaines *.onrender.com.
+// Cloudflare ajoute systématiquement le header CF-Connecting-IP avec la vraie IP
+// publique du visiteur, et ÉCRASE toute valeur que le client tenterait d'envoyer
+// lui-même — donc fiable et non falsifiable, contrairement à X-Forwarded-For
+// (dont la 1ère valeur est fournie par le client) ou req.ip (qui ne reflète que
+// l'IP interne 10.x.x.x du load-balancer Render quand aucun XFF exploitable
+// n'arrive jusqu'à l'app).
 function getClientIp(req) {
+  const cfIp = req.headers['cf-connecting-ip'];
+  if (cfIp) return normalizeIp(cfIp.trim());
   return normalizeIp(req.ip);
 }
 

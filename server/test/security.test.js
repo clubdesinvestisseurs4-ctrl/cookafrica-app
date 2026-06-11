@@ -5,7 +5,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 const corsOrigins = require('../config/corsOrigins');
-const { ipInCidr, normalizeIp } = require('../utils/wifi');
+const { ipInCidr, normalizeIp, getClientIp } = require('../utils/wifi');
 const { buildCommandeUpdate, ALLOWED_FIELDS } = require('../utils/commandeUpdate');
 const { requireRole } = require('../middleware/auth');
 
@@ -39,6 +39,30 @@ test('wifi — ipInCidr matche correctement une plage', () => {
 test('wifi — normalizeIp retire le préfixe IPv4-mapped IPv6', () => {
   assert.strictEqual(normalizeIp('::ffff:203.0.113.5'), '203.0.113.5');
   assert.strictEqual(normalizeIp('203.0.113.5'), '203.0.113.5');
+});
+
+test('wifi — getClientIp utilise CF-Connecting-IP (Cloudflare) en priorité', () => {
+  const req = {
+    headers: { 'cf-connecting-ip': '196.192.120.121' },
+    ip: '10.26.145.3', // IP interne du load-balancer Render
+  };
+  assert.strictEqual(getClientIp(req), '196.192.120.121');
+});
+
+test('wifi — getClientIp retombe sur req.ip si CF-Connecting-IP est absent', () => {
+  const req = { headers: {}, ip: '203.0.113.7' };
+  assert.strictEqual(getClientIp(req), '203.0.113.7');
+});
+
+test('wifi — getClientIp ignore un X-Forwarded-For falsifié par le client', () => {
+  const req = {
+    headers: {
+      'cf-connecting-ip': '196.192.120.121',
+      'x-forwarded-for': '1.2.3.4', // valeur que le client pourrait usurper
+    },
+    ip: '10.26.145.3',
+  };
+  assert.strictEqual(getClientIp(req), '196.192.120.121');
 });
 
 // ─── Mass assignment sur PUT /api/commandes/:id ────────────────────────────
