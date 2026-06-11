@@ -4,6 +4,7 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 const { pushNotification } = require('../utils/notifications');
 const cache    = require('../utils/cache');
 const eventBus = require('../utils/eventBus');
+const { buildCommandeUpdate } = require('../utils/commandeUpdate');
 
 const router = express.Router();
 
@@ -389,19 +390,8 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const existing = doc.data();
     const now = new Date();
 
-    // Whitelist : seuls le statut et les infos de service sont modifiables ici.
-    // Empêche un utilisateur (ex. cuisinière, barman) de modifier items/total/createdBy
-    // d'une commande via cette route générique (mass assignment).
-    const allowedFields = ['statut', 'note', 'tableNumero'];
-    const validStatuts = ['en-attente', 'en-preparation', 'prete', 'servie', 'annulee'];
-    const update = { updatedAt: now.toISOString() };
-    for (const field of allowedFields) {
-      if (req.body[field] === undefined) continue;
-      if (field === 'statut' && !validStatuts.includes(req.body.statut)) {
-        return res.status(400).json({ error: 'Statut invalide' });
-      }
-      update[field] = req.body[field];
-    }
+    const { update, error } = buildCommandeUpdate(req.body, now);
+    if (error) return res.status(400).json({ error });
 
     if (update.statut === 'prete') {
       update.validatedByCuisinier = req.user.username;
