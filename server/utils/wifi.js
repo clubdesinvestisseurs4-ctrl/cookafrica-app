@@ -23,12 +23,12 @@ function ipInCidr(ip, cidr) {
   }
 }
 
+// Avec `app.set('trust proxy', 1)`, Express calcule req.ip en faisant confiance
+// à un seul saut de proxy : il prend la dernière IP ajoutée par CE proxy dans
+// X-Forwarded-For, ce qui ne peut pas être falsifié par le client. Parser
+// X-Forwarded-For à la main (en prenant la 1ère valeur) permettrait à un
+// client d'usurper une IP autorisée pour contourner la restriction Wi-Fi.
 function getClientIp(req) {
-  const xff = req.headers['x-forwarded-for'];
-  if (xff) {
-    const first = xff.split(',')[0].trim();
-    if (first) return normalizeIp(first);
-  }
   return normalizeIp(req.ip);
 }
 

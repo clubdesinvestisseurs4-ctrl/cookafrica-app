@@ -112,8 +112,15 @@ router.get('/sessions', authenticateToken, requireRole('admin'), async (req, res
 });
 
 // POST /api/auth/seed — initialisation des utilisateurs par défaut
+// Protégé par un jeton d'amorçage (header X-Seed-Token) pour éviter qu'un tiers
+// ne crée les comptes par défaut (mots de passe connus) avant le déploiement réel.
 router.post('/seed', async (req, res) => {
   try {
+    const seedToken = process.env.SEED_TOKEN;
+    if (!seedToken || req.headers['x-seed-token'] !== seedToken) {
+      return res.status(403).json({ error: 'Accès refusé' });
+    }
+
     const snapshot = await db.collection('utilisateurs').limit(1).get();
     if (!snapshot.empty) {
       return res.status(409).json({ error: 'Base déjà initialisée' });
@@ -151,7 +158,7 @@ router.post('/seed', async (req, res) => {
 });
 
 // POST /api/auth/migrate-roles — migration des anciens rôles vers les nouveaux
-router.post('/migrate-roles', async (req, res) => {
+router.post('/migrate-roles', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const snap = await db.collection('utilisateurs').get();
     const batch = db.batch();

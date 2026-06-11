@@ -12,13 +12,14 @@ const PORT = process.env.PORT || 3001;
 
 app.set('trust proxy', 1);
 
+// credentials: false — l'authentification se fait via le header Authorization
+// (token JWT envoyé explicitement par le client), pas via cookies.
 app.use(cors({
   origin: [
     process.env.CLIENT_URL || 'http://localhost:5500',
     /\.vercel\.app$/,
     /\.web\.app$/,
   ],
-  credentials: true,
 }));
 
 app.use(express.json({ limit: '1mb' }));

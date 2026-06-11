@@ -164,6 +164,18 @@ function showWelcomeTransition(user) {
   });
 }
 
+// Échappe le HTML pour éviter les injections XSS via des champs saisis par les utilisateurs
+// (note, tableNumero, etc.) avant insertion dans innerHTML.
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function toast(msg, type = 'info') {
   const icons = { success: 'check-circle', error: 'times-circle', warning: 'exclamation-triangle', info: 'info-circle' };
   const el = document.createElement('div');
@@ -477,7 +489,7 @@ async function loadDashboard() {
       <div class="list-item">
         <div>
           <strong>${c.numero}</strong>
-          ${c.tableNumero ? `<span style="color:var(--gray);font-size:.78rem"> – ${c.tableNumero}</span>` : ''}
+          ${c.tableNumero ? `<span style="color:var(--gray);font-size:.78rem"> – ${escapeHtml(c.tableNumero)}</span>` : ''}
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:.78rem;color:var(--gray)">${fmt(c.total)} FCFA</span>
@@ -531,7 +543,7 @@ async function loadCommandes() {
   }
 
   tbody.innerHTML = commandes.map(c => {
-    const items = (c.items || []).map(i => `${i.quantite}x ${i.nom}`).join(', ');
+    const items = (c.items || []).map(i => `${i.quantite}x ${escapeHtml(i.nom)}`).join(', ');
     const alreadyFactured = state.factures.some(f => f.commandeId === c.id);
     const hasBoissons = (c.items || []).some(i => i.categorie === 'Boissons');
     const hasPlats    = (c.items || []).some(i => i.categorie !== 'Boissons');
@@ -550,7 +562,7 @@ async function loadCommandes() {
       <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
       <td data-label="Articles" style="font-size:.82rem">${items}</td>
       <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
-      <td data-label="Table" style="color:var(--gray);font-size:.82rem">${c.tableNumero || '—'}</td>
+      <td data-label="Table" style="color:var(--gray);font-size:.82rem">${escapeHtml(c.tableNumero) || '—'}</td>
       <td data-label="Statut">${badgeStatus(c.statut)}${boissonsInfo}</td>
       <td data-label="Actions">
         <button class="btn btn-secondary btn-sm" onclick="viewCommande('${c.id}')">
@@ -573,17 +585,17 @@ async function viewCommande(id) {
 
   const items = (c.items || []).map(i => `
     <div class="commande-item">
-      <span><span class="commande-item-qty">${i.quantite}</span> ${i.nom}</span>
+      <span><span class="commande-item-qty">${i.quantite}</span> ${escapeHtml(i.nom)}</span>
       <span>${fmt(i.sousTotal)} FCFA</span>
     </div>`).join('');
 
   document.getElementById('modal-detail-titre').textContent = `Commande ${c.numero}`;
   document.getElementById('modal-detail-body').innerHTML = `
     <div style="margin-bottom:12px">
-      ${c.tableNumero ? `<p><strong>Table :</strong> ${c.tableNumero}</p>` : ''}
-      ${c.note ? `<p style="color:var(--gray);font-size:.85rem;font-style:italic"><i class="fas fa-sticky-note"></i> ${c.note}</p>` : ''}
+      ${c.tableNumero ? `<p><strong>Table :</strong> ${escapeHtml(c.tableNumero)}</p>` : ''}
+      ${c.note ? `<p style="color:var(--gray);font-size:.85rem;font-style:italic"><i class="fas fa-sticky-note"></i> ${escapeHtml(c.note)}</p>` : ''}
       <p><strong>Statut :</strong> ${badgeStatus(c.statut)}</p>
-      <p style="font-size:.8rem;color:var(--gray)"><strong>Créée par :</strong> ${c.createdBy} – ${fmtDate(c.createdAt)}</p>
+      <p style="font-size:.8rem;color:var(--gray)"><strong>Créée par :</strong> ${escapeHtml(c.createdBy)} – ${fmtDate(c.createdAt)}</p>
     </div>
     <div style="margin-bottom:12px">${items}</div>
     <div style="text-align:right;font-size:1.1rem;font-weight:800;color:var(--primary)">
@@ -782,7 +794,7 @@ async function loadCuisine() {
         <div class="commande-card-header">
           <div>
             <div class="commande-numero">${c.numero}</div>
-            ${c.tableNumero ? `<div class="commande-table"><i class="fas fa-chair"></i> ${c.tableNumero}</div>` : ''}
+            ${c.tableNumero ? `<div class="commande-table"><i class="fas fa-chair"></i> ${escapeHtml(c.tableNumero)}</div>` : ''}
           </div>
           <div style="text-align:right">
             ${badgeStatus(c.statut)}
@@ -790,7 +802,7 @@ async function loadCuisine() {
           </div>
         </div>
         <div class="commande-items">${items}</div>
-        ${c.note ? `<div class="commande-note"><i class="fas fa-sticky-note"></i> ${c.note}</div>` : ''}
+        ${c.note ? `<div class="commande-note"><i class="fas fa-sticky-note"></i> ${escapeHtml(c.note)}</div>` : ''}
         <div class="commande-total">${fmt(c.total)} FCFA</div>
         <div class="commande-actions">${actionBtn}</div>
       </div>`;
@@ -841,7 +853,7 @@ async function loadCuisine() {
         <div class="commande-card-header">
           <div>
             <div class="commande-numero">${c.numero}</div>
-            ${c.tableNumero ? `<div class="commande-table"><i class="fas fa-chair"></i> ${c.tableNumero}</div>` : ''}
+            ${c.tableNumero ? `<div class="commande-table"><i class="fas fa-chair"></i> ${escapeHtml(c.tableNumero)}</div>` : ''}
           </div>
           <div style="text-align:right">
             ${badgeStatus(c.statut)}
@@ -849,7 +861,7 @@ async function loadCuisine() {
           </div>
         </div>
         <div class="commande-items">${items}</div>
-        ${c.note ? `<div class="commande-note"><i class="fas fa-sticky-note"></i> ${c.note}</div>` : ''}
+        ${c.note ? `<div class="commande-note"><i class="fas fa-sticky-note"></i> ${escapeHtml(c.note)}</div>` : ''}
         ${factureInfo}
         ${printBtn ? `<div class="commande-actions" style="margin-top:8px">${printBtn}</div>` : ''}
       </div>`;
@@ -989,7 +1001,7 @@ function openNewFacture() {
   });
   const sel = document.getElementById('new-facture-commande');
   sel.innerHTML = '<option value="">Sélectionner une commande…</option>' +
-    cmdsEligibles.map(c => `<option value="${c.id}">${c.numero} – ${fmt(c.total)} FCFA${c.tableNumero ? ' – ' + c.tableNumero : ''}</option>`).join('');
+    cmdsEligibles.map(c => `<option value="${c.id}">${c.numero} – ${fmt(c.total)} FCFA${c.tableNumero ? ' – ' + escapeHtml(c.tableNumero) : ''}</option>`).join('');
   openModal('new-facture');
 }
 
@@ -1104,9 +1116,9 @@ window.aperçuFacture = async (id) => {
              onerror="this.style.display='none'">
         <p style="margin-top:4px;font-size:.9rem"><strong>FACTURE N° ${f.numero}</strong></p>
         <p style="font-size:.78rem;color:var(--gray)">Date : ${fmtDateOnly(f.date)}</p>
-        ${f.tableNumero ? `<p style="font-size:.78rem"><strong>Table :</strong> ${f.tableNumero}</p>` : ''}
+        ${f.tableNumero ? `<p style="font-size:.78rem"><strong>Table :</strong> ${escapeHtml(f.tableNumero)}</p>` : ''}
         ${f.commandeNumero ? `<p style="font-size:.78rem;color:var(--gray)">Commande : ${f.commandeNumero}</p>` : ''}
-        ${f.serveurNom ? `<p style="font-size:.78rem">Servi par : <strong>${f.serveurNom}</strong></p>` : ''}
+        ${f.serveurNom ? `<p style="font-size:.78rem">Servi par : <strong>${escapeHtml(f.serveurNom)}</strong></p>` : ''}
         ${f.caissiereName ? `<p style="font-size:.78rem"><i class="fas fa-user-tie"></i> Caissière : <strong>${f.caissiereName}</strong></p>` : ''}
       </div>
       <table class="facture-items">
@@ -1186,7 +1198,7 @@ window.aperçuFactureCuisine = async (id) => {
         <p style="margin-top:4px;font-size:1rem;color:var(--primary)"><strong><i class="fas fa-fire"></i> BON CUISINE</strong></p>
         <p style="font-size:.78rem;color:var(--gray)">Réf. facture : ${f.numero}</p>
         <p style="font-size:.78rem;color:var(--gray)">Date : ${fmtDateOnly(f.date)}</p>
-        ${f.tableNumero ? `<p style="font-size:.78rem"><strong>Table :</strong> ${f.tableNumero}</p>` : ''}
+        ${f.tableNumero ? `<p style="font-size:.78rem"><strong>Table :</strong> ${escapeHtml(f.tableNumero)}</p>` : ''}
         ${f.commandeNumero ? `<p style="font-size:.78rem;color:var(--gray)">Commande : ${f.commandeNumero}</p>` : ''}
       </div>
       <table class="facture-items">
@@ -1200,7 +1212,7 @@ window.aperçuFactureCuisine = async (id) => {
         </tr>
       </table>
       <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border);font-size:.78rem;color:var(--gray)">
-        ${f.serveurNom ? `<p><i class="fas fa-user"></i> Servi par : <strong>${f.serveurNom}</strong></p>` : ''}
+        ${f.serveurNom ? `<p><i class="fas fa-user"></i> Servi par : <strong>${escapeHtml(f.serveurNom)}</strong></p>` : ''}
         ${f.caissiereName ? `<p><i class="fas fa-user-tie"></i> Caissière : <strong>${f.caissiereName}</strong></p>` : ''}
         ${f.validatedByCuisinier ? `<p><i class="fas fa-fire" style="color:var(--primary)"></i> Cuisinier : <strong>${f.validatedByCuisinierNom || f.validatedByCuisinier}</strong></p>` : ''}
         <p style="margin-top:6px;text-align:center;font-style:italic">Bon interne – Usage cuisine uniquement</p>
@@ -1241,7 +1253,7 @@ window.aperçuBonBar = async (id) => {
         <p style="margin-top:4px;font-size:1rem;color:#1565C0"><strong><i class="fas fa-wine-glass-alt"></i> BON BAR</strong></p>
         <p style="font-size:.78rem;color:var(--gray)">Réf. : ${f.numero}</p>
         <p style="font-size:.78rem;color:var(--gray)">Date : ${fmtDateOnly(f.date)}</p>
-        ${f.tableNumero ? `<p style="font-size:.78rem"><strong>Table :</strong> ${f.tableNumero}</p>` : ''}
+        ${f.tableNumero ? `<p style="font-size:.78rem"><strong>Table :</strong> ${escapeHtml(f.tableNumero)}</p>` : ''}
         ${f.commandeNumero ? `<p style="font-size:.78rem;color:var(--gray)">Commande : ${f.commandeNumero}</p>` : ''}
       </div>
       <table class="facture-items">
@@ -1255,7 +1267,7 @@ window.aperçuBonBar = async (id) => {
         </tr>
       </table>
       <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border);font-size:.78rem;color:var(--gray)">
-        ${f.serveurNom ? `<p><i class="fas fa-user"></i> Servi par : <strong>${f.serveurNom}</strong></p>` : ''}
+        ${f.serveurNom ? `<p><i class="fas fa-user"></i> Servi par : <strong>${escapeHtml(f.serveurNom)}</strong></p>` : ''}
         ${f.validatedByBarman ? `<p><i class="fas fa-wine-glass-alt" style="color:#1565C0"></i> Barman : <strong>${f.validatedByBarmanNom || f.validatedByBarman}</strong></p>` : ''}
         <p style="margin-top:6px;text-align:center;font-style:italic">Bon interne – Usage bar uniquement</p>
         <p style="font-size:.7rem;text-align:center;margin-top:4px">Cook Africa – Le restaurant qui rassemble</p>
@@ -1299,7 +1311,7 @@ async function loadBarman() {
         <div class="commande-card-header">
           <div>
             <div class="commande-numero">${c.numero}</div>
-            ${c.tableNumero ? `<div class="commande-table"><i class="fas fa-chair"></i> ${c.tableNumero}</div>` : ''}
+            ${c.tableNumero ? `<div class="commande-table"><i class="fas fa-chair"></i> ${escapeHtml(c.tableNumero)}</div>` : ''}
           </div>
           <div style="text-align:right">
             ${badgeStatus(c.statut)}
@@ -1307,7 +1319,7 @@ async function loadBarman() {
           </div>
         </div>
         <div class="commande-items">${items}</div>
-        ${c.note ? `<div class="commande-note"><i class="fas fa-sticky-note"></i> ${c.note}</div>` : ''}
+        ${c.note ? `<div class="commande-note"><i class="fas fa-sticky-note"></i> ${escapeHtml(c.note)}</div>` : ''}
         <div class="commande-total">${fmt(total)} FCFA</div>
         <div class="commande-actions">
           <button class="btn btn-success btn-sm" style="background:#1565C0;border-color:#1565C0" onclick="barmanPret('${c.id}')">
@@ -1364,7 +1376,7 @@ async function loadBarman() {
         <div class="commande-card-header">
           <div>
             <div class="commande-numero">${c.numero}</div>
-            ${c.tableNumero ? `<div class="commande-table"><i class="fas fa-chair"></i> ${c.tableNumero}</div>` : ''}
+            ${c.tableNumero ? `<div class="commande-table"><i class="fas fa-chair"></i> ${escapeHtml(c.tableNumero)}</div>` : ''}
           </div>
           <div style="text-align:right">
             <span class="badge-status prete">✅ Boissons servies</span>
@@ -1372,7 +1384,7 @@ async function loadBarman() {
           </div>
         </div>
         <div class="commande-items">${items}</div>
-        ${c.note ? `<div class="commande-note"><i class="fas fa-sticky-note"></i> ${c.note}</div>` : ''}
+        ${c.note ? `<div class="commande-note"><i class="fas fa-sticky-note"></i> ${escapeHtml(c.note)}</div>` : ''}
         <div class="commande-total">${fmt(total)} FCFA</div>
         ${factureInfo}
         ${printBtn}
@@ -1444,7 +1456,7 @@ window.aperçuFactureBar = (commandeId) => {
         <p style="margin-top:4px;font-size:1rem;color:#1565C0"><strong><i class="fas fa-wine-glass-alt"></i> BON BAR</strong></p>
         <p style="font-size:.78rem;color:var(--gray)">Réf. facture : ${f.numero}</p>
         <p style="font-size:.78rem;color:var(--gray)">Date : ${fmtDateOnly(f.date)}</p>
-        ${f.tableNumero ? `<p style="font-size:.78rem"><strong>Table :</strong> ${f.tableNumero}</p>` : ''}
+        ${f.tableNumero ? `<p style="font-size:.78rem"><strong>Table :</strong> ${escapeHtml(f.tableNumero)}</p>` : ''}
         ${f.commandeNumero ? `<p style="font-size:.78rem;color:var(--gray)">Commande : ${f.commandeNumero}</p>` : ''}
       </div>
       <table class="facture-items">
@@ -1458,7 +1470,7 @@ window.aperçuFactureBar = (commandeId) => {
         </tr>
       </table>
       <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border);font-size:.78rem;color:var(--gray)">
-        ${f.serveurNom ? `<p><i class="fas fa-user"></i> Servi par : <strong>${f.serveurNom}</strong></p>` : ''}
+        ${f.serveurNom ? `<p><i class="fas fa-user"></i> Servi par : <strong>${escapeHtml(f.serveurNom)}</strong></p>` : ''}
         ${f.caissiereName ? `<p><i class="fas fa-user-tie"></i> Caissière : <strong>${f.caissiereName}</strong></p>` : ''}
         ${f.validatedByBarman ? `<p><i class="fas fa-wine-glass-alt" style="color:#1565C0"></i> Barman : <strong>${f.validatedByBarmanNom || f.validatedByBarman}</strong></p>` : ''}
         <p style="margin-top:6px;text-align:center;font-style:italic">Bon interne – Usage bar uniquement</p>
