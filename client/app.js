@@ -5,9 +5,9 @@
 
 const API = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
   ? 'http://localhost:3001'
-  : 'https://cookafrica-api.onrender.com'; // ← à remplacer par votre URL Render
+  : 'https://cookafrica-api-667992371198.us-central1.run.app'; // Cloud Run (us-central1)
 
-// Render free tier se met en veille → ping /health avec backoff exponentiel
+// Cloud Run peut redémarrer à froid après une période d'inactivité → ping /health avec backoff exponentiel
 // Max 6 tentatives : ~4s, 6s, 9s, 14s, 20s = 6 requêtes sur ~55s
 async function wakeUpServer() {
   if (API.includes('localhost')) return;

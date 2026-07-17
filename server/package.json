@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "API backend Cook Africa – Gestion Interne Restaurant",
   "main": "server.js",
-  "engines": { "node": "20.x" },
+  "engines": { "node": "22.x" },
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
