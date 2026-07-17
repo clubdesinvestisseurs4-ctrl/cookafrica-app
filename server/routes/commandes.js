@@ -190,12 +190,15 @@ router.get('/bar', authenticateToken, requireRole('admin', 'barman'), async (req
       .filter(c => c.boissonsStatut === 'prete');
 
     const facturesMap = {};
+    const paiementsMap = {};
     facturesSnap.docs.forEach(d => {
       const f = { id: d.id, ...d.data() };
-      if (f.commandeId && f.type === 'bar') facturesMap[f.commandeId] = f;
+      if (!f.commandeId) return;
+      if (f.type === 'bar') facturesMap[f.commandeId] = f;
+      else if (!f.type || f.type === 'facture') paiementsMap[f.commandeId] = f;
     });
 
-    const result = { active, done, facturesMap };
+    const result = { active, done, facturesMap, paiementsMap };
     cache.set('commandes:bar', result, 15_000);
     res.json(result);
   } catch (err) {

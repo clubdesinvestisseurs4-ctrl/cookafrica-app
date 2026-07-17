@@ -756,14 +756,17 @@ async function saveCommande() {
 
 async function loadCuisine() {
   const today = new Date().toISOString().split('T')[0];
-  const [data, factures] = await Promise.all([
+  const [data, factures, paiements] = await Promise.all([
     api('/api/commandes/cuisine'),
+    api(`/api/factures?debut=${today}&fin=${today}&type=cuisine`),
     api(`/api/factures?debut=${today}&fin=${today}`),
   ]);
 
   const active   = data?.active   || [];
   const terminee = data?.terminee || [];
   const factureMap = {};
+  const paiementMap = {};
+  (paiements || []).forEach(f => { paiementMap[f.commandeId] = f; });
   (factures || []).forEach(f => { factureMap[f.commandeId] = f; });
 
   // ── Section commandes actives ──
@@ -782,6 +785,7 @@ async function loadCuisine() {
           <span><span class="commande-item-qty">${i.quantite}</span> ${i.nom}</span>
           <span style="color:var(--gray);font-size:.78rem">${fmt(i.prix)} FCFA</span>
         </div>`).join('');
+      const totalPlats = (c.items || []).reduce((s, i) => s + i.sousTotal, 0);
       const actionBtn = c.statut === 'en-attente'
         ? `<button class="btn btn-warning btn-sm" onclick="updateStatutCommande('${c.id}','en-preparation')">
              <i class="fas fa-fire"></i> Démarrer
@@ -803,7 +807,7 @@ async function loadCuisine() {
         </div>
         <div class="commande-items">${items}</div>
         ${c.note ? `<div class="commande-note"><i class="fas fa-sticky-note"></i> ${escapeHtml(c.note)}</div>` : ''}
-        <div class="commande-total">${fmt(c.total)} FCFA</div>
+        <div class="commande-total">${fmt(totalPlats)} FCFA</div>
         <div class="commande-actions">${actionBtn}</div>
       </div>`;
     }).join('');
@@ -822,6 +826,7 @@ async function loadCuisine() {
 
     bilanGrid.innerHTML = terminee.map(c => {
       const f = factureMap[c.id];
+      const paiement = paiementMap[c.id];
       const items = (c.items || []).map(i => `
         <div class="commande-item" style="font-size:.8rem">
           <span><span class="commande-item-qty">${i.quantite}</span> ${i.nom}</span>
@@ -832,12 +837,11 @@ async function loadCuisine() {
              <div style="font-size:.78rem;color:var(--gray);margin-bottom:4px">
                <i class="fas fa-receipt"></i> <strong>${f.numero}</strong>
              </div>
-             <div style="display:flex;justify-content:space-between;font-size:.82rem">
-               <span>HT ${fmt(f.sousTotal)} · TVA ${fmt(f.tva)}</span>
+             <div style="display:flex;justify-content:flex-end;font-size:.82rem">
                <strong style="color:var(--success)">${fmt(f.total)} FCFA</strong>
              </div>
              <div style="font-size:.75rem;color:var(--gray);margin-top:2px">
-               ${f.statut === 'payee' ? '<span style="color:var(--success)">✓ Payée</span>' : '<span style="color:var(--warning)">⏳ En attente paiement</span>'}
+               ${paiement?.statut === 'payee' ? '<span style="color:var(--success)">✓ Payée</span>' : '<span style="color:var(--warning)">⏳ En attente paiement</span>'}
              </div>
            </div>`
         : `<div style="margin-top:10px;padding:8px;background:#fef9c3;border-radius:6px;font-size:.78rem;color:var(--gray)">
@@ -1283,9 +1287,10 @@ async function loadBarman() {
   const data = await api('/api/commandes/bar');
   if (!data) return;
 
-  const active      = data.active      || [];
-  const done        = data.done        || [];
-  const facturesMap = data.facturesMap || {};
+  const active       = data.active       || [];
+  const done         = data.done         || [];
+  const facturesMap  = data.facturesMap  || {};
+  const paiementsMap = data.paiementsMap || {};
   state.barFactures = facturesMap; // factures indexées par commandeId
 
   // ── Commandes boissons actives ──
@@ -1352,13 +1357,14 @@ async function loadBarman() {
           <span style="color:var(--gray)">${fmt(i.sousTotal)} FCFA</span>
         </div>`).join('');
       const f = facturesMap[c.id];
+      const paiement = paiementsMap[c.id];
       const factureInfo = f
         ? `<div style="margin-top:10px;padding:8px;background:#eff6ff;border-radius:6px;border:1px solid #bfdbfe">
              <div style="font-size:.78rem;color:var(--gray);margin-bottom:4px">
                <i class="fas fa-receipt"></i> <strong>${f.numero}</strong>
              </div>
              <div style="font-size:.75rem;color:var(--gray);margin-top:2px">
-               ${f.statut === 'payee' ? '<span style="color:var(--success)">✓ Payée</span>' : '<span style="color:var(--warning)">⏳ En attente paiement</span>'}
+               ${paiement?.statut === 'payee' ? '<span style="color:var(--success)">✓ Payée</span>' : '<span style="color:var(--warning)">⏳ En attente paiement</span>'}
              </div>
            </div>`
         : `<div style="margin-top:10px;padding:8px;background:#fef9c3;border-radius:6px;font-size:.78rem;color:var(--gray)">
