@@ -180,6 +180,10 @@ function escapeHtml(str) {
 }
 
 // ─── Annonces vocales (nouvelles commandes) ───────────
+function itemsSummary(items) {
+  return (items || []).map(i => `${i.quantite} ${i.nom}`).join(', ');
+}
+
 function speak(text) {
   if (!state.soundEnabled || !('speechSynthesis' in window)) return;
   try {
@@ -811,11 +815,11 @@ async function loadCuisine(entering = false) {
   // ── Annonce vocale des commandes nourriture ──
   const activeIds = new Set(active.map(c => c.id));
   if (entering) {
-    if (active.length > 0) {
-      speak(active.length > 1 ? 'Vous avez des commandes nourriture en cours' : 'Vous avez une commande nourriture en cours');
-    }
-  } else if (state.cuisineKnownIds && [...activeIds].some(id => !state.cuisineKnownIds.has(id))) {
-    speak('Nouvelle commande nourriture');
+    active.forEach(c => speak(`Commande nourriture en cours : ${itemsSummary(c.items)}`));
+  } else if (state.cuisineKnownIds) {
+    active
+      .filter(c => !state.cuisineKnownIds.has(c.id))
+      .forEach(c => speak(`Nouvelle commande nourriture : ${itemsSummary(c.items)}`));
   }
   state.cuisineKnownIds = activeIds;
   (factures || []).forEach(f => { factureMap[f.commandeId] = f; });
@@ -1347,11 +1351,17 @@ async function loadBarman(entering = false) {
   // ── Annonce vocale des commandes boissons ──
   const activeIds = new Set(active.map(c => c.id));
   if (entering) {
-    if (active.length > 0) {
-      speak(active.length > 1 ? 'Vous avez des commandes boissons en cours' : 'Vous avez une commande boissons en cours');
-    }
-  } else if (state.barKnownIds && [...activeIds].some(id => !state.barKnownIds.has(id))) {
-    speak('Nouvelle commande boissons');
+    active.forEach(c => {
+      const boissonsItems = (c.items || []).filter(i => i.categorie === 'Boissons');
+      speak(`Commande boissons en cours : ${itemsSummary(boissonsItems)}`);
+    });
+  } else if (state.barKnownIds) {
+    active
+      .filter(c => !state.barKnownIds.has(c.id))
+      .forEach(c => {
+        const boissonsItems = (c.items || []).filter(i => i.categorie === 'Boissons');
+        speak(`Nouvelle commande boissons : ${itemsSummary(boissonsItems)}`);
+      });
   }
   state.barKnownIds = activeIds;
 
