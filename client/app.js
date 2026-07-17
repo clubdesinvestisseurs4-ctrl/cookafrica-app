@@ -46,6 +46,9 @@ const state = {
   wifiInterval:        null,
   eventSource:         null,
   sseConnected:        false,
+  soundEnabled:        localStorage.getItem('ca_sound') === '1',
+  cuisineKnownIds:     null,
+  barKnownIds:         null,
 };
 
 // ─── Labels des rôles ─────────────────────────────────
@@ -174,6 +177,36 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+// ─── Annonces vocales (nouvelles commandes) ───────────
+function speak(text) {
+  if (!state.soundEnabled || !('speechSynthesis' in window)) return;
+  try {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'fr-FR';
+    u.rate = 0.95;
+    window.speechSynthesis.speak(u);
+  } catch {}
+}
+
+function updateSoundButtons() {
+  [document.getElementById('btn-sound-cuisine'), document.getElementById('btn-sound-barman')]
+    .forEach(btn => {
+      if (!btn) return;
+      btn.classList.toggle('btn-success', state.soundEnabled);
+      btn.classList.toggle('btn-warning', !state.soundEnabled);
+      btn.innerHTML = state.soundEnabled
+        ? '<i class="fas fa-volume-up"></i> Son activé'
+        : '<i class="fas fa-volume-mute"></i> Activer le son';
+    });
+}
+
+function enableSound() {
+  state.soundEnabled = true;
+  localStorage.setItem('ca_sound', '1');
+  updateSoundButtons();
+  speak('Annonces vocales activées');
 }
 
 function toast(msg, type = 'info') {
@@ -767,6 +800,13 @@ async function loadCuisine() {
   const factureMap = {};
   const paiementMap = {};
   (paiements || []).forEach(f => { paiementMap[f.commandeId] = f; });
+
+  // ── Annonce vocale des nouvelles commandes nourriture ──
+  const activeIds = new Set(active.map(c => c.id));
+  if (state.cuisineKnownIds && [...activeIds].some(id => !state.cuisineKnownIds.has(id))) {
+    speak('Nouvelle commande nourriture');
+  }
+  state.cuisineKnownIds = activeIds;
   (factures || []).forEach(f => { factureMap[f.commandeId] = f; });
 
   // ── Section commandes actives ──
@@ -1292,6 +1332,13 @@ async function loadBarman() {
   const facturesMap  = data.facturesMap  || {};
   const paiementsMap = data.paiementsMap || {};
   state.barFactures = facturesMap; // factures indexées par commandeId
+
+  // ── Annonce vocale des nouvelles commandes boissons ──
+  const activeIds = new Set(active.map(c => c.id));
+  if (state.barKnownIds && [...activeIds].some(id => !state.barKnownIds.has(id))) {
+    speak('Nouvelle commande boissons');
+  }
+  state.barKnownIds = activeIds;
 
   // ── Commandes boissons actives ──
   const grid  = document.getElementById('barman-grid');
@@ -2322,9 +2369,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Cuisine ──
   document.getElementById('btn-refresh-cuisine').addEventListener('click', loadCuisine);
+  document.getElementById('btn-sound-cuisine').addEventListener('click', enableSound);
 
   // ── Bar ──
   document.getElementById('btn-refresh-barman').addEventListener('click', loadBarman);
+  document.getElementById('btn-sound-barman').addEventListener('click', enableSound);
+
+  updateSoundButtons();
 
   // ── Facturation ──
   document.getElementById('btn-new-facture').addEventListener('click', openNewFacture);
