@@ -191,22 +191,29 @@ function speak(text) {
 }
 
 function updateSoundButtons() {
-  [document.getElementById('btn-sound-cuisine'), document.getElementById('btn-sound-barman')]
-    .forEach(btn => {
-      if (!btn) return;
-      btn.classList.toggle('btn-success', state.soundEnabled);
-      btn.classList.toggle('btn-warning', !state.soundEnabled);
-      btn.innerHTML = state.soundEnabled
-        ? '<i class="fas fa-volume-up"></i> Son activé'
-        : '<i class="fas fa-volume-mute"></i> Activer le son';
-    });
+  const cuisineBtn = document.getElementById('btn-sound-cuisine');
+  const barBtn      = document.getElementById('btn-sound-barman');
+  if (cuisineBtn) {
+    cuisineBtn.classList.toggle('btn-success', state.soundEnabled);
+    cuisineBtn.classList.toggle('btn-warning', !state.soundEnabled);
+    cuisineBtn.innerHTML = state.soundEnabled
+      ? '<i class="fas fa-volume-up"></i> Son activé'
+      : '<i class="fas fa-volume-mute"></i> Activer le son';
+  }
+  if (barBtn) {
+    barBtn.classList.toggle('btn-success', state.soundEnabled);
+    barBtn.classList.toggle('btn-bar', !state.soundEnabled);
+    barBtn.innerHTML = state.soundEnabled
+      ? '<i class="fas fa-volume-up"></i> Son activé'
+      : '<i class="fas fa-volume-mute"></i> Activer le son';
+  }
 }
 
-function enableSound() {
+function enableSound(screen) {
   state.soundEnabled = true;
   localStorage.setItem('ca_sound', '1');
   updateSoundButtons();
-  speak('Annonces vocales activées');
+  speak(screen === 'bar' ? 'Son activé pour le bar' : 'Son activé pour la cuisine');
 }
 
 function toast(msg, type = 'info') {
@@ -362,13 +369,13 @@ function navigateTo(page) {
   const loaders = {
     dashboard:    loadDashboard,
     commandes:    loadCommandes,
-    cuisine:      loadCuisine,
+    cuisine:      () => loadCuisine(true),
     facturation:  loadFactures,
     menu:         loadMenu,
     stocks:       loadStocks,
     rapports:     () => {},
     sessions:     loadSessions,
-    barman:       loadBarman,
+    barman:       () => loadBarman(true),
     utilisateurs: () => { loadUtilisateurs(); loadWifiConfig(); },
   };
   if (loaders[page]) loaders[page]();
@@ -787,7 +794,7 @@ async function saveCommande() {
 
 // ─── CUISINE ───────────────────────────────────────────
 
-async function loadCuisine() {
+async function loadCuisine(entering = false) {
   const today = new Date().toISOString().split('T')[0];
   const [data, factures, paiements] = await Promise.all([
     api('/api/commandes/cuisine'),
@@ -801,9 +808,13 @@ async function loadCuisine() {
   const paiementMap = {};
   (paiements || []).forEach(f => { paiementMap[f.commandeId] = f; });
 
-  // ── Annonce vocale des nouvelles commandes nourriture ──
+  // ── Annonce vocale des commandes nourriture ──
   const activeIds = new Set(active.map(c => c.id));
-  if (state.cuisineKnownIds && [...activeIds].some(id => !state.cuisineKnownIds.has(id))) {
+  if (entering) {
+    if (active.length > 0) {
+      speak(active.length > 1 ? 'Vous avez des commandes nourriture en cours' : 'Vous avez une commande nourriture en cours');
+    }
+  } else if (state.cuisineKnownIds && [...activeIds].some(id => !state.cuisineKnownIds.has(id))) {
     speak('Nouvelle commande nourriture');
   }
   state.cuisineKnownIds = activeIds;
@@ -1323,7 +1334,7 @@ window.aperçuBonBar = async (id) => {
 
 // ─── ÉCRAN BAR ─────────────────────────────────────────
 
-async function loadBarman() {
+async function loadBarman(entering = false) {
   const data = await api('/api/commandes/bar');
   if (!data) return;
 
@@ -1333,9 +1344,13 @@ async function loadBarman() {
   const paiementsMap = data.paiementsMap || {};
   state.barFactures = facturesMap; // factures indexées par commandeId
 
-  // ── Annonce vocale des nouvelles commandes boissons ──
+  // ── Annonce vocale des commandes boissons ──
   const activeIds = new Set(active.map(c => c.id));
-  if (state.barKnownIds && [...activeIds].some(id => !state.barKnownIds.has(id))) {
+  if (entering) {
+    if (active.length > 0) {
+      speak(active.length > 1 ? 'Vous avez des commandes boissons en cours' : 'Vous avez une commande boissons en cours');
+    }
+  } else if (state.barKnownIds && [...activeIds].some(id => !state.barKnownIds.has(id))) {
     speak('Nouvelle commande boissons');
   }
   state.barKnownIds = activeIds;
@@ -2368,12 +2383,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-filter-cmd').addEventListener('click', loadCommandes);
 
   // ── Cuisine ──
-  document.getElementById('btn-refresh-cuisine').addEventListener('click', loadCuisine);
-  document.getElementById('btn-sound-cuisine').addEventListener('click', enableSound);
+  document.getElementById('btn-refresh-cuisine').addEventListener('click', () => loadCuisine());
+  document.getElementById('btn-sound-cuisine').addEventListener('click', () => enableSound('cuisine'));
 
   // ── Bar ──
-  document.getElementById('btn-refresh-barman').addEventListener('click', loadBarman);
-  document.getElementById('btn-sound-barman').addEventListener('click', enableSound);
+  document.getElementById('btn-refresh-barman').addEventListener('click', () => loadBarman());
+  document.getElementById('btn-sound-barman').addEventListener('click', () => enableSound('bar'));
 
   updateSoundButtons();
 

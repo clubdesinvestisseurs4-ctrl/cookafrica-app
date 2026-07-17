@@ -275,6 +275,8 @@ body {
 .btn-warning:hover { background: #d4890a; }
 .btn-danger    { background: var(--danger);    color: var(--white); }
 .btn-danger:hover { background: #c0392b; }
+.btn-bar       { background: #1565C0;          color: var(--white); }
+.btn-bar:hover { background: #0d47a1; }
 .btn-accent    { background: var(--accent);    color: var(--dark); }
 .btn-accent:hover { background: var(--accent-dark); }
 .btn-sm        { padding: 5px 10px; font-size: .78rem; }
