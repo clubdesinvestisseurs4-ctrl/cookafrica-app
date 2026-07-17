@@ -192,7 +192,7 @@ router.get('/bar', authenticateToken, requireRole('admin', 'barman'), async (req
     const facturesMap = {};
     facturesSnap.docs.forEach(d => {
       const f = { id: d.id, ...d.data() };
-      if (f.commandeId) facturesMap[f.commandeId] = f;
+      if (f.commandeId && f.type === 'bar') facturesMap[f.commandeId] = f;
     });
 
     const result = { active, done, facturesMap };
