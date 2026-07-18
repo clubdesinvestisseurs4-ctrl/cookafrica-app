@@ -114,6 +114,10 @@ async function api(path, opts = {}, _retry = false) {
       await wakeUpServer();
       return api(path, opts, true);
     }
+    if (res.status === 429) {
+      toast('Trop de requêtes envoyées — patientez quelques secondes', 'warning');
+      return null;
+    }
     if (!res.ok) return null;
     return res.json();
   } catch {
@@ -494,40 +498,42 @@ function startPolling() {
   // Démarrer la connexion SSE temps réel (tous les rôles)
   startEventSource();
 
-  // ── Fallback polling (se déclenche uniquement si SSE manque un événement) ──
-  // Les intervalles sont délibérément longs : le cache en mémoire du serveur
-  // absorbe ces requêtes sans lecture Firebase si rien n'a changé.
+  // ── Fallback polling — ne se déclenche VRAIMENT que si le SSE est down ──
+  // (state.sseConnected === false). Tant que le temps réel fonctionne, ces
+  // intervalles ne font rien : évite de doubler chaque mise à jour SSE avec
+  // une requête HTTP inutile toutes les 30 s sur chaque poste ouvert.
+  const POLL_MS = 45_000;
 
   if (role === 'admin') {
     state.dashInterval = setInterval(() => {
-      if (state.currentPage === 'dashboard') loadDashboard();
-    }, 30_000);
+      if (!state.sseConnected && state.currentPage === 'dashboard') loadDashboard();
+    }, POLL_MS);
   }
 
   if (role === 'admin' || role === 'cuisiniere') {
     state.cuisineInterval = setInterval(() => {
-      if (state.currentPage === 'cuisine') loadCuisine();
-    }, 30_000);
+      if (!state.sseConnected && state.currentPage === 'cuisine') loadCuisine();
+    }, POLL_MS);
   }
 
   if (role === 'admin' || role === 'barman') {
     state.barmanInterval = setInterval(() => {
-      if (state.currentPage === 'barman') loadBarman();
-    }, 30_000);
+      if (!state.sseConnected && state.currentPage === 'barman') loadBarman();
+    }, POLL_MS);
   }
 
-  // Serveur — actualisation commandes (nouveau avec SSE + fallback)
+  // Serveur — actualisation commandes (secours si SSE down)
   if (role === 'admin' || role === 'serveur') {
     state.commandesInterval = setInterval(() => {
-      if (state.currentPage === 'commandes') loadCommandes();
-    }, 30_000);
+      if (!state.sseConnected && state.currentPage === 'commandes') loadCommandes();
+    }, POLL_MS);
   }
 
-  // Caissière — actualisation facturation (nouveau avec SSE + fallback)
+  // Caissière — actualisation facturation (secours si SSE down)
   if (role === 'admin' || role === 'caissiere') {
     state.facturationInterval = setInterval(() => {
-      if (state.currentPage === 'facturation') loadFactures();
-    }, 30_000);
+      if (!state.sseConnected && state.currentPage === 'facturation') loadFactures();
+    }, POLL_MS);
   }
 
   // Rappel vocal périodique (toutes les 4 min) — relit l'état de l'écran actif si le son est activé

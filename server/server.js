@@ -20,11 +20,15 @@ app.use(cors({ origin: corsOrigins }));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// max relevé : plusieurs postes (cuisine, bar, facturation, admin) partagent souvent la
+// même IP publique (Wi-Fi du restaurant) — le quota est par IP, pas par utilisateur.
+// /api/events (SSE) est exclu : c'est une connexion longue durée, pas une rafale de requêtes.
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: 500,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.path === '/api/events',
   message: { error: 'Trop de requêtes, réessayez dans 15 minutes.' },
 }));
 
