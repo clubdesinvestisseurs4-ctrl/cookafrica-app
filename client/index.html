@@ -601,6 +601,31 @@
 
 <!-- ══ MODALS ══════════════════════════════════════ -->
 
+<!-- Modal Modifier commande (serveur, sans permission tant que non facturée) -->
+<div class="modal-overlay hidden" id="modal-edit-commande">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-header">
+      <h2>Modifier la commande <span id="editcmd-numero"></span></h2>
+      <button class="modal-close" data-modal="edit-commande">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editcmd-id">
+      <div class="form-group">
+        <label>Ajouter un article</label>
+        <select id="editcmd-add-select" style="width:100%"></select>
+      </div>
+      <div id="editcmd-items" style="margin-top:10px"></div>
+      <div style="text-align:right;font-weight:800;margin-top:10px;font-size:1.05rem" id="editcmd-total"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-modal="edit-commande">Annuler</button>
+      <button class="btn btn-primary" id="btn-editcmd-save">
+        <i class="fas fa-save"></i> Enregistrer
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Nouvelle Commande -->
 <div class="modal-overlay hidden" id="modal-commande">
   <div class="modal-box" style="max-width:680px">
@@ -609,17 +634,6 @@
       <button class="modal-close" data-modal="commande">&times;</button>
     </div>
     <div class="modal-body">
-      <div class="form-row" style="margin-bottom:14px">
-        <div class="form-group">
-          <label>N° Table (optionnel)</label>
-          <input type="text" id="cmd-table" placeholder="Ex: Table 3">
-        </div>
-        <div class="form-group">
-          <label>Note pour la cuisine</label>
-          <input type="text" id="cmd-note" placeholder="Ex: sans piment">
-        </div>
-      </div>
-
       <div class="form-group">
         <label>Sélectionner un article <small style="color:var(--gray);font-weight:400">(ajout automatique au panier)</small></label>
         <div class="menu-search-wrapper" id="menu-search-wrapper">

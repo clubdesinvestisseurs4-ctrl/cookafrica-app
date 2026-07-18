@@ -1,5 +1,5 @@
 const express = require('express');
-const { db } = require('../firebase-admin');
+const { db, admin } = require('../firebase-admin');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { pushNotification } = require('../utils/notifications');
 const cache    = require('../utils/cache');
@@ -332,6 +332,87 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur'), async (req,
     }
 
     res.status(201).json({ id: ref.id, ...data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/commandes/:id/items — le serveur modifie librement les articles d'une commande
+// tant qu'aucune facture n'a encore été générée (au-delà, seul l'admin peut via le code
+// de modification de facture). Réouvre cuisine/bar si nécessaire pour refléter le changement.
+router.put('/:id/items', authenticateToken, requireRole('admin', 'serveur'), async (req, res) => {
+  try {
+    const { items } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'La commande doit contenir au moins un article' });
+    }
+
+    const docRef = db.collection('commandes').doc(req.params.id);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ error: 'Commande introuvable' });
+
+    const existing = doc.data();
+    if (['annulee', 'servie'].includes(existing.statut)) {
+      return res.status(400).json({ error: 'Commande déjà terminée, modification impossible' });
+    }
+
+    const existingFactSnap = await db.collection('factures').where('commandeId', '==', req.params.id).get();
+    const hasPaymentFact = existingFactSnap.docs.some(d => { const t = d.data().type; return !t || t === 'facture'; });
+    if (hasPaymentFact) {
+      return res.status(400).json({ error: 'Une facture existe déjà — seul un admin peut modifier via un code de modification' });
+    }
+
+    const mappedItems = items.map(i => ({
+      menuItemId: i.menuItemId || '',
+      nom: i.nom,
+      prix: Number(i.prix),
+      quantite: Number(i.quantite),
+      sousTotal: Number(i.prix) * Number(i.quantite),
+      categorie: i.categorie || '',
+    }));
+    const total = mappedItems.reduce((s, i) => s + i.sousTotal, 0);
+    const now = new Date();
+
+    const hasBoissons = mappedItems.some(i => i.categorie === 'Boissons');
+    const autoReady = !needsCuisine(mappedItems) && !hasBoissons;
+
+    const update = {
+      items: mappedItems,
+      total,
+      statut: autoReady ? 'prete' : 'en-attente',
+      updatedAt: now.toISOString(),
+      lastEditedBy: req.user.username,
+      lastEditedByNom: req.user.nom || req.user.username,
+      lastEditedAt: now.toISOString(),
+    };
+    // Objet propre pour la réponse/generateCombinedInvoice (sans sentinelle Firestore)
+    const updatedCommande = { ...existing, ...update, boissonsStatut: hasBoissons ? 'en-attente' : null };
+    if (hasBoissons) update.boissonsStatut = 'en-attente';
+    else update.boissonsStatut = admin.firestore.FieldValue.delete();
+
+    // Les bons déjà générés reflétaient les anciens articles — on les supprime pour que
+    // cuisine/bar les régénèrent correctement à leur prochaine validation.
+    await Promise.all([
+      db.collection('factures').doc(`cui_${req.params.id}`).delete().catch(() => {}),
+      db.collection('factures').doc(`bar_${req.params.id}`).delete().catch(() => {}),
+    ]);
+
+    await docRef.update(update);
+    invalidate();
+    eventBus.emit('commandes');
+
+    if (autoReady) {
+      await generateCombinedInvoice(req.params.id, { ...updatedCommande, id: req.params.id }, '', '', now);
+    }
+
+    pushNotification({
+      type: 'info', icon: 'edit',
+      titre: 'Commande modifiée',
+      message: `${existing.numero} – nouveau total : ${total.toLocaleString('fr-FR')} FCFA`,
+      createdBy: req.user.username,
+    });
+
+    res.json({ id: req.params.id, ...updatedCommande });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

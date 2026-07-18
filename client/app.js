@@ -53,6 +53,7 @@ const state = {
   voiceReminderInterval: null,
   editFactureItems:    [],
   editFactureCode:     '',
+  editCommandeItems:   [],
 };
 
 // ─── Labels des rôles ─────────────────────────────────
@@ -189,6 +190,7 @@ function itemsSummary(items) {
 }
 
 function speak(text) {
+  if (state.user?.role === 'admin') return; // sons désactivés côté admin
   if (!state.soundEnabled || !('speechSynthesis' in window)) return;
   try {
     const u = new SpeechSynthesisUtterance(text);
@@ -199,6 +201,18 @@ function speak(text) {
 }
 
 function updateSoundButtons() {
+  // Sons désactivés côté admin — on masque aussi les commandes devenues inertes
+  const soundIds = [
+    'btn-sound-cuisine', 'btn-play-cuisine',
+    'btn-sound-barman', 'btn-play-barman',
+    'btn-sound-facturation', 'btn-play-facturation',
+  ];
+  if (state.user?.role === 'admin') {
+    soundIds.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+    return;
+  }
+  soundIds.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
+
   const cuisineBtn = document.getElementById('btn-sound-cuisine');
   const barBtn      = document.getElementById('btn-sound-barman');
   const factBtn     = document.getElementById('btn-sound-facturation');
@@ -326,6 +340,7 @@ async function loginFlow(token, user, skipWelcome = false) {
   document.getElementById('sidebar-user-name').textContent = user.nom;
   document.getElementById('sidebar-user-role').textContent = ROLE_LABELS[user.role] || user.role;
   applyRoleNav();
+  updateSoundButtons();
   navigateTo(defaultPage());
   startPolling();
 
@@ -615,8 +630,9 @@ async function loadCommandes() {
     const hasPlats    = (c.items || []).some(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet');
     const kitchenOk   = !hasPlats || ['prete', 'servie'].includes(c.statut);
     const barOk       = !hasBoissons || c.boissonsStatut === 'prete';
-    const canFacture  = kitchenOk && barOk && !alreadyFactured;
+    const canFacture  = kitchenOk && barOk && !alreadyFactured && state.user?.role !== 'serveur';
     const canCancel  = state.user?.role === 'admin' && !['annulee', 'servie'].includes(c.statut);
+    const canEdit    = !alreadyFactured && !['annulee', 'servie'].includes(c.statut);
     const boissonsInfo = c.boissonsStatut === 'en-attente'
       ? '<br><small style="color:#1565C0;font-size:.72rem"><i class="fas fa-wine-glass-alt"></i> Boissons en attente</small>'
       : c.boissonsStatut === 'prete'
@@ -634,6 +650,9 @@ async function loadCommandes() {
         <button class="btn btn-secondary btn-sm" onclick="viewCommande('${c.id}')">
           <i class="fas fa-eye"></i>
         </button>
+        ${canEdit ? `<button class="btn btn-secondary btn-sm" onclick="openEditCommande('${c.id}')" title="Modifier la commande">
+          <i class="fas fa-edit"></i>
+        </button>` : ''}
         ${canFacture ? `<button class="btn btn-accent btn-sm" onclick="openNewFactureForCmd('${c.id}')">
           <i class="fas fa-receipt"></i> Facturer
         </button>` : ''}
@@ -676,6 +695,86 @@ async function annulerCommande(id, numero) {
   if (res?.message) { toast('Commande annulée', 'warning'); loadCommandes(); }
 }
 
+// ─── Modification libre d'une commande (serveur, avant facturation) ───
+
+window.openEditCommande = async (id) => {
+  const c = state.commandes.find(x => x.id === id);
+  if (!c) return;
+
+  document.getElementById('editcmd-id').value = id;
+  document.getElementById('editcmd-numero').textContent = c.numero;
+  state.editCommandeItems = (c.items || []).map(i => ({ ...i }));
+
+  if (state.menu.length === 0) {
+    const menu = await api('/api/menu');
+    if (menu) state.menu = menu;
+  }
+  const select = document.getElementById('editcmd-add-select');
+  select.innerHTML = '<option value="">+ Ajouter un article…</option>' +
+    state.menu.filter(m => m.disponible).map(m =>
+      `<option value="${m.id}" data-nom="${m.nom}" data-prix="${m.prix}" data-cat="${m.categorie || ''}">${m.nom} — ${fmt(m.prix)} FCFA</option>`
+    ).join('');
+
+  renderEditCommandeItems();
+  openModal('edit-commande');
+};
+
+function renderEditCommandeItems() {
+  const container = document.getElementById('editcmd-items');
+  if (state.editCommandeItems.length === 0) {
+    container.innerHTML = '<p style="color:var(--gray);font-size:.85rem;text-align:center;padding:12px">Aucun article</p>';
+  } else {
+    container.innerHTML = state.editCommandeItems.map((item, i) => `
+      <div class="panier-item">
+        <input class="panier-qty" type="number" min="1" max="99" value="${item.quantite}"
+          onchange="updateEditCommandeQty(${i}, this.value)">
+        <span class="panier-item-nom">${escapeHtml(item.nom)}</span>
+        <span class="panier-item-prix">${fmt(item.sousTotal)} FCFA</span>
+        <button class="panier-item-remove" onclick="removeEditCommandeItem(${i})">
+          <i class="fas fa-trash"></i>
+        </button>
+      </div>`).join('');
+  }
+  const total = state.editCommandeItems.reduce((s, i) => s + i.sousTotal, 0);
+  document.getElementById('editcmd-total').textContent = `Total : ${fmt(total)} FCFA`;
+}
+
+window.updateEditCommandeQty = (i, qty) => {
+  const q = Math.max(1, parseInt(qty, 10) || 1);
+  state.editCommandeItems[i].quantite = q;
+  state.editCommandeItems[i].sousTotal = state.editCommandeItems[i].prix * q;
+  renderEditCommandeItems();
+};
+
+window.removeEditCommandeItem = (i) => {
+  state.editCommandeItems.splice(i, 1);
+  renderEditCommandeItems();
+};
+
+function addToEditCommande(id, nom, prix, categorie) {
+  const existing = state.editCommandeItems.find(p => p.menuItemId === id);
+  if (existing) { existing.quantite++; existing.sousTotal = existing.prix * existing.quantite; }
+  else { state.editCommandeItems.push({ menuItemId: id, nom, prix, categorie: categorie || '', quantite: 1, sousTotal: prix }); }
+  renderEditCommandeItems();
+}
+
+async function saveEditCommande() {
+  if (state.editCommandeItems.length === 0) { toast('La commande doit contenir au moins un article', 'warning'); return; }
+  const id = document.getElementById('editcmd-id').value;
+
+  showLoader();
+  const res = await api(`/api/commandes/${id}/items`, {
+    method: 'PUT',
+    body: JSON.stringify({ items: state.editCommandeItems }),
+  });
+  hideLoader();
+
+  if (!res?.id) { toast(res?.error || 'Erreur lors de la modification', 'error'); return; }
+  toast('Commande modifiée', 'success');
+  closeModal('edit-commande');
+  loadCommandes();
+}
+
 window.viewCommande = viewCommande;
 window.annulerCommande = annulerCommande;
 
@@ -692,8 +791,6 @@ async function openNewCommande() {
   search.value = '';
   document.getElementById('cmd-menu-clear').style.display = 'none';
   document.getElementById('menu-search-dropdown').style.display = 'none';
-  document.getElementById('cmd-table').value = '';
-  document.getElementById('cmd-note').value  = '';
   openModal('commande');
 }
 
@@ -798,11 +895,7 @@ window.removePanierItem = (i) => {
 
 async function saveCommande() {
   if (state.panier.length === 0) { toast('Ajoutez au moins un article', 'warning'); return; }
-  const body = {
-    items:       state.panier,
-    note:        document.getElementById('cmd-note').value.trim(),
-    tableNumero: document.getElementById('cmd-table').value.trim(),
-  };
+  const body = { items: state.panier };
   showLoader();
   const res = await api('/api/commandes', { method: 'POST', body: JSON.stringify(body) });
   hideLoader();
@@ -2576,6 +2669,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('btn-save-commande').addEventListener('click', saveCommande);
   document.getElementById('btn-filter-cmd').addEventListener('click', loadCommandes);
+  document.getElementById('btn-editcmd-save').addEventListener('click', saveEditCommande);
+  document.getElementById('editcmd-add-select').addEventListener('change', function () {
+    const opt = this.options[this.selectedIndex];
+    if (!opt.value) return;
+    addToEditCommande(opt.value, opt.dataset.nom, Number(opt.dataset.prix), opt.dataset.cat);
+    this.value = '';
+  });
 
   // ── Cuisine ──
   document.getElementById('btn-refresh-cuisine').addEventListener('click', () => loadCuisine());
