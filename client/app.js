@@ -1763,11 +1763,11 @@ async function loadMenu() {
   // Synchroniser aussi le select du formulaire plat avec les catégories connues
   const platCatSel = document.getElementById('plat-categorie');
   if (platCatSel) {
-    const defaults = ['Plats (sauce)', 'Accompagnement', 'Boisson'];
+    const defaults = ['Plats', 'Entrées', 'Accompagnement', 'Sauce', 'Desserts', 'Buffet', 'Boissons'];
     const allCats  = [...new Set([...defaults, ...cats])].sort();
     const prev = platCatSel.value;
     platCatSel.innerHTML = allCats
-      .map(c => `<option value="${c}"${c === prev ? ' selected' : ''}>${c}</option>`).join('');
+      .map(c => `<option value="${c}"${c === prev ? ' selected' : ''}>${c === 'Buffet' ? 'Buffet (non envoyé en cuisine)' : c}</option>`).join('');
   }
 
   renderMenu(menu);
