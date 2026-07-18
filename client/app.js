@@ -225,10 +225,11 @@ function updateSoundButtons() {
   }
 }
 
-function enableSound(screen) {
+function enableSound(screen, announce = true) {
   state.soundEnabled = true;
   localStorage.setItem('ca_sound', '1');
   updateSoundButtons();
+  if (!announce) return;
   const messages = { bar: 'Son activé pour le bar', facturation: 'Son activé pour la facturation' };
   speak(messages[screen] || 'Son activé pour la cuisine');
 }
@@ -2579,12 +2580,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Cuisine ──
   document.getElementById('btn-refresh-cuisine').addEventListener('click', () => loadCuisine());
   document.getElementById('btn-sound-cuisine').addEventListener('click', () => enableSound('cuisine'));
-  document.getElementById('btn-play-cuisine').addEventListener('click', () => { enableSound('cuisine'); loadCuisine(true); });
+  document.getElementById('btn-play-cuisine').addEventListener('click', () => { enableSound('cuisine', false); loadCuisine(true); });
 
   // ── Bar ──
   document.getElementById('btn-refresh-barman').addEventListener('click', () => loadBarman());
   document.getElementById('btn-sound-barman').addEventListener('click', () => enableSound('bar'));
-  document.getElementById('btn-play-barman').addEventListener('click', () => { enableSound('bar'); loadBarman(true); });
+  document.getElementById('btn-play-barman').addEventListener('click', () => { enableSound('bar', false); loadBarman(true); });
 
   updateSoundButtons();
 
@@ -2596,7 +2597,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-print-facture').addEventListener('click', printFacture);
   document.getElementById('btn-repair-numeros')?.addEventListener('click', repairNumeros);
   document.getElementById('btn-sound-facturation').addEventListener('click', () => enableSound('facturation'));
-  document.getElementById('btn-play-facturation').addEventListener('click', () => { enableSound('facturation'); checkFacturationReady(true); });
+  document.getElementById('btn-play-facturation').addEventListener('click', () => { enableSound('facturation', false); checkFacturationReady(true); });
   document.getElementById('btn-generate-edit-code').addEventListener('click', generateEditCode);
   document.getElementById('btn-editfact-unlock').addEventListener('click', unlockEditFacture);
   document.getElementById('btn-editfact-save').addEventListener('click', saveEditFacture);
