@@ -133,7 +133,8 @@ router.post('/', authenticateToken, requireRole('admin', 'caissiere'), async (re
     if (!existing.empty) return res.status(409).json({ error: 'Une facture existe déjà pour cette commande' });
 
     const hasBoissons = (commande.items || []).some(i => i.categorie === 'Boissons');
-    const hasPlats    = (commande.items || []).some(i => i.categorie !== 'Boissons');
+    // Le buffet est en libre-service : il n'attend pas la validation cuisine.
+    const hasPlats    = (commande.items || []).some(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet');
 
     if (hasPlats && !['prete', 'servie'].includes(commande.statut)) {
       return res.status(400).json({ error: 'Les plats ne sont pas encore prêts (la cuisine n\'a pas validé)' });
@@ -246,6 +247,145 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere'), asy
       type: 'success', icon: 'money-bill-wave',
       titre: 'Paiement enregistré',
       message: `${facture.numero} – ${facture.total.toLocaleString('fr-FR')} FCFA encaissés`,
+      createdBy: req.user.username,
+    });
+
+    res.json({ id: req.params.id, ...facture, ...update });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/factures/:id/edit-grant/verify — vérifie un code sans muter la facture
+// (permet de déverrouiller l'éditeur côté caissière avant de composer les modifications)
+router.post('/:id/edit-grant/verify', authenticateToken, requireRole('admin', 'caissiere'), async (req, res) => {
+  try {
+    const { code } = req.body;
+    const doc = await db.collection('factures').doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Facture introuvable' });
+
+    const facture = doc.data();
+    const grant = facture.editGrant;
+    if (!grant || !grant.code) return res.status(403).json({ error: 'Aucune autorisation de modification en cours pour cette facture' });
+    if (grant.code !== String(code || '').trim()) return res.status(403).json({ error: 'Code incorrect' });
+    if (new Date(grant.expiresAt).getTime() < Date.now()) return res.status(403).json({ error: 'Code expiré — redemandez une autorisation à l\'admin' });
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/factures/:id/edit-grant — admin : autorise la caissière à modifier une facture
+// pendant une durée limitée, via un code court communiqué de vive voix.
+router.post('/:id/edit-grant', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    const minutes = Number(req.body?.minutes);
+    if (!minutes || minutes <= 0 || minutes > 120) {
+      return res.status(400).json({ error: 'Durée invalide (1 à 120 minutes)' });
+    }
+
+    const docRef = db.collection('factures').doc(req.params.id);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ error: 'Facture introuvable' });
+
+    const facture = doc.data();
+    if (facture.type && facture.type !== 'facture') {
+      return res.status(400).json({ error: 'Seules les factures de paiement sont modifiables' });
+    }
+    if (facture.statut === 'payee') {
+      return res.status(400).json({ error: 'Facture déjà payée, modification impossible' });
+    }
+
+    const now = new Date();
+    const code = String(Math.floor(100000 + Math.random() * 900000)); // 6 chiffres
+    const expiresAt = new Date(now.getTime() + minutes * 60_000).toISOString();
+
+    const editGrant = {
+      code,
+      expiresAt,
+      grantedBy: req.user.username,
+      grantedByNom: req.user.nom || req.user.username,
+      grantedAt: now.toISOString(),
+    };
+
+    await docRef.update({ editGrant, updatedAt: now.toISOString() });
+    invalidate();
+
+    pushNotification({
+      type: 'info', icon: 'key',
+      titre: 'Code de modification généré',
+      message: `Facture ${facture.numero} — modifiable pendant ${minutes} min`,
+      createdBy: req.user.username,
+    });
+
+    // Le code n'est renvoyé qu'ici, une seule fois — à l'admin de le communiquer à la caissière.
+    res.json({ code, expiresAt, numero: facture.numero });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/factures/:id/edit-items — caissière (ou admin) : applique la modification
+// des articles d'une facture, en validant le code temporaire généré par l'admin.
+router.post('/:id/edit-items', authenticateToken, requireRole('admin', 'caissiere'), async (req, res) => {
+  try {
+    const { code, items } = req.body;
+    if (!code) return res.status(400).json({ error: 'Code requis' });
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'La facture doit contenir au moins un article' });
+    }
+
+    const docRef = db.collection('factures').doc(req.params.id);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ error: 'Facture introuvable' });
+
+    const facture = doc.data();
+    if (facture.statut === 'payee') {
+      return res.status(400).json({ error: 'Facture déjà payée, modification impossible' });
+    }
+
+    const grant = facture.editGrant;
+    if (!grant || !grant.code) {
+      return res.status(403).json({ error: 'Aucune autorisation de modification en cours pour cette facture' });
+    }
+    if (grant.code !== String(code).trim()) {
+      return res.status(403).json({ error: 'Code incorrect' });
+    }
+    if (new Date(grant.expiresAt).getTime() < Date.now()) {
+      return res.status(403).json({ error: 'Code expiré — redemandez une autorisation à l\'admin' });
+    }
+
+    const mappedItems = items.map(i => ({
+      menuItemId: i.menuItemId || '',
+      nom: i.nom,
+      prix: Number(i.prix),
+      quantite: Number(i.quantite),
+      sousTotal: Number(i.prix) * Number(i.quantite),
+      categorie: i.categorie || '',
+    }));
+    const total = mappedItems.reduce((s, i) => s + i.sousTotal, 0);
+    const now = new Date();
+
+    const update = {
+      items: mappedItems,
+      total,
+      reste: total, // rien n'a encore été payé sur une facture 'partielle'
+      updatedAt: now.toISOString(),
+      lastEditedBy: req.user.username,
+      lastEditedByNom: req.user.nom || req.user.username,
+      lastEditedAt: now.toISOString(),
+      editGrant: null, // code à usage unique
+    };
+
+    await docRef.update(update);
+    invalidate();
+    eventBus.emit('factures');
+
+    pushNotification({
+      type: 'info', icon: 'edit',
+      titre: 'Facture modifiée',
+      message: `${facture.numero} — nouveau total : ${total.toLocaleString('fr-FR')} FCFA`,
       createdBy: req.user.username,
     });
 

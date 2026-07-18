@@ -35,12 +35,17 @@ async function getNextNumeroFacture() {
   return `FACT-${String(maxNum + 1).padStart(4, '0')}`;
 }
 
-// Bon interne cuisine — créé dès que la cuisinière valide (plats uniquement)
+// 'Buffet' est en libre-service : jamais envoyé en cuisine, jamais bloquant pour la facturation.
+function needsCuisine(items) {
+  return (items || []).some(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet');
+}
+
+// Bon interne cuisine — créé dès que la cuisinière valide (plats uniquement, hors buffet)
 async function generateCuisineSubInvoice(commandeId, commande, validatedByCuisinier, now) {
   const docRef = db.collection('factures').doc(`cui_${commandeId}`);
   if ((await docRef.get()).exists) return null; // déjà créé
 
-  const platsItems = (commande.items || []).filter(i => i.categorie !== 'Boissons');
+  const platsItems = (commande.items || []).filter(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet');
   if (platsItems.length === 0) return null;
 
   const data = {
@@ -226,14 +231,14 @@ router.get('/cuisine', authenticateToken, async (req, res) => {
     const active = activeSnap.docs
       .map(d => {
         const data = d.data();
-        return { id: d.id, ...data, items: (data.items || []).filter(i => i.categorie !== 'Boissons') };
+        return { id: d.id, ...data, items: (data.items || []).filter(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet') };
       })
       .filter(c => c.items.length > 0);
 
     const terminee = todaySnap.docs
       .map(d => {
         const data = d.data();
-        return { id: d.id, ...data, items: (data.items || []).filter(i => i.categorie !== 'Boissons') };
+        return { id: d.id, ...data, items: (data.items || []).filter(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet') };
       })
       .filter(c => ['prete', 'servie'].includes(c.statut) && c.items.length > 0);
 
@@ -268,6 +273,9 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur'), async (req,
     }));
 
     const hasBoissons = mappedItems.some(i => i.categorie === 'Boissons');
+    // Commande 100% buffet (+ éventuels desserts/accompagnements déjà exclus) : rien à préparer,
+    // ni en cuisine ni au bar → directement facturable dès la validation du serveur.
+    const autoReady = !needsCuisine(mappedItems) && !hasBoissons;
 
     const data = {
       numero,
@@ -275,7 +283,7 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur'), async (req,
       total,
       note: note || '',
       tableNumero: tableNumero || '',
-      statut: 'en-attente',
+      statut: autoReady ? 'prete' : 'en-attente',
       date: now.toISOString().split('T')[0],
       createdBy: req.user.username,
       createdByNom: req.user.nom || req.user.username,
@@ -288,6 +296,10 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur'), async (req,
     const ref = await db.collection('commandes').add(data);
     invalidate();
     eventBus.emit('commandes');
+
+    if (autoReady) {
+      await generateCombinedInvoice(ref.id, { ...data, id: ref.id }, '', '', now);
+    }
 
     // Décrémenter quantiteRestante dans stocks_plats pour chaque article commandé
     const today = now.toISOString().split('T')[0];
@@ -352,8 +364,7 @@ router.put('/:id/bar-pret', authenticateToken, requireRole('admin', 'barman'), a
     eventBus.emit('commandes');
 
     const updatedCommande = { ...commande, ...commandeUpdate };
-    const platsItems = (commande.items || []).filter(i => i.categorie !== 'Boissons');
-    const platsReady = platsItems.length === 0 || commande.statut === 'prete';
+    const platsReady = !needsCuisine(commande.items) || commande.statut === 'prete';
 
     // Bon interne bar (stocké en BD dès la validation barman)
     await generateBarSubInvoice(req.params.id, updatedCommande, req.user.username, now);

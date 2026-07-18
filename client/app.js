@@ -49,6 +49,10 @@ const state = {
   soundEnabled:        localStorage.getItem('ca_sound') === '1',
   cuisineKnownIds:     null,
   barKnownIds:         null,
+  factureKnownIds:     null,
+  voiceReminderInterval: null,
+  editFactureItems:    [],
+  editFactureCode:     '',
 };
 
 // ─── Labels des rôles ─────────────────────────────────
@@ -197,6 +201,7 @@ function speak(text) {
 function updateSoundButtons() {
   const cuisineBtn = document.getElementById('btn-sound-cuisine');
   const barBtn      = document.getElementById('btn-sound-barman');
+  const factBtn     = document.getElementById('btn-sound-facturation');
   if (cuisineBtn) {
     cuisineBtn.classList.toggle('btn-success', state.soundEnabled);
     cuisineBtn.classList.toggle('btn-warning', !state.soundEnabled);
@@ -211,13 +216,21 @@ function updateSoundButtons() {
       ? '<i class="fas fa-volume-up"></i> Son activé'
       : '<i class="fas fa-volume-mute"></i> Activer le son';
   }
+  if (factBtn) {
+    factBtn.classList.toggle('btn-success', state.soundEnabled);
+    factBtn.classList.toggle('btn-accent', !state.soundEnabled);
+    factBtn.innerHTML = state.soundEnabled
+      ? '<i class="fas fa-volume-up"></i> Son activé'
+      : '<i class="fas fa-volume-mute"></i> Activer le son';
+  }
 }
 
 function enableSound(screen) {
   state.soundEnabled = true;
   localStorage.setItem('ca_sound', '1');
   updateSoundButtons();
-  speak(screen === 'bar' ? 'Son activé pour le bar' : 'Son activé pour la cuisine');
+  const messages = { bar: 'Son activé pour le bar', facturation: 'Son activé pour la facturation' };
+  speak(messages[screen] || 'Son activé pour la cuisine');
 }
 
 function toast(msg, type = 'info') {
@@ -374,7 +387,7 @@ function navigateTo(page) {
     dashboard:    loadDashboard,
     commandes:    loadCommandes,
     cuisine:      () => loadCuisine(true),
-    facturation:  loadFactures,
+    facturation:  () => { loadFactures(); checkFacturationReady(true); },
     menu:         loadMenu,
     stocks:       loadStocks,
     rapports:     () => {},
@@ -421,11 +434,11 @@ function handleSSEEvent(type) {
     if      (page === 'cuisine')     loadCuisine();
     else if (page === 'barman')      loadBarman();
     else if (page === 'commandes')   loadCommandes();
-    else if (page === 'facturation') loadFactures();
+    else if (page === 'facturation') { loadFactures(); checkFacturationReady(); }
     else if (page === 'dashboard')   loadDashboard();
   }
   if (type === 'factures') {
-    if      (page === 'facturation') loadFactures();
+    if      (page === 'facturation') { loadFactures(); checkFacturationReady(); }
     else if (page === 'dashboard')   loadDashboard();
   }
   if (type === 'stocks') {
@@ -500,6 +513,14 @@ function startPolling() {
       if (state.currentPage === 'facturation') loadFactures();
     }, 30_000);
   }
+
+  // Rappel vocal périodique (toutes les 4 min) — relit l'état de l'écran actif si le son est activé
+  state.voiceReminderInterval = setInterval(() => {
+    if (!state.soundEnabled) return;
+    if      (state.currentPage === 'cuisine')     loadCuisine(true);
+    else if (state.currentPage === 'barman')      loadBarman(true);
+    else if (state.currentPage === 'facturation') checkFacturationReady(true);
+  }, 4 * 60_000);
 
   // Notifications — admin seulement
   if (role === 'admin') {
@@ -590,7 +611,7 @@ async function loadCommandes() {
     const items = (c.items || []).map(i => `${i.quantite}x ${escapeHtml(i.nom)}`).join(', ');
     const alreadyFactured = state.factures.some(f => f.commandeId === c.id);
     const hasBoissons = (c.items || []).some(i => i.categorie === 'Boissons');
-    const hasPlats    = (c.items || []).some(i => i.categorie !== 'Boissons');
+    const hasPlats    = (c.items || []).some(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet');
     const kitchenOk   = !hasPlats || ['prete', 'servie'].includes(c.statut);
     const barOk       = !hasBoissons || c.boissonsStatut === 'prete';
     const canFacture  = kitchenOk && barOk && !alreadyFactured;
@@ -970,6 +991,23 @@ window.printBilanJour = function printBilanJour() {
 
 // ─── FACTURATION ───────────────────────────────────────
 
+// Annonce vocale des factures prêtes pour le client (payées ou non, hors bons internes)
+async function checkFacturationReady(entering = false) {
+  const today = new Date().toISOString().split('T')[0];
+  const factures = await api(`/api/factures?debut=${today}&fin=${today}&statut=partielle`);
+  if (!factures) return;
+
+  const ids = new Set(factures.map(f => f.id));
+  if (entering) {
+    factures.forEach(f => speak(`Facture de la commande ${f.commandeNumero || f.numero} est prête pour le client`));
+  } else if (state.factureKnownIds) {
+    factures
+      .filter(f => !state.factureKnownIds.has(f.id))
+      .forEach(f => speak(`Facture de la commande ${f.commandeNumero || f.numero} est prête pour le client`));
+  }
+  state.factureKnownIds = ids;
+}
+
 async function loadFactures() {
   const debut  = document.getElementById('filter-fact-start')?.value || '';
   const fin    = document.getElementById('filter-fact-end')?.value   || '';
@@ -1032,6 +1070,8 @@ async function loadFactures() {
       <td data-label="Actions">
         ${printAction}
         ${canPay ? `<button class="btn btn-success btn-sm" onclick="openPayFacture('${f.id}','${fmt(f.reste)}')"><i class="fas fa-check"></i> Payer</button>` : ''}
+        ${canPay ? `<button class="btn btn-secondary btn-sm" onclick="openEditFacture('${f.id}')" title="Modifier (nécessite un code admin)"><i class="fas fa-edit"></i></button>` : ''}
+        ${(canPay && state.user?.role === 'admin') ? `<button class="btn btn-accent btn-sm" onclick="openEditGrant('${f.id}')" title="Générer un code de modification"><i class="fas fa-key"></i></button>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -1048,12 +1088,147 @@ async function repairNumeros() {
   loadFactures();
 }
 
+// ─── Autorisation temporaire de modification de facture ───
+
+window.openEditGrant = (factureId) => {
+  const f = state.factures.find(x => x.id === factureId);
+  if (!f) return;
+  document.getElementById('edit-grant-facture-id').value = factureId;
+  document.getElementById('edit-grant-info').textContent = `Facture ${f.numero} — ${fmt(f.total)} FCFA`;
+  document.getElementById('edit-grant-minutes').value = 15;
+  document.getElementById('edit-grant-code-display').style.display = 'none';
+  openModal('edit-grant');
+};
+
+async function generateEditCode() {
+  const factureId = document.getElementById('edit-grant-facture-id').value;
+  const minutes = Number(document.getElementById('edit-grant-minutes').value);
+  showLoader();
+  const res = await api(`/api/factures/${factureId}/edit-grant`, {
+    method: 'POST',
+    body: JSON.stringify({ minutes }),
+  });
+  hideLoader();
+  if (!res?.code) { toast(res?.error || 'Erreur lors de la génération du code', 'error'); return; }
+
+  document.getElementById('edit-grant-code').textContent = res.code;
+  document.getElementById('edit-grant-expiry').textContent =
+    new Date(res.expiresAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  document.getElementById('edit-grant-code-display').style.display = 'block';
+  toast(`Code généré pour ${res.numero}`, 'success');
+}
+
+// ─── Modification d'une facture (côté caissière) ───────
+
+window.openEditFacture = (factureId) => {
+  const f = state.factures.find(x => x.id === factureId);
+  if (!f) return;
+  document.getElementById('editfact-facture-id').value = factureId;
+  document.getElementById('editfact-numero').textContent = f.numero;
+  document.getElementById('editfact-code').value = '';
+  document.getElementById('editfact-code-step').style.display = 'block';
+  document.getElementById('editfact-items-step').style.display = 'none';
+  document.getElementById('btn-editfact-save').style.display = 'none';
+  state.editFactureItems = [];
+  state.editFactureCode = '';
+  openModal('edit-facture');
+};
+
+async function unlockEditFacture() {
+  const factureId = document.getElementById('editfact-facture-id').value;
+  const code = document.getElementById('editfact-code').value.trim();
+  if (!code) { toast('Entrez le code', 'warning'); return; }
+
+  showLoader();
+  const res = await api(`/api/factures/${factureId}/edit-grant/verify`, {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+  });
+  hideLoader();
+  if (!res?.ok) { toast(res?.error || 'Code invalide', 'error'); return; }
+
+  const f = state.factures.find(x => x.id === factureId);
+  state.editFactureCode = code;
+  state.editFactureItems = (f?.items || []).map(i => ({ ...i }));
+
+  if (state.menu.length === 0) {
+    const menu = await api('/api/menu');
+    if (menu) state.menu = menu;
+  }
+  const select = document.getElementById('editfact-add-select');
+  select.innerHTML = '<option value="">+ Ajouter un article…</option>' +
+    state.menu.filter(m => m.disponible).map(m =>
+      `<option value="${m.id}" data-nom="${m.nom}" data-prix="${m.prix}" data-cat="${m.categorie || ''}">${m.nom} — ${fmt(m.prix)} FCFA</option>`
+    ).join('');
+
+  document.getElementById('editfact-code-step').style.display = 'none';
+  document.getElementById('editfact-items-step').style.display = 'block';
+  document.getElementById('btn-editfact-save').style.display = 'inline-flex';
+  renderEditFactureItems();
+}
+
+function renderEditFactureItems() {
+  const container = document.getElementById('editfact-items');
+  if (state.editFactureItems.length === 0) {
+    container.innerHTML = '<p style="color:var(--gray);font-size:.85rem;text-align:center;padding:12px">Aucun article</p>';
+  } else {
+    container.innerHTML = state.editFactureItems.map((item, i) => `
+      <div class="panier-item">
+        <input class="panier-qty" type="number" min="1" max="99" value="${item.quantite}"
+          onchange="updateEditFactureQty(${i}, this.value)">
+        <span class="panier-item-nom">${escapeHtml(item.nom)}</span>
+        <span class="panier-item-prix">${fmt(item.sousTotal)} FCFA</span>
+        <button class="panier-item-remove" onclick="removeEditFactureItem(${i})">
+          <i class="fas fa-trash"></i>
+        </button>
+      </div>`).join('');
+  }
+  const total = state.editFactureItems.reduce((s, i) => s + i.sousTotal, 0);
+  document.getElementById('editfact-total').textContent = `Total : ${fmt(total)} FCFA`;
+}
+
+window.updateEditFactureQty = (i, qty) => {
+  const q = Math.max(1, parseInt(qty, 10) || 1);
+  state.editFactureItems[i].quantite = q;
+  state.editFactureItems[i].sousTotal = state.editFactureItems[i].prix * q;
+  renderEditFactureItems();
+};
+
+window.removeEditFactureItem = (i) => {
+  state.editFactureItems.splice(i, 1);
+  renderEditFactureItems();
+};
+
+function addToEditFacture(id, nom, prix, categorie) {
+  const existing = state.editFactureItems.find(p => p.menuItemId === id);
+  if (existing) { existing.quantite++; existing.sousTotal = existing.prix * existing.quantite; }
+  else { state.editFactureItems.push({ menuItemId: id, nom, prix, categorie: categorie || '', quantite: 1, sousTotal: prix }); }
+  renderEditFactureItems();
+}
+
+async function saveEditFacture() {
+  if (state.editFactureItems.length === 0) { toast('La facture doit contenir au moins un article', 'warning'); return; }
+  const factureId = document.getElementById('editfact-facture-id').value;
+
+  showLoader();
+  const res = await api(`/api/factures/${factureId}/edit-items`, {
+    method: 'POST',
+    body: JSON.stringify({ code: state.editFactureCode, items: state.editFactureItems }),
+  });
+  hideLoader();
+
+  if (!res?.id) { toast(res?.error || 'Erreur lors de la modification', 'error'); return; }
+  toast('Facture modifiée', 'success');
+  closeModal('edit-facture');
+  loadFactures();
+}
+
 function openNewFacture() {
   // Commande éligible : toutes les parties validées + pas encore facturée
   const cmdsEligibles = state.commandes.filter(c => {
     if (state.factures.some(f => f.commandeId === c.id)) return false;
     const hasBoissons = (c.items || []).some(i => i.categorie === 'Boissons');
-    const hasPlats    = (c.items || []).some(i => i.categorie !== 'Boissons');
+    const hasPlats    = (c.items || []).some(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet');
     const kitchenOk   = !hasPlats || ['prete', 'servie'].includes(c.statut);
     const barOk       = !hasBoissons || c.boissonsStatut === 'prete';
     return kitchenOk && barOk;
@@ -1131,7 +1306,8 @@ window.aperçuFacture = async (id) => {
   const logoUrl = window.location.origin + '/logo-cookafrica.png';
 
   // Grouper les articles par catégorie pour un affichage clair
-  const platsItems    = (f.items || []).filter(i => i.categorie !== 'Boissons');
+  const buffetItems   = (f.items || []).filter(i => i.categorie === 'Buffet');
+  const platsItems    = (f.items || []).filter(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet');
   const boissonsItems = (f.items || []).filter(i => i.categorie === 'Boissons');
 
   const renderRows = items => items.map(i => `
@@ -1158,6 +1334,14 @@ window.aperçuFacture = async (id) => {
     </tr>
     ${renderRows(platsItems)}` : '';
 
+  const sectionBuffet = buffetItems.length > 0 ? `
+    <tr style="background:#fefce8">
+      <td colspan="4" style="font-weight:700;font-size:.8rem;color:#a16207;padding:6px 8px">
+        <i class="fas fa-utensils"></i> Buffet
+      </td>
+    </tr>
+    ${renderRows(buffetItems)}` : '';
+
   const validateurs = [];
   if (f.validatedByCuisinier) {
     const nomCuisinier = f.validatedByCuisinierNom || f.validatedByCuisinier;
@@ -1182,7 +1366,7 @@ window.aperçuFacture = async (id) => {
       </div>
       <table class="facture-items">
         <thead><tr><th>Article</th><th>Qté</th><th>Prix unit.</th><th>Sous-total</th></tr></thead>
-        <tbody>${sectionPlats}${sectionBoissons}</tbody>
+        <tbody>${sectionPlats}${sectionBuffet}${sectionBoissons}</tbody>
       </table>
       <table class="facture-totaux">
         <tr class="facture-total-final">
@@ -1237,7 +1421,7 @@ window.aperçuFactureCuisine = async (id) => {
   }
 
   const logoUrl = window.location.origin + '/logo-cookafrica.png';
-  const platsItems = (f.items || []).filter(i => i.categorie !== 'Boissons');
+  const platsItems = (f.items || []).filter(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet');
   if (platsItems.length === 0) { toast('Aucun plat dans cette facture', 'warning'); return; }
   const totalPlats = platsItems.reduce((s, i) => s + i.sousTotal, 0);
 
@@ -2395,10 +2579,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Cuisine ──
   document.getElementById('btn-refresh-cuisine').addEventListener('click', () => loadCuisine());
   document.getElementById('btn-sound-cuisine').addEventListener('click', () => enableSound('cuisine'));
+  document.getElementById('btn-play-cuisine').addEventListener('click', () => { enableSound('cuisine'); loadCuisine(true); });
 
   // ── Bar ──
   document.getElementById('btn-refresh-barman').addEventListener('click', () => loadBarman());
   document.getElementById('btn-sound-barman').addEventListener('click', () => enableSound('bar'));
+  document.getElementById('btn-play-barman').addEventListener('click', () => { enableSound('bar'); loadBarman(true); });
 
   updateSoundButtons();
 
@@ -2409,6 +2595,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-filter-fact').addEventListener('click', loadFactures);
   document.getElementById('btn-print-facture').addEventListener('click', printFacture);
   document.getElementById('btn-repair-numeros')?.addEventListener('click', repairNumeros);
+  document.getElementById('btn-sound-facturation').addEventListener('click', () => enableSound('facturation'));
+  document.getElementById('btn-play-facturation').addEventListener('click', () => { enableSound('facturation'); checkFacturationReady(true); });
+  document.getElementById('btn-generate-edit-code').addEventListener('click', generateEditCode);
+  document.getElementById('btn-editfact-unlock').addEventListener('click', unlockEditFacture);
+  document.getElementById('btn-editfact-save').addEventListener('click', saveEditFacture);
+  document.getElementById('editfact-add-select').addEventListener('change', function () {
+    const opt = this.options[this.selectedIndex];
+    if (!opt.value) return;
+    addToEditFacture(opt.value, opt.dataset.nom, Number(opt.dataset.prix), opt.dataset.cat);
+    this.value = '';
+  });
 
   // ── Menu ──
   document.getElementById('btn-new-plat').addEventListener('click', openNewPlat);
