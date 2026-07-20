@@ -130,6 +130,9 @@
       <a class="nav-item" data-page="facturation" id="nav-facturation">
         <i class="fas fa-receipt"></i><span>Facturation</span>
       </a>
+      <a class="nav-item" data-page="commandes-en-ligne" id="nav-commandes-en-ligne">
+        <i class="fas fa-globe"></i><span>Commandes en Ligne</span>
+      </a>
 
       <div class="nav-section-label" id="nav-section-cuisine">Cuisine</div>
       <a class="nav-item" data-page="cuisine" id="nav-cuisine">
@@ -412,6 +415,24 @@
         </div>
       </section>
 
+      <!-- ── COMMANDES EN LIGNE ───────────────────── -->
+      <section id="page-commandes-en-ligne" class="page">
+        <div class="page-actions">
+          <button class="btn btn-primary" id="btn-new-commande-ligne"><i class="fas fa-plus"></i> Nouvelle commande en ligne</button>
+          <span style="font-size:.8rem;color:var(--gray);margin-left:8px">
+            <i class="fas fa-info-circle"></i> Les articles s'affichent en cuisine/bar pour préparation, mais la facturation ne les attend pas.
+          </span>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead><tr>
+              <th>N°</th><th>Date</th><th>Articles</th><th>Total (FCFA)</th><th>Statut</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="commandes-ligne-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
       <!-- ── MENU ──────────────────────────────── -->
       <section id="page-menu" class="page">
         <div class="page-actions">
@@ -630,7 +651,7 @@
 <div class="modal-overlay hidden" id="modal-commande">
   <div class="modal-box" style="max-width:680px">
     <div class="modal-header">
-      <h2>Nouvelle commande</h2>
+      <h2 id="modal-commande-title">Nouvelle commande</h2>
       <button class="modal-close" data-modal="commande">&times;</button>
     </div>
     <div class="modal-body">

@@ -36,6 +36,7 @@ const state = {
   stocks:    [],
   utilisateurs: [],
   panier:    [],
+  panierSource: 'sur-place',
   barFactures: {},
   notifInterval:       null,
   cuisineInterval:     null,
@@ -67,29 +68,31 @@ const ROLE_LABELS = {
 
 // ─── Visibilité des pages par rôle ────────────────────
 const PAGE_ROLES = {
-  dashboard:    ['admin'],
-  commandes:    ['admin', 'serveur'],
-  cuisine:      ['admin', 'cuisiniere'],
-  facturation:  ['admin', 'caissiere'],
-  menu:         ['admin'],
-  stocks:       ['admin'],
-  rapports:     ['admin'],
-  sessions:     ['admin'],
-  barman:       ['admin', 'barman'],
-  utilisateurs: ['admin'],
+  dashboard:      ['admin'],
+  commandes:      ['admin', 'serveur'],
+  'commandes-en-ligne': ['admin', 'caissiere'],
+  cuisine:        ['admin', 'cuisiniere'],
+  facturation:    ['admin', 'caissiere'],
+  menu:           ['admin'],
+  stocks:         ['admin'],
+  rapports:       ['admin'],
+  sessions:       ['admin'],
+  barman:         ['admin', 'barman'],
+  utilisateurs:   ['admin'],
 };
 
 const PAGE_TITLES = {
-  dashboard:    'Dashboard',
-  commandes:    'Commandes',
-  cuisine:      'Écran Cuisine',
-  facturation:  'Facturation',
-  menu:         'Carte du Menu',
-  stocks:       'Gestion des Stocks',
-  rapports:     'Rapports & Statistiques',
-  sessions:     'Journal des Sessions',
-  barman:       'Écran Bar',
-  utilisateurs: 'Gestion des Utilisateurs',
+  dashboard:      'Dashboard',
+  commandes:      'Commandes',
+  'commandes-en-ligne': 'Commandes en Ligne',
+  cuisine:        'Écran Cuisine',
+  facturation:    'Facturation',
+  menu:           'Carte du Menu',
+  stocks:         'Gestion des Stocks',
+  rapports:       'Rapports & Statistiques',
+  sessions:       'Journal des Sessions',
+  barman:         'Écran Bar',
+  utilisateurs:   'Gestion des Utilisateurs',
 };
 
 // ─── Utilitaires ──────────────────────────────────────
@@ -406,6 +409,7 @@ function navigateTo(page) {
   const loaders = {
     dashboard:    loadDashboard,
     commandes:    loadCommandes,
+    'commandes-en-ligne': loadCommandesLigne,
     cuisine:      () => loadCuisine(true),
     facturation:  () => { loadFactures(); checkFacturationReady(true); },
     menu:         loadMenu,
@@ -442,6 +446,7 @@ function handleSSEEvent(type) {
       cuisine:     loadCuisine,
       barman:      loadBarman,
       commandes:   loadCommandes,
+      'commandes-en-ligne': loadCommandesLigne,
       facturation: loadFactures,
       dashboard:   loadDashboard,
       stocks:      loadStocks,
@@ -454,6 +459,7 @@ function handleSSEEvent(type) {
     if      (page === 'cuisine')     loadCuisine();
     else if (page === 'barman')      loadBarman();
     else if (page === 'commandes')   loadCommandes();
+    else if (page === 'commandes-en-ligne') loadCommandesLigne();
     else if (page === 'facturation') { loadFactures(); checkFacturationReady(); }
     else if (page === 'dashboard')   loadDashboard();
   }
@@ -529,10 +535,12 @@ function startPolling() {
     }, POLL_MS);
   }
 
-  // Caissière — actualisation facturation (secours si SSE down)
+  // Caissière — actualisation facturation + commandes en ligne (secours si SSE down)
   if (role === 'admin' || role === 'caissiere') {
     state.facturationInterval = setInterval(() => {
-      if (!state.sseConnected && state.currentPage === 'facturation') loadFactures();
+      if (state.sseConnected) return;
+      if      (state.currentPage === 'facturation')        loadFactures();
+      else if (state.currentPage === 'commandes-en-ligne')  loadCommandesLigne();
     }, POLL_MS);
   }
 
@@ -646,7 +654,7 @@ async function loadCommandes() {
       : '';
     return `
     <tr>
-      <td data-label="N°"><strong>${c.numero}</strong></td>
+      <td data-label="N°"><strong>${c.numero}</strong>${c.source === 'en-ligne' ? ' <span style="background:#E3F2FD;color:#0d47a1;border:1px solid #90CAF9;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600"><i class="fas fa-globe"></i> En ligne</span>' : ''}</td>
       <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
       <td data-label="Articles" style="font-size:.82rem">${items}</td>
       <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
@@ -778,7 +786,7 @@ async function saveEditCommande() {
   if (!res?.id) { toast(res?.error || 'Erreur lors de la modification', 'error'); return; }
   toast('Commande modifiée', 'success');
   closeModal('edit-commande');
-  loadCommandes();
+  if (state.currentPage === 'commandes-en-ligne') loadCommandesLigne(); else loadCommandes();
 }
 
 window.viewCommande = viewCommande;
@@ -786,17 +794,20 @@ window.annulerCommande = annulerCommande;
 
 // ─── NOUVELLE COMMANDE (panier) ────────────────────────
 
-async function openNewCommande() {
+async function openNewCommande(source = 'sur-place') {
   if (state.menu.length === 0) {
     const menu = await api('/api/menu');
     if (menu) state.menu = menu;
   }
   state.panier = [];
+  state.panierSource = source;
   renderPanier();
   const search = document.getElementById('cmd-menu-search');
   search.value = '';
   document.getElementById('cmd-menu-clear').style.display = 'none';
   document.getElementById('menu-search-dropdown').style.display = 'none';
+  document.getElementById('modal-commande-title').textContent =
+    source === 'en-ligne' ? 'Nouvelle commande en ligne' : 'Nouvelle commande';
   openModal('commande');
 }
 
@@ -901,7 +912,8 @@ window.removePanierItem = (i) => {
 
 async function saveCommande() {
   if (state.panier.length === 0) { toast('Ajoutez au moins un article', 'warning'); return; }
-  const body = { items: state.panier };
+  const isOnline = state.panierSource === 'en-ligne';
+  const body = { items: state.panier, source: state.panierSource || 'sur-place' };
   showLoader();
   const res = await api('/api/commandes', { method: 'POST', body: JSON.stringify(body) });
   hideLoader();
@@ -911,11 +923,65 @@ async function saveCommande() {
     const dest = allBoissons ? 'au bar' : hasBoissons ? 'en cuisine et au bar' : 'en cuisine';
     toast(`Commande ${res.numero} envoyée ${dest} !`, 'success');
     closeModal('commande');
-    loadCommandes();
+    if (isOnline) loadCommandesLigne(); else loadCommandes();
   } else {
     toast(res?.error || 'Erreur lors de la création', 'error');
   }
 }
+
+// ─── COMMANDES EN LIGNE (caissière) ────────────────────
+
+async function loadCommandesLigne() {
+  const commandes = await api('/api/commandes');
+  if (!commandes) return;
+  state.commandes = commandes; // openEditCommande() lit depuis state.commandes
+
+  const enLigne = commandes.filter(c => c.source === 'en-ligne' && !['annulee', 'servie'].includes(c.statut));
+  const tbody = document.getElementById('commandes-ligne-tbody');
+  if (enLigne.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state" style="padding:32px"><i class="fas fa-globe"></i><p>Aucune commande en ligne en cours</p></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = enLigne.map(c => {
+    const items = (c.items || []).map(i => `${i.quantite}x ${escapeHtml(i.nom)}`).join(', ');
+    const hasBoissons = (c.items || []).some(i => i.categorie === 'Boissons');
+    const hasPlats    = (c.items || []).some(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet');
+    const cuisineInfo = hasPlats
+      ? (['prete', 'servie'].includes(c.statut) ? '<br><small style="color:var(--success);font-size:.72rem"><i class="fas fa-check"></i> Cuisine prête</small>' : '<br><small style="color:var(--gray);font-size:.72rem"><i class="fas fa-fire"></i> En préparation</small>')
+      : '';
+    const barInfo = hasBoissons
+      ? (c.boissonsStatut === 'prete' ? '<br><small style="color:var(--success);font-size:.72rem"><i class="fas fa-check"></i> Boissons prêtes</small>' : '<br><small style="color:#1565C0;font-size:.72rem"><i class="fas fa-wine-glass-alt"></i> Boissons en attente</small>')
+      : '';
+    return `
+    <tr>
+      <td data-label="N°"><strong>${c.numero}</strong></td>
+      <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
+      <td data-label="Articles" style="font-size:.82rem">${items}</td>
+      <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
+      <td data-label="Statut">${badgeStatus(c.statut)}${cuisineInfo}${barInfo}</td>
+      <td data-label="Actions">
+        <button class="btn btn-secondary btn-sm" onclick="openEditCommande('${c.id}')" title="Modifier">
+          <i class="fas fa-edit"></i>
+        </button>
+        <button class="btn btn-success btn-sm" onclick="lancerLivraison('${c.id}','${c.numero}')">
+          <i class="fas fa-truck"></i> Lancer la livraison
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+window.lancerLivraison = async (id, numero) => {
+  if (!confirm(`Lancer la livraison de ${numero} et générer la facture ?`)) return;
+  showLoader();
+  const res = await api(`/api/commandes/${id}/livraison`, { method: 'PUT' });
+  hideLoader();
+  if (!res?.id) { toast(res?.error || 'Erreur', 'error'); return; }
+  toast(`Livraison lancée${res.factureUnifiee ? ` — facture ${res.factureUnifiee.numero} générée` : ''}`, 'success');
+  loadCommandesLigne();
+  if (res.factureUnifiee?.id) aperçuFacture(res.factureUnifiee.id);
+};
 
 // ─── CUISINE ───────────────────────────────────────────
 
@@ -962,7 +1028,10 @@ async function loadCuisine(entering = false) {
           <span style="color:var(--gray);font-size:.78rem">${fmt(i.prix)} FCFA</span>
         </div>`).join('');
       const totalPlats = (c.items || []).reduce((s, i) => s + i.sousTotal, 0);
-      const actionBtn = c.statut === 'en-attente'
+      const isOnline = c.source === 'en-ligne';
+      const actionBtn = isOnline
+        ? ''
+        : c.statut === 'en-attente'
         ? `<button class="btn btn-warning btn-sm" onclick="updateStatutCommande('${c.id}','en-preparation')">
              <i class="fas fa-fire"></i> Démarrer
            </button>`
@@ -975,6 +1044,7 @@ async function loadCuisine(entering = false) {
           <div>
             <div class="commande-numero">${c.numero}</div>
             ${c.tableNumero ? `<div class="commande-table"><i class="fas fa-chair"></i> ${escapeHtml(c.tableNumero)}</div>` : ''}
+            ${isOnline ? `<div class="commande-table" style="color:#0d47a1"><i class="fas fa-globe"></i> Commande en ligne</div>` : ''}
           </div>
           <div style="text-align:right">
             ${badgeStatus(c.statut)}
@@ -984,7 +1054,7 @@ async function loadCuisine(entering = false) {
         <div class="commande-items">${items}</div>
         ${c.note ? `<div class="commande-note"><i class="fas fa-sticky-note"></i> ${escapeHtml(c.note)}</div>` : ''}
         <div class="commande-total">${fmt(totalPlats)} FCFA</div>
-        <div class="commande-actions">${actionBtn}</div>
+        ${isOnline ? '<p style="font-size:.72rem;color:var(--gray);text-align:center;margin-top:6px"><i class="fas fa-info-circle"></i> Facturée par la caissière — pas de validation ici</p>' : `<div class="commande-actions">${actionBtn}</div>`}
       </div>`;
     }).join('');
   }
@@ -1667,12 +1737,14 @@ async function loadBarman(entering = false) {
           <span style="color:var(--gray);font-size:.78rem">${fmt(i.prix)} FCFA</span>
         </div>`).join('');
       const total = boissonsItems.reduce((s, i) => s + i.sousTotal, 0);
+      const isOnline = c.source === 'en-ligne';
       return `
       <div class="commande-card en-attente bar-card" id="bar-card-${c.id}">
         <div class="commande-card-header">
           <div>
             <div class="commande-numero">${c.numero}</div>
             ${c.tableNumero ? `<div class="commande-table"><i class="fas fa-chair"></i> ${escapeHtml(c.tableNumero)}</div>` : ''}
+            ${isOnline ? `<div class="commande-table" style="color:#0d47a1"><i class="fas fa-globe"></i> Commande en ligne</div>` : ''}
           </div>
           <div style="text-align:right">
             ${badgeStatus(c.statut)}
@@ -1682,11 +1754,13 @@ async function loadBarman(entering = false) {
         <div class="commande-items">${items}</div>
         ${c.note ? `<div class="commande-note"><i class="fas fa-sticky-note"></i> ${escapeHtml(c.note)}</div>` : ''}
         <div class="commande-total">${fmt(total)} FCFA</div>
-        <div class="commande-actions">
-          <button class="btn btn-success btn-sm" style="background:#1565C0;border-color:#1565C0" onclick="barmanPret('${c.id}')">
-            <i class="fas fa-wine-glass-alt"></i> Prêt !
-          </button>
-        </div>
+        ${isOnline
+          ? '<p style="font-size:.72rem;color:var(--gray);text-align:center;margin-top:6px"><i class="fas fa-info-circle"></i> Facturée par la caissière — pas de validation ici</p>'
+          : `<div class="commande-actions">
+               <button class="btn btn-success btn-sm" style="background:#1565C0;border-color:#1565C0" onclick="barmanPret('${c.id}')">
+                 <i class="fas fa-wine-glass-alt"></i> Prêt !
+               </button>
+             </div>`}
       </div>`;
     }).join('');
   }
@@ -2649,7 +2723,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('notif-mark-read').addEventListener('click', markAllNotifsRead);
 
   // ── Commandes ──
-  document.getElementById('btn-new-commande').addEventListener('click', openNewCommande);
+  document.getElementById('btn-new-commande').addEventListener('click', () => openNewCommande('sur-place'));
+  document.getElementById('btn-new-commande-ligne')?.addEventListener('click', () => openNewCommande('en-ligne'));
 
   // ── Recherche plat (commande) ──
   const menuSearch   = document.getElementById('cmd-menu-search');

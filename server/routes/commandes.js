@@ -251,9 +251,11 @@ router.get('/cuisine', authenticateToken, async (req, res) => {
 });
 
 // POST /api/commandes
-router.post('/', authenticateToken, requireRole('admin', 'serveur'), async (req, res) => {
+router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere'), async (req, res) => {
   try {
-    const { items, note, tableNumero } = req.body;
+    const { items, note, tableNumero, source } = req.body;
+    // Seuls admin/caissière peuvent marquer une commande "en ligne" (écran dédié)
+    const isOnline = source === 'en-ligne' && ['admin', 'caissiere'].includes(req.user.role);
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'La commande doit contenir au moins un article' });
@@ -283,6 +285,7 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur'), async (req,
       total,
       note: note || '',
       tableNumero: tableNumero || '',
+      source: isOnline ? 'en-ligne' : 'sur-place',
       statut: autoReady ? 'prete' : 'en-attente',
       date: now.toISOString().split('T')[0],
       createdBy: req.user.username,
@@ -337,10 +340,61 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur'), async (req,
   }
 });
 
+// PUT /api/commandes/:id/livraison — la caissière lance la livraison d'une commande en ligne
+// et génère la facture immédiatement, sans attendre la validation cuisine/bar (le plat reste
+// visible en cuisine pour préparation, mais ne bloque pas la facturation de ce canal).
+router.put('/:id/livraison', authenticateToken, requireRole('admin', 'caissiere'), async (req, res) => {
+  try {
+    const docRef = db.collection('commandes').doc(req.params.id);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ error: 'Commande introuvable' });
+
+    const commande = doc.data();
+    if (commande.source !== 'en-ligne') {
+      return res.status(400).json({ error: 'Pas une commande en ligne' });
+    }
+    if (['annulee', 'servie'].includes(commande.statut)) {
+      return res.status(400).json({ error: 'Commande déjà terminée' });
+    }
+
+    const now = new Date();
+    const update = {
+      statut: 'servie',
+      livraisonBy: req.user.username,
+      livraisonByNom: req.user.nom || req.user.username,
+      livraisonAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    };
+    await docRef.update(update);
+    invalidate();
+    eventBus.emit('commandes');
+
+    const updatedCommande = { ...commande, ...update, id: req.params.id };
+    const factureUnifiee = await generateCombinedInvoice(
+      req.params.id,
+      updatedCommande,
+      commande.validatedByCuisinier || '',
+      commande.validatedByBarman || '',
+      now
+    );
+
+    pushNotification({
+      type: 'success', icon: 'truck',
+      titre: 'Livraison lancée',
+      message: `${commande.numero} – en livraison${factureUnifiee ? ` – facture ${factureUnifiee.numero} générée` : ''}`,
+      createdBy: req.user.username,
+    });
+
+    res.json({ id: req.params.id, ...updatedCommande, factureUnifiee });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // PUT /api/commandes/:id/items — le serveur modifie librement les articles d'une commande
 // tant qu'aucune facture n'a encore été générée (au-delà, seul l'admin peut via le code
 // de modification de facture). Réouvre cuisine/bar si nécessaire pour refléter le changement.
-router.put('/:id/items', authenticateToken, requireRole('admin', 'serveur'), async (req, res) => {
+router.put('/:id/items', authenticateToken, requireRole('admin', 'serveur', 'caissiere'), async (req, res) => {
   try {
     const { items } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
