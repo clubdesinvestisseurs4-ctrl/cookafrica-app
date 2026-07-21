@@ -1565,19 +1565,26 @@ function renderPayFacturePrices() {
     <div class="panier-item">
       <span class="panier-item-nom">${escapeHtml(item.nom)} <small style="color:var(--gray)">(x${item.quantite})</small></span>
       <input type="number" min="0" step="1" value="${item.prix}" style="width:90px" data-i="${i}" class="pay-price-input">
-      <span class="panier-item-prix">${fmt(item.sousTotal)} FCFA</span>
+      <span class="panier-item-prix" data-sous-i="${i}">${fmt(item.sousTotal)} FCFA</span>
     </div>`).join('');
 
-  container.querySelectorAll('.pay-price-input').forEach(inp => {
-    inp.addEventListener('input', function () {
-      const i = Number(this.dataset.i);
-      const prix = Math.max(0, Number(this.value) || 0);
-      state.payFactureItems[i].prix = prix;
-      state.payFactureItems[i].sousTotal = prix * state.payFactureItems[i].quantite;
-      renderPayFacturePrices();
-    });
-  });
+  // Écoute sur la liste entière (délégation) : pas besoin de la reconstruire à chaque frappe,
+  // ce qui recréait les <input> et faisait perdre le focus/curseur après chaque caractère.
+  container.oninput = function (e) {
+    const inp = e.target.closest('.pay-price-input');
+    if (!inp) return;
+    const i = Number(inp.dataset.i);
+    const prix = Math.max(0, Number(inp.value) || 0);
+    state.payFactureItems[i].prix = prix;
+    state.payFactureItems[i].sousTotal = prix * state.payFactureItems[i].quantite;
+    container.querySelector(`[data-sous-i="${i}"]`).textContent = `${fmt(state.payFactureItems[i].sousTotal)} FCFA`;
+    updatePayFactureTotals();
+  };
 
+  updatePayFactureTotals();
+}
+
+function updatePayFactureTotals() {
   const total = state.payFactureItems.reduce((s, i) => s + i.sousTotal, 0);
   document.getElementById('pay-facture-total-live').textContent = `Nouveau total : ${fmt(total)} FCFA`;
 
