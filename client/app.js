@@ -69,7 +69,7 @@ const ROLE_LABELS = {
 
 // ─── Visibilité des pages par rôle ────────────────────
 const PAGE_ROLES = {
-  dashboard:      ['admin'],
+  dashboard:      ['admin', 'caissiere', 'serveur', 'cuisiniere', 'barman'],
   commandes:      ['admin', 'serveur'],
   'commandes-en-ligne': ['admin', 'caissiere'],
   cuisine:        ['admin', 'cuisiniere'],
@@ -594,11 +594,9 @@ function startPolling() {
   // une requête HTTP inutile toutes les 30 s sur chaque poste ouvert.
   const POLL_MS = 45_000;
 
-  if (role === 'admin') {
-    state.dashInterval = setInterval(() => {
-      if (!state.sseConnected && state.currentPage === 'dashboard') loadDashboard();
-    }, POLL_MS);
-  }
+  state.dashInterval = setInterval(() => {
+    if (!state.sseConnected && state.currentPage === 'dashboard') loadDashboard();
+  }, POLL_MS);
 
   if (role === 'admin' || role === 'cuisiniere') {
     state.cuisineInterval = setInterval(() => {
