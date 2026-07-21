@@ -1,5 +1,5 @@
 const express = require('express');
-const { db } = require('../firebase-admin');
+const { db, admin } = require('../firebase-admin');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { pushNotification } = require('../utils/notifications');
 const cache    = require('../utils/cache');
@@ -192,9 +192,12 @@ router.post('/', authenticateToken, requireRole('admin', 'caissiere'), async (re
 });
 
 // PUT /api/factures/:id/pay — enregistrer le paiement
+// Autorise une modification de prix par article au moment du paiement :
+// - hausse par rapport au prix standard du menu : libre.
+// - baisse sous le prix standard : nécessite le code de dérogation admin (editGrant).
 router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere'), async (req, res) => {
   try {
-    const { modePaiement } = req.body;
+    const { modePaiement, items, discountCode } = req.body;
     const docRef = db.collection('factures').doc(req.params.id);
     const doc = await docRef.get();
     if (!doc.exists) return res.status(404).json({ error: 'Facture introuvable' });
@@ -210,6 +213,50 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere'), asy
       caissiereName: req.user.nom || req.user.username || '',
       updatedAt: now.toISOString(),
     };
+
+    let finalItems = facture.items || [];
+    let consumedGrant = false;
+
+    if (Array.isArray(items) && items.length > 0) {
+      const menuSnap = await db.collection('menu').get();
+      const menuById = {};
+      menuSnap.docs.forEach(d => { menuById[d.id] = d.data(); });
+
+      const mappedItems = items.map(i => ({
+        menuItemId: i.menuItemId || '',
+        nom: i.nom,
+        prix: Number(i.prix),
+        quantite: Number(i.quantite),
+        sousTotal: Number(i.prix) * Number(i.quantite),
+        categorie: i.categorie || '',
+      }));
+
+      const belowStandard = mappedItems.some(i => {
+        const standard = menuById[i.menuItemId]?.prix ?? i.prix;
+        return i.prix < standard;
+      });
+
+      if (belowStandard) {
+        const grant = facture.editGrant;
+        if (!grant || !grant.code) {
+          return res.status(403).json({ error: 'Baisse sous le prix standard : demandez un code de dérogation à l\'admin' });
+        }
+        if (grant.code !== String(discountCode || '').trim()) {
+          return res.status(403).json({ error: 'Code de dérogation incorrect' });
+        }
+        if (new Date(grant.expiresAt).getTime() < Date.now()) {
+          return res.status(403).json({ error: 'Code de dérogation expiré' });
+        }
+        consumedGrant = true;
+      }
+
+      finalItems = mappedItems;
+      update.items = mappedItems;
+      update.total = mappedItems.reduce((s, i) => s + i.sousTotal, 0);
+    }
+
+    if (consumedGrant) update.editGrant = admin.firestore.FieldValue.delete();
+
     await docRef.update(update);
     invalidate();
     cache.del('commandes:list');
@@ -219,7 +266,7 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere'), asy
 
     // Déduire les articles du stock journalier
     const factureDate = facture.date || now.toISOString().split('T')[0];
-    for (const item of (facture.items || [])) {
+    for (const item of finalItems) {
       if (!item.menuItemId) continue;
       const stockRef = db.collection('stocks_plats').doc(`${item.menuItemId}_${factureDate}`);
       const platDoc = await stockRef.get();
@@ -243,14 +290,15 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere'), asy
       }
     }
 
+    const finalTotal = update.total ?? facture.total;
     pushNotification({
       type: 'success', icon: 'money-bill-wave',
       titre: 'Paiement enregistré',
-      message: `${facture.numero} – ${facture.total.toLocaleString('fr-FR')} FCFA encaissés`,
+      message: `${facture.numero} – ${finalTotal.toLocaleString('fr-FR')} FCFA encaissés`,
       createdBy: req.user.username,
     });
 
-    res.json({ id: req.params.id, ...facture, ...update });
+    res.json({ id: req.params.id, ...facture, ...update, items: finalItems, total: finalTotal, editGrant: null });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

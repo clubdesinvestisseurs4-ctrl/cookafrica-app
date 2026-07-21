@@ -1,5 +1,5 @@
 // Version du SW — incrémenter à chaque déploiement pour forcer la mise à jour
-const SW_VERSION = 'cookafrica-v2.0.1';
+const SW_VERSION = 'cookafrica-v2.1.0';
 
 // ── Install : activation immédiate sans bloquer sur du pré-cache ──
 self.addEventListener('install', () => {
@@ -16,26 +16,21 @@ self.addEventListener('activate', event => {
 });
 
 // ── Fetch : réseau direct pour tous les fichiers de l'app ──
-// Les appels API passent en réseau avec fallback hors-ligne.
 // Les assets (HTML, JS, CSS) ne sont JAMAIS mis en cache :
 // l'utilisateur reçoit toujours la version en production.
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // Appels API → réseau obligatoire, message offline si coupé
+  // Appels API → laissés totalement passer au navigateur, sans respondWith().
+  // Important : si on substitue une réponse 503 ici en cas d'échec réseau,
+  // le fetch() de la page ne rejette jamais et la file d'attente hors-ligne
+  // (client/app.js) ne peut pas détecter la coupure pour mettre en attente.
   if (
     url.pathname.startsWith('/api/') ||
     url.hostname.includes('render.com') ||
+    url.hostname.includes('run.app') ||
     url.hostname.includes('firestore.googleapis.com')
   ) {
-    event.respondWith(
-      fetch(event.request).catch(() =>
-        new Response(
-          JSON.stringify({ error: 'Hors ligne – vérifiez votre connexion' }),
-          { headers: { 'Content-Type': 'application/json' }, status: 503 }
-        )
-      )
-    );
     return;
   }
 

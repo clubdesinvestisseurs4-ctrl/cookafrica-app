@@ -55,6 +55,7 @@ const state = {
   editFactureItems:    [],
   editFactureCode:     '',
   editCommandeItems:   [],
+  payFactureItems:     null,
 };
 
 // ─── Labels des rôles ─────────────────────────────────
@@ -97,6 +98,79 @@ const PAGE_TITLES = {
 
 // ─── Utilitaires ──────────────────────────────────────
 
+// ─── File d'attente hors-ligne (Phase 1) ──────────────
+// Si une requête de modification (POST/PUT/DELETE) ne peut pas joindre le
+// serveur (réseau coupé), on la stocke en local au lieu de la perdre, et on
+// la rejoue automatiquement dès que la connexion revient. Les GET ne sont
+// jamais mis en file : ils n'ont rien à "rejouer", juste à réessayer plus tard.
+const OFFLINE_QUEUE_KEY = 'ca_offline_queue';
+
+function getOfflineQueue() {
+  try { return JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function setOfflineQueue(queue) {
+  localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+  updateOfflineBadge();
+}
+
+function queueOfflineRequest(method, path, body) {
+  const queue = getOfflineQueue();
+  queue.push({
+    id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    method, path, body,
+    createdAt: new Date().toISOString(),
+  });
+  setOfflineQueue(queue);
+}
+
+function updateOfflineBadge() {
+  const badge = document.getElementById('offline-queue-badge');
+  if (!badge) return;
+  const n = getOfflineQueue().length;
+  badge.style.display = n > 0 ? 'inline-flex' : 'none';
+  badge.innerHTML = `<i class="fas fa-cloud-upload-alt"></i> ${n} en attente de synchro`;
+}
+
+let flushingOfflineQueue = false;
+async function flushOfflineQueue() {
+  if (flushingOfflineQueue || !state.token) return;
+  flushingOfflineQueue = true;
+  try {
+    let queue = getOfflineQueue();
+    let synced = 0;
+    while (queue.length > 0) {
+      const item = queue[0];
+      let res;
+      try {
+        const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${state.token}` };
+        res = await fetch(API + item.path, {
+          method: item.method,
+          headers,
+          body: item.body !== null && item.body !== undefined ? JSON.stringify(item.body) : undefined,
+        });
+      } catch {
+        break; // toujours hors-ligne — on réessaiera au prochain tick
+      }
+      queue.shift();
+      setOfflineQueue(queue);
+      if (res.ok) synced++;
+      else toast('Une action en attente a été refusée par le serveur (ignorée)', 'warning');
+      queue = getOfflineQueue();
+    }
+    if (synced > 0) {
+      toast(`${synced} action(s) hors-ligne synchronisée(s)`, 'success');
+      handleSSEEvent('commandes'); // rafraîchit l'écran courant avec les données à jour
+    }
+  } finally {
+    flushingOfflineQueue = false;
+  }
+}
+
+window.addEventListener('online', flushOfflineQueue);
+setInterval(flushOfflineQueue, 30_000);
+
 async function api(path, opts = {}, _retry = false) {
   try {
     const headers = { 'Content-Type': 'application/json' };
@@ -124,6 +198,14 @@ async function api(path, opts = {}, _retry = false) {
     if (!res.ok) return null;
     return res.json();
   } catch {
+    const method = (opts.method || 'GET').toUpperCase();
+    if (method !== 'GET') {
+      let body = null;
+      try { body = opts.body ? JSON.parse(opts.body) : null; } catch {}
+      queueOfflineRequest(method, path, body);
+      toast('Pas de connexion — action enregistrée, elle sera synchronisée automatiquement', 'warning');
+      return { queued: true };
+    }
     return null;
   }
 }
@@ -348,6 +430,8 @@ async function loginFlow(token, user, skipWelcome = false) {
   document.getElementById('sidebar-user-role').textContent = ROLE_LABELS[user.role] || user.role;
   applyRoleNav();
   updateSoundButtons();
+  updateOfflineBadge();
+  flushOfflineQueue();
   navigateTo(defaultPage());
   startPolling();
 
@@ -924,6 +1008,9 @@ async function saveCommande() {
     toast(`Commande ${res.numero} envoyée ${dest} !`, 'success');
     closeModal('commande');
     if (isOnline) loadCommandesLigne(); else loadCommandes();
+  } else if (res?.queued) {
+    // Pas de réseau : la commande est en file locale, elle partira dès le retour de connexion.
+    closeModal('commande');
   } else {
     toast(res?.error || 'Erreur lors de la création', 'error');
   }
@@ -1032,7 +1119,7 @@ async function loadCuisine(entering = false) {
       const actionBtn = isOnline
         ? ''
         : c.statut === 'en-attente'
-        ? `<button class="btn btn-warning btn-sm" onclick="updateStatutCommande('${c.id}','en-preparation')">
+        ? `<button class="btn btn-warning btn-sm" onclick="updateStatutCommande('${c.id}','prete')">
              <i class="fas fa-fire"></i> Démarrer
            </button>`
         : `<button class="btn btn-success btn-sm" onclick="updateStatutCommande('${c.id}','prete')">
@@ -1444,16 +1531,77 @@ async function saveNewFacture() {
 window.openPayFacture = (id, reste) => {
   document.getElementById('pay-facture-id').value   = id;
   document.getElementById('pay-facture-info').textContent = `Facture – Reste à payer : ${reste} FCFA`;
+  document.getElementById('pay-facture-prices').style.display = 'none';
+  document.getElementById('pay-facture-code-group').style.display = 'none';
+  document.getElementById('pay-facture-discount-code').value = '';
+  state.payFactureItems = null; // tant que non ouvert, on paie au prix de la facture telle quelle
   openModal('pay-facture');
 };
+
+// Prix standard d'un article : celui du menu (par menuItemId), sinon son prix actuel sur la facture
+function standardPriceFor(item) {
+  const menuItem = state.menu.find(m => m.id === item.menuItemId);
+  return menuItem ? menuItem.prix : item.prix;
+}
+
+async function togglePayFacturePrices() {
+  const panel = document.getElementById('pay-facture-prices');
+  if (panel.style.display === 'block') { panel.style.display = 'none'; return; }
+
+  if (state.menu.length === 0) {
+    const menu = await api('/api/menu');
+    if (menu) state.menu = menu;
+  }
+  const id = document.getElementById('pay-facture-id').value;
+  const f = state.factures.find(x => x.id === id);
+  if (!f) return;
+
+  state.payFactureItems = (f.items || []).map(i => ({ ...i }));
+  renderPayFacturePrices();
+  panel.style.display = 'block';
+}
+
+function renderPayFacturePrices() {
+  const container = document.getElementById('pay-facture-items');
+  container.innerHTML = state.payFactureItems.map((item, i) => `
+    <div class="panier-item">
+      <span class="panier-item-nom">${escapeHtml(item.nom)} <small style="color:var(--gray)">(x${item.quantite})</small></span>
+      <input type="number" min="0" step="1" value="${item.prix}" style="width:90px" data-i="${i}" class="pay-price-input">
+      <span class="panier-item-prix">${fmt(item.sousTotal)} FCFA</span>
+    </div>`).join('');
+
+  container.querySelectorAll('.pay-price-input').forEach(inp => {
+    inp.addEventListener('input', function () {
+      const i = Number(this.dataset.i);
+      const prix = Math.max(0, Number(this.value) || 0);
+      state.payFactureItems[i].prix = prix;
+      state.payFactureItems[i].sousTotal = prix * state.payFactureItems[i].quantite;
+      renderPayFacturePrices();
+    });
+  });
+
+  const total = state.payFactureItems.reduce((s, i) => s + i.sousTotal, 0);
+  document.getElementById('pay-facture-total-live').textContent = `Nouveau total : ${fmt(total)} FCFA`;
+
+  const belowStandard = state.payFactureItems.some(i => i.prix < standardPriceFor(i));
+  document.getElementById('pay-facture-code-group').style.display = belowStandard ? 'block' : 'none';
+}
 
 async function confirmPayFacture() {
   const id   = document.getElementById('pay-facture-id').value;
   const mode = document.getElementById('pay-facture-mode').value;
+  const body = { modePaiement: mode };
+
+  if (state.payFactureItems) {
+    body.items = state.payFactureItems;
+    const code = document.getElementById('pay-facture-discount-code').value.trim();
+    if (code) body.discountCode = code;
+  }
+
   showLoader();
   const res = await api(`/api/factures/${id}/pay`, {
     method: 'PUT',
-    body: JSON.stringify({ modePaiement: mode }),
+    body: JSON.stringify(body),
   });
   hideLoader();
   if (res?.statut === 'payee') {
@@ -2635,6 +2783,7 @@ window.addEventListener('offline', () => document.body.classList.add('offline'))
 
 document.addEventListener('DOMContentLoaded', async () => {
 
+  updateOfflineBadge();
   await wakeUpServer();
 
   // Login
@@ -2774,6 +2923,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-new-facture').addEventListener('click', openNewFacture);
   document.getElementById('btn-save-new-facture').addEventListener('click', saveNewFacture);
   document.getElementById('btn-confirm-pay-facture').addEventListener('click', confirmPayFacture);
+  document.getElementById('btn-toggle-pay-prices').addEventListener('click', togglePayFacturePrices);
   document.getElementById('btn-filter-fact').addEventListener('click', loadFactures);
   document.getElementById('btn-print-facture').addEventListener('click', printFacture);
   document.getElementById('btn-repair-numeros')?.addEventListener('click', repairNumeros);
