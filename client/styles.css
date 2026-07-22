@@ -45,6 +45,14 @@ body {
 }
 .offline .offline-banner { display: block; }
 
+.commande-pending { opacity: .75; }
+.badge-pending-sync {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--warning); color: #fff;
+  border-radius: 12px; padding: 3px 10px;
+  font-size: .72rem; font-weight: 700; white-space: nowrap;
+}
+
 /* ── Loader ────────────────────────────────────── */
 .loader-overlay {
   position: fixed; inset: 0; z-index: 9000;

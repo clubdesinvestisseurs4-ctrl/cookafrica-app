@@ -116,13 +116,11 @@ function setOfflineQueue(queue) {
 }
 
 function queueOfflineRequest(method, path, body) {
+  const id = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const queue = getOfflineQueue();
-  queue.push({
-    id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
-    method, path, body,
-    createdAt: new Date().toISOString(),
-  });
+  queue.push({ id, method, path, body, createdAt: new Date().toISOString() });
   setOfflineQueue(queue);
+  return id;
 }
 
 function updateOfflineBadge() {
@@ -155,6 +153,7 @@ async function flushOfflineQueue() {
       }
       queue.shift();
       setOfflineQueue(queue);
+      removePendingCommande(item.id); // que ça réussisse ou soit refusé, le placeholder local n'a plus lieu d'être
       if (res.ok) synced++;
       else toast('Une action en attente a été refusée par le serveur (ignorée)', 'warning');
       queue = getOfflineQueue();
@@ -171,7 +170,60 @@ async function flushOfflineQueue() {
 window.addEventListener('online', flushOfflineQueue);
 setInterval(flushOfflineQueue, 30_000);
 
+// ─── Cache de lecture hors-ligne (données qui ne changent pas souvent) ──
+// Chaque GET réussi est recopié en local ; si le réseau tombe, on relit la
+// dernière copie connue au lieu de renvoyer un écran vide. Les écritures ne
+// sont jamais servies depuis ce cache — seuls les GET en bénéficient.
+const READ_CACHE_PREFIX = 'ca_cache::';
+
+function setReadCache(path, data) {
+  try {
+    localStorage.setItem(READ_CACHE_PREFIX + path, JSON.stringify({ data, cachedAt: new Date().toISOString() }));
+  } catch {}
+}
+
+function getReadCache(path) {
+  try {
+    const raw = localStorage.getItem(READ_CACHE_PREFIX + path);
+    if (!raw) return null;
+    const { data, cachedAt } = JSON.parse(raw);
+    if (data && typeof data === 'object' && !Array.isArray(data)) data._cachedAt = cachedAt;
+    return data;
+  } catch { return null; }
+}
+
+// Vide le cache de lecture à la déconnexion : évite qu'un autre utilisateur
+// du même appareil (tablette partagée cuisine/bar) voie les données du précédent.
+function clearReadCache() {
+  Object.keys(localStorage)
+    .filter(k => k.startsWith(READ_CACHE_PREFIX))
+    .forEach(k => localStorage.removeItem(k));
+}
+
+// ─── Commandes créées hors-ligne, affichées immédiatement ──────────────
+// Une commande créée sans réseau n'a pas encore d'ID/numéro serveur (attribués
+// séquentiellement côté API) : on l'affiche avec un id local le temps qu'elle
+// soit rejouée par flushOfflineQueue(), corrélée à sa requête en file via _queueId.
+const PENDING_COMMANDES_KEY = 'ca_pending_commandes';
+
+function getPendingCommandes() {
+  try { return JSON.parse(localStorage.getItem(PENDING_COMMANDES_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function addPendingCommande(commande) {
+  const list = getPendingCommandes();
+  list.push(commande);
+  localStorage.setItem(PENDING_COMMANDES_KEY, JSON.stringify(list));
+}
+
+function removePendingCommande(queueId) {
+  const list = getPendingCommandes().filter(c => c._queueId !== queueId);
+  localStorage.setItem(PENDING_COMMANDES_KEY, JSON.stringify(list));
+}
+
 async function api(path, opts = {}, _retry = false) {
+  const method = (opts.method || 'GET').toUpperCase();
   try {
     const headers = { 'Content-Type': 'application/json' };
     if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
@@ -196,17 +248,18 @@ async function api(path, opts = {}, _retry = false) {
       return null;
     }
     if (!res.ok) return null;
-    return res.json();
+    const data = await res.json();
+    if (method === 'GET') setReadCache(path, data);
+    return data;
   } catch {
-    const method = (opts.method || 'GET').toUpperCase();
     if (method !== 'GET') {
       let body = null;
       try { body = opts.body ? JSON.parse(opts.body) : null; } catch {}
-      queueOfflineRequest(method, path, body);
+      const queueId = queueOfflineRequest(method, path, body);
       toast('Pas de connexion — action enregistrée, elle sera synchronisée automatiquement', 'warning');
-      return { queued: true };
+      return { queued: true, queueId };
     }
-    return null;
+    return getReadCache(path);
   }
 }
 
@@ -387,6 +440,7 @@ async function logout(animate = false) {
   state.token = null; state.user = null;
   localStorage.removeItem('ca_token');
   localStorage.removeItem('ca_user');
+  clearReadCache();
   clearIntervals();
   document.getElementById('app-screen').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
@@ -397,6 +451,7 @@ function wifiLogout() {
   state.token = null; state.user = null;
   localStorage.removeItem('ca_token');
   localStorage.removeItem('ca_user');
+  clearReadCache();
   clearIntervals();
   document.getElementById('app-screen').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
@@ -708,8 +763,12 @@ async function loadCommandes() {
   if (statut) url += `statut=${statut}&`;
   if (date)   url += `date=${date}`;
 
-  const [commandes, factures] = await Promise.all([api(url), api('/api/factures')]);
-  if (!commandes) return;
+  const [commandesRes, factures] = await Promise.all([api(url), api('/api/factures')]);
+  // Commandes créées hors-ligne, pas encore synchronisées : affichées tout de
+  // suite (respecte le filtre statut si un filtre précis est actif).
+  const pending = getPendingCommandes().filter(c => !statut || c.statut === statut);
+  if (!commandesRes && pending.length === 0) return;
+  const commandes = [...pending, ...(commandesRes || [])];
   state.commandes = commandes;
   if (factures) state.factures = factures;
 
@@ -721,6 +780,18 @@ async function loadCommandes() {
 
   tbody.innerHTML = commandes.map(c => {
     const items = (c.items || []).map(i => `${i.quantite}x ${escapeHtml(i.nom)}`).join(', ');
+    if (c._pending) {
+      return `
+      <tr class="commande-pending">
+        <td data-label="N°"><strong>${c.numero}</strong></td>
+        <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
+        <td data-label="Articles" style="font-size:.82rem">${items}</td>
+        <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
+        <td data-label="Table" style="color:var(--gray);font-size:.82rem">—</td>
+        <td data-label="Statut"><span class="badge-pending-sync"><i class="fas fa-cloud-upload-alt"></i> Hors ligne — en attente de synchro</span></td>
+        <td data-label="Actions">—</td>
+      </tr>`;
+    }
     const alreadyFactured = state.factures.some(f => f.commandeId === c.id);
     const hasBoissons = (c.items || []).some(i => i.categorie === 'Boissons');
     const hasPlats    = (c.items || []).some(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet');
@@ -1007,8 +1078,22 @@ async function saveCommande() {
     closeModal('commande');
     if (isOnline) loadCommandesLigne(); else loadCommandes();
   } else if (res?.queued) {
-    // Pas de réseau : la commande est en file locale, elle partira dès le retour de connexion.
+    // Pas de réseau : affichée tout de suite avec un badge "en attente de synchro"
+    // (voir loadCommandes/loadCommandesLigne), elle partira au retour de connexion.
+    addPendingCommande({
+      id: `local_${res.queueId}`,
+      _queueId: res.queueId,
+      _pending: true,
+      numero: 'En attente',
+      items: state.panier,
+      total: state.panier.reduce((s, p) => s + p.sousTotal, 0),
+      statut: 'en-attente',
+      source: state.panierSource || 'sur-place',
+      createdAt: new Date().toISOString(),
+      createdBy: state.user?.nom || '',
+    });
     closeModal('commande');
+    if (isOnline) loadCommandesLigne(); else loadCommandes();
   } else {
     toast(res?.error || 'Erreur lors de la création', 'error');
   }
@@ -1017,11 +1102,13 @@ async function saveCommande() {
 // ─── COMMANDES EN LIGNE (caissière) ────────────────────
 
 async function loadCommandesLigne() {
-  const commandes = await api('/api/commandes');
-  if (!commandes) return;
+  const commandesRes = await api('/api/commandes');
+  const pendingEnLigne = getPendingCommandes().filter(c => c.source === 'en-ligne');
+  if (!commandesRes && pendingEnLigne.length === 0) return;
+  const commandes = [...pendingEnLigne, ...(commandesRes || [])];
   state.commandes = commandes; // openEditCommande() lit depuis state.commandes
 
-  const enLigne = commandes.filter(c => c.source === 'en-ligne' && !['annulee', 'servie'].includes(c.statut));
+  const enLigne = commandes.filter(c => c._pending || (c.source === 'en-ligne' && !['annulee', 'servie'].includes(c.statut)));
   const tbody = document.getElementById('commandes-ligne-tbody');
   if (enLigne.length === 0) {
     tbody.innerHTML = '<tr><td colspan="6" class="empty-state" style="padding:32px"><i class="fas fa-globe"></i><p>Aucune commande en ligne en cours</p></td></tr>';
@@ -1030,6 +1117,17 @@ async function loadCommandesLigne() {
 
   tbody.innerHTML = enLigne.map(c => {
     const items = (c.items || []).map(i => `${i.quantite}x ${escapeHtml(i.nom)}`).join(', ');
+    if (c._pending) {
+      return `
+      <tr class="commande-pending">
+        <td data-label="N°"><strong>${c.numero}</strong></td>
+        <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
+        <td data-label="Articles" style="font-size:.82rem">${items}</td>
+        <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
+        <td data-label="Statut"><span class="badge-pending-sync"><i class="fas fa-cloud-upload-alt"></i> Hors ligne — en attente de synchro</span></td>
+        <td data-label="Actions">—</td>
+      </tr>`;
+    }
     const hasBoissons = (c.items || []).some(i => i.categorie === 'Boissons');
     const hasPlats    = (c.items || []).some(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet');
     const cuisineInfo = hasPlats
@@ -2986,13 +3084,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         logout();
         hideLoader();
       }
+    } else if (localStorage.getItem('ca_token')) {
+      // Le token est toujours présent : si le serveur l'avait rejeté (401),
+      // api() aurait déjà appelé logout() et supprimé ca_token synchroniquement.
+      // Ici l'échec vient donc du réseau (hors-ligne) — on restaure la session
+      // depuis les infos utilisateur sauvegardées localement plutôt que déconnecter.
+      await hideSplash();
+      try {
+        await loginFlow(savedToken, JSON.parse(savedUser), true);
+      } catch {
+        logout();
+        hideLoader();
+      }
     } else {
       await hideSplash();
-      if (state.token) {
-        state.token = null;
-        localStorage.removeItem('ca_token');
-        localStorage.removeItem('ca_user');
-      }
       hideLoader();
     }
   } else {
