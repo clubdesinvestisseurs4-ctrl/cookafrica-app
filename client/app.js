@@ -2221,6 +2221,9 @@ function renderMenu(menu) {
           ${state.user?.role === 'admin' ? `
             <button class="btn btn-secondary btn-sm" onclick="editPlat('${m.id}')">
               <i class="fas fa-edit"></i>
+            </button>
+            <button class="btn btn-danger btn-sm" onclick="deletePlat('${m.id}')">
+              <i class="fas fa-trash"></i>
             </button>` : ''}
         </div>
       </div>
@@ -2272,6 +2275,24 @@ async function savePlat() {
     toast(res?.error || 'Erreur', 'error');
   }
 }
+
+window.deletePlat = async (id) => {
+  const m = state.menu.find(x => x.id === id);
+  if (!m) return;
+  if (!confirm(`Supprimer "${m.nom}" du menu ?`)) return;
+
+  showLoader();
+  const res = await api(`/api/menu/${id}`, { method: 'DELETE' });
+  hideLoader();
+
+  if (res?.message) {
+    toast(res.message, 'success');
+    state.menu = state.menu.filter(x => x.id !== id);
+    renderMenu(state.menu);
+  } else {
+    toast(res?.error || 'Erreur', 'error');
+  }
+};
 
 async function seedMenu() {
   if (!confirm('Initialiser le menu avec les plats par défaut ?')) return;
