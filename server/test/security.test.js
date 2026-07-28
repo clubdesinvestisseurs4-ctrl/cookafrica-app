@@ -70,7 +70,7 @@ test('wifi — getClientIp ignore un X-Forwarded-For falsifié par le client', (
 test('commandes — seuls les champs autorisés sont retenus', () => {
   const now = new Date('2026-01-01T00:00:00.000Z');
   const { update, error } = buildCommandeUpdate({
-    statut: 'prete',
+    statut: 'servie',
     note: 'Sans piment',
     tableNumero: '5',
     total: 0,            // tentative de fraude
@@ -79,7 +79,7 @@ test('commandes — seuls les champs autorisés sont retenus', () => {
   }, now);
 
   assert.strictEqual(error, undefined);
-  assert.strictEqual(update.statut, 'prete');
+  assert.strictEqual(update.statut, 'servie');
   assert.strictEqual(update.note, 'Sans piment');
   assert.strictEqual(update.tableNumero, '5');
   assert.strictEqual(update.total, undefined, 'total ne doit pas être modifiable');

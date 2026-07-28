@@ -1,4 +1,4 @@
-// ══════════════════════════════════════════════════════
+﻿// ══════════════════════════════════════════════════════
 //  COOK AFRICA — Application de gestion restaurant
 //  Vanilla JS (ES modules) + Express API + Firebase
 // ══════════════════════════════════════════════════════
@@ -37,19 +37,14 @@ const state = {
   utilisateurs: [],
   panier:    [],
   panierSource: 'sur-place',
-  barFactures: {},
   notifInterval:       null,
-  cuisineInterval:     null,
   dashInterval:        null,
-  barmanInterval:      null,
   commandesInterval:   null,
   facturationInterval: null,
   wifiInterval:        null,
   eventSource:         null,
   sseConnected:        false,
   soundEnabled:        localStorage.getItem('ca_sound') === '1',
-  cuisineKnownIds:     null,
-  barKnownIds:         null,
   factureKnownIds:     null,
   voiceReminderInterval: null,
   editFactureItems:    [],
@@ -72,13 +67,11 @@ const PAGE_ROLES = {
   dashboard:      ['admin', 'caissiere', 'serveur', 'cuisiniere', 'barman'],
   commandes:      ['admin', 'serveur'],
   'commandes-en-ligne': ['admin', 'caissiere'],
-  cuisine:        ['admin', 'cuisiniere'],
   facturation:    ['admin', 'caissiere'],
   menu:           ['admin'],
   stocks:         ['admin'],
   rapports:       ['admin'],
   sessions:       ['admin'],
-  barman:         ['admin', 'barman'],
   utilisateurs:   ['admin'],
 };
 
@@ -86,13 +79,11 @@ const PAGE_TITLES = {
   dashboard:      'Dashboard',
   commandes:      'Commandes',
   'commandes-en-ligne': 'Commandes en Ligne',
-  cuisine:        'Écran Cuisine',
   facturation:    'Facturation',
   menu:           'Carte du Menu',
   stocks:         'Gestion des Stocks',
   rapports:       'Rapports & Statistiques',
   sessions:       'Journal des Sessions',
-  barman:         'Écran Bar',
   utilisateurs:   'Gestion des Utilisateurs',
 };
 
@@ -344,34 +335,14 @@ function speak(text) {
 
 function updateSoundButtons() {
   // Sons désactivés côté admin — on masque aussi les commandes devenues inertes
-  const soundIds = [
-    'btn-sound-cuisine', 'btn-play-cuisine',
-    'btn-sound-barman', 'btn-play-barman',
-    'btn-sound-facturation', 'btn-play-facturation',
-  ];
+  const soundIds = ['btn-sound-facturation', 'btn-play-facturation'];
   if (state.user?.role === 'admin') {
     soundIds.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
     return;
   }
   soundIds.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
 
-  const cuisineBtn = document.getElementById('btn-sound-cuisine');
-  const barBtn      = document.getElementById('btn-sound-barman');
-  const factBtn     = document.getElementById('btn-sound-facturation');
-  if (cuisineBtn) {
-    cuisineBtn.classList.toggle('btn-success', state.soundEnabled);
-    cuisineBtn.classList.toggle('btn-warning', !state.soundEnabled);
-    cuisineBtn.innerHTML = state.soundEnabled
-      ? '<i class="fas fa-volume-up"></i> Son activé'
-      : '<i class="fas fa-volume-mute"></i> Activer le son';
-  }
-  if (barBtn) {
-    barBtn.classList.toggle('btn-success', state.soundEnabled);
-    barBtn.classList.toggle('btn-bar', !state.soundEnabled);
-    barBtn.innerHTML = state.soundEnabled
-      ? '<i class="fas fa-volume-up"></i> Son activé'
-      : '<i class="fas fa-volume-mute"></i> Activer le son';
-  }
+  const factBtn = document.getElementById('btn-sound-facturation');
   if (factBtn) {
     factBtn.classList.toggle('btn-success', state.soundEnabled);
     factBtn.classList.toggle('btn-accent', !state.soundEnabled);
@@ -386,8 +357,7 @@ function enableSound(screen, announce = true) {
   localStorage.setItem('ca_sound', '1');
   updateSoundButtons();
   if (!announce) return;
-  const messages = { bar: 'Son activé pour le bar', facturation: 'Son activé pour la facturation' };
-  speak(messages[screen] || 'Son activé pour la cuisine');
+  speak('Son activé pour la facturation');
 }
 
 function toast(msg, type = 'info') {
@@ -401,8 +371,8 @@ function toast(msg, type = 'info') {
 
 function badgeStatus(statut) {
   const labels = {
-    'en-attente':    '⏳ En attente',
-    'en-preparation':'🔥 En préparation',
+    'en-attente':    '📝 En cours (serveur)',
+    'en-preparation':'💳 Envoyée à la caisse',
     'prete':         '✅ Prête',
     'servie':        '🍽️ Servie',
     'annulee':       '❌ Annulée',
@@ -465,9 +435,7 @@ async function checkWifi() {
 
 function clearIntervals() {
   clearInterval(state.notifInterval);
-  clearInterval(state.cuisineInterval);
   clearInterval(state.dashInterval);
-  clearInterval(state.barmanInterval);
   clearInterval(state.commandesInterval);
   clearInterval(state.facturationInterval);
   clearInterval(state.wifiInterval);
@@ -501,11 +469,9 @@ async function loginFlow(token, user, skipWelcome = false) {
 
 function defaultPage() {
   const role = state.user?.role;
-  if (role === 'cuisiniere') return 'cuisine';
-  if (role === 'barman')     return 'barman';
   if (role === 'serveur')    return 'commandes';
   if (role === 'caissiere')  return 'facturation';
-  return 'dashboard'; // admin
+  return 'dashboard'; // admin, cuisiniere, barman (écrans cuisine/bar coupés pour l'instant)
 }
 
 function applyRoleNav() {
@@ -549,13 +515,11 @@ function navigateTo(page) {
     dashboard:    loadDashboard,
     commandes:    loadCommandes,
     'commandes-en-ligne': loadCommandesLigne,
-    cuisine:      () => loadCuisine(true),
     facturation:  () => { loadFactures(); checkFacturationReady(true); },
     menu:         loadMenu,
     stocks:       loadStocks,
     rapports:     () => {},
     sessions:     loadSessions,
-    barman:       () => loadBarman(true),
     utilisateurs: () => { loadUtilisateurs(); loadWifiConfig(); },
   };
   if (loaders[page]) loaders[page]();
@@ -582,8 +546,6 @@ function handleSSEEvent(type) {
   if (type === '_reconnect') {
     // Reconnexion après coupure — resynchroniser la page courante
     const reloaders = {
-      cuisine:     loadCuisine,
-      barman:      loadBarman,
       commandes:   loadCommandes,
       'commandes-en-ligne': loadCommandesLigne,
       facturation: loadFactures,
@@ -595,9 +557,7 @@ function handleSSEEvent(type) {
   }
 
   if (type === 'commandes') {
-    if      (page === 'cuisine')     loadCuisine();
-    else if (page === 'barman')      loadBarman();
-    else if (page === 'commandes')   loadCommandes();
+    if      (page === 'commandes')   loadCommandes();
     else if (page === 'commandes-en-ligne') loadCommandesLigne();
     else if (page === 'facturation') { loadFactures(); checkFacturationReady(); }
     else if (page === 'dashboard')   loadDashboard();
@@ -653,18 +613,6 @@ function startPolling() {
     if (!state.sseConnected && state.currentPage === 'dashboard') loadDashboard();
   }, POLL_MS);
 
-  if (role === 'admin' || role === 'cuisiniere') {
-    state.cuisineInterval = setInterval(() => {
-      if (!state.sseConnected && state.currentPage === 'cuisine') loadCuisine();
-    }, POLL_MS);
-  }
-
-  if (role === 'admin' || role === 'barman') {
-    state.barmanInterval = setInterval(() => {
-      if (!state.sseConnected && state.currentPage === 'barman') loadBarman();
-    }, POLL_MS);
-  }
-
   // Serveur — actualisation commandes (secours si SSE down)
   if (role === 'admin' || role === 'serveur') {
     state.commandesInterval = setInterval(() => {
@@ -684,9 +632,7 @@ function startPolling() {
   // Rappel vocal périodique (toutes les 4 min) — relit l'état de l'écran actif si le son est activé
   state.voiceReminderInterval = setInterval(() => {
     if (!state.soundEnabled) return;
-    if      (state.currentPage === 'cuisine')     loadCuisine(true);
-    else if (state.currentPage === 'barman')      loadBarman(true);
-    else if (state.currentPage === 'facturation') checkFacturationReady(true);
+    if (state.currentPage === 'facturation') checkFacturationReady(true);
   }, 4 * 60_000);
 
   // Notifications — admin seulement
@@ -711,6 +657,9 @@ async function loadDashboard() {
   document.getElementById('stat-commandes-actives').textContent = data.commandesActives ?? '—';
   document.getElementById('stat-revenus-jour').textContent      = fmt(data.revenusJour);
   document.getElementById('stat-alertes').textContent           = data.alertesStock ?? '—';
+  document.getElementById('stat-total-plats').textContent       = fmt(data.totalPlats);
+  document.getElementById('stat-total-boissons').textContent    = fmt(data.totalBoissons);
+  document.getElementById('stat-commandes-en-ligne').textContent = data.commandesEnLigne ?? '—';
 
   // Commandes actives
   const actives = document.getElementById('dash-commandes-actives');
@@ -734,9 +683,8 @@ async function loadDashboard() {
   const activite = document.getElementById('dash-activite');
   const parStatut = data.commandesParStatut || {};
   activite.innerHTML = `
-    <div class="list-item"><span>🟡 En attente</span><strong>${parStatut['en-attente'] || 0}</strong></div>
-    <div class="list-item"><span>🔵 En préparation</span><strong>${parStatut['en-preparation'] || 0}</strong></div>
-    <div class="list-item"><span>🟢 Prêtes</span><strong>${parStatut['prete'] || 0}</strong></div>
+    <div class="list-item"><span>📝 Chez le serveur</span><strong>${parStatut['en-attente'] || 0}</strong></div>
+    <div class="list-item"><span>💳 En caisse</span><strong>${parStatut['en-preparation'] || 0}</strong></div>
     <div class="list-item"><span>✅ Servies aujourd'hui</span><strong>${parStatut['servie'] || 0}</strong></div>
   `;
 
@@ -793,18 +741,12 @@ async function loadCommandes() {
       </tr>`;
     }
     const alreadyFactured = state.factures.some(f => f.commandeId === c.id);
-    const hasBoissons = (c.items || []).some(i => i.categorie === 'Boissons');
-    const hasPlats    = (c.items || []).some(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet');
-    const kitchenOk   = !hasPlats || ['prete', 'servie'].includes(c.statut);
-    const barOk       = !hasBoissons || c.boissonsStatut === 'prete';
-    const canFacture  = kitchenOk && barOk && !alreadyFactured && state.user?.role !== 'serveur';
-    const canCancel  = state.user?.role === 'admin' && !['annulee', 'servie'].includes(c.statut);
-    const canEdit    = !alreadyFactured && !['annulee', 'servie'].includes(c.statut);
-    const boissonsInfo = c.boissonsStatut === 'en-attente'
-      ? '<br><small style="color:#1565C0;font-size:.72rem"><i class="fas fa-wine-glass-alt"></i> Boissons en attente</small>'
-      : c.boissonsStatut === 'prete'
-      ? '<br><small style="color:var(--success);font-size:.72rem"><i class="fas fa-check"></i> Boissons prêtes</small>'
-      : '';
+    const role = state.user?.role;
+    const canEnvoyer = c.statut === 'en-attente' && (role === 'admin' || role === 'serveur');
+    const canFacture = !alreadyFactured && c.statut === 'en-preparation' && role !== 'serveur';
+    const canCancel  = role === 'admin' && !['annulee', 'servie'].includes(c.statut);
+    const canEdit    = !alreadyFactured && !['annulee', 'servie'].includes(c.statut)
+      && !(c.statut === 'en-preparation' && role === 'serveur');
     return `
     <tr>
       <td data-label="N°"><strong>${c.numero}</strong>${c.source === 'en-ligne' ? ' <span style="background:#E3F2FD;color:#0d47a1;border:1px solid #90CAF9;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600"><i class="fas fa-globe"></i> En ligne</span>' : ''}</td>
@@ -812,13 +754,16 @@ async function loadCommandes() {
       <td data-label="Articles" style="font-size:.82rem">${items}</td>
       <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
       <td data-label="Table" style="color:var(--gray);font-size:.82rem">${escapeHtml(c.tableNumero) || '—'}</td>
-      <td data-label="Statut">${badgeStatus(c.statut)}${boissonsInfo}</td>
+      <td data-label="Statut">${badgeStatus(c.statut)}</td>
       <td data-label="Actions">
         <button class="btn btn-secondary btn-sm" onclick="viewCommande('${c.id}')">
           <i class="fas fa-eye"></i>
         </button>
         ${canEdit ? `<button class="btn btn-secondary btn-sm" onclick="openEditCommande('${c.id}')" title="Modifier la commande">
           <i class="fas fa-edit"></i>
+        </button>` : ''}
+        ${canEnvoyer ? `<button class="btn btn-primary btn-sm" onclick="envoyerFacturation('${c.id}','${c.numero}')" title="Envoyer à la facturation">
+          <i class="fas fa-paper-plane"></i> Envoyer
         </button>` : ''}
         ${canFacture ? `<button class="btn btn-accent btn-sm" onclick="openNewFactureForCmd('${c.id}')">
           <i class="fas fa-receipt"></i> Facturer
@@ -861,6 +806,16 @@ async function annulerCommande(id, numero) {
   const res = await api(`/api/commandes/${id}`, { method: 'DELETE' });
   if (res?.message) { toast('Commande annulée', 'warning'); loadCommandes(); }
 }
+
+window.envoyerFacturation = async (id, numero) => {
+  if (!confirm(`Envoyer la commande ${numero} à la facturation ? Vous ne pourrez plus la modifier ensuite.`)) return;
+  showLoader();
+  const res = await api(`/api/commandes/${id}/envoyer`, { method: 'PUT', body: '{}' });
+  hideLoader();
+  if (!res?.id) { toast(res?.error || 'Erreur', 'error'); return; }
+  toast(`Commande ${numero} envoyée à la facturation`, 'success');
+  loadCommandes();
+};
 
 // ─── Modification libre d'une commande (serveur, avant facturation) ───
 
@@ -1071,10 +1026,7 @@ async function saveCommande() {
   const res = await api('/api/commandes', { method: 'POST', body: JSON.stringify(body) });
   hideLoader();
   if (res?.id) {
-    const allBoissons = state.panier.every(i => i.categorie === 'Boissons');
-    const hasBoissons = state.panier.some(i => i.categorie === 'Boissons');
-    const dest = allBoissons ? 'au bar' : hasBoissons ? 'en cuisine et au bar' : 'en cuisine';
-    toast(`Commande ${res.numero} envoyée ${dest} !`, 'success');
+    toast(`Commande ${res.numero} créée !`, 'success');
     closeModal('commande');
     if (isOnline) loadCommandesLigne(); else loadCommandes();
   } else if (res?.queued) {
@@ -1087,7 +1039,7 @@ async function saveCommande() {
       numero: 'En attente',
       items: state.panier,
       total: state.panier.reduce((s, p) => s + p.sousTotal, 0),
-      statut: 'en-attente',
+      statut: state.user?.role === 'serveur' ? 'en-attente' : 'en-preparation',
       source: state.panierSource || 'sur-place',
       createdAt: new Date().toISOString(),
       createdBy: state.user?.nom || '',
@@ -1102,11 +1054,12 @@ async function saveCommande() {
 // ─── COMMANDES EN LIGNE (caissière) ────────────────────
 
 async function loadCommandesLigne() {
-  const commandesRes = await api('/api/commandes');
+  const [commandesRes, factures] = await Promise.all([api('/api/commandes'), api('/api/factures')]);
   const pendingEnLigne = getPendingCommandes().filter(c => c.source === 'en-ligne');
   if (!commandesRes && pendingEnLigne.length === 0) return;
   const commandes = [...pendingEnLigne, ...(commandesRes || [])];
   state.commandes = commandes; // openEditCommande() lit depuis state.commandes
+  if (factures) state.factures = factures;
 
   const enLigne = commandes.filter(c => c._pending || (c.source === 'en-ligne' && !['annulee', 'servie'].includes(c.statut)));
   const tbody = document.getElementById('commandes-ligne-tbody');
@@ -1128,218 +1081,26 @@ async function loadCommandesLigne() {
         <td data-label="Actions">—</td>
       </tr>`;
     }
-    const hasBoissons = (c.items || []).some(i => i.categorie === 'Boissons');
-    const hasPlats    = (c.items || []).some(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet');
-    const cuisineInfo = hasPlats
-      ? (['prete', 'servie'].includes(c.statut) ? '<br><small style="color:var(--success);font-size:.72rem"><i class="fas fa-check"></i> Cuisine prête</small>' : '<br><small style="color:var(--gray);font-size:.72rem"><i class="fas fa-fire"></i> En préparation</small>')
-      : '';
-    const barInfo = hasBoissons
-      ? (c.boissonsStatut === 'prete' ? '<br><small style="color:var(--success);font-size:.72rem"><i class="fas fa-check"></i> Boissons prêtes</small>' : '<br><small style="color:#1565C0;font-size:.72rem"><i class="fas fa-wine-glass-alt"></i> Boissons en attente</small>')
-      : '';
+    const alreadyFactured = state.factures.some(f => f.commandeId === c.id);
+    const canEdit    = !alreadyFactured && !['annulee', 'servie'].includes(c.statut);
+    const canFacture = !alreadyFactured && c.statut === 'en-preparation';
     return `
     <tr>
       <td data-label="N°"><strong>${c.numero}</strong></td>
       <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
       <td data-label="Articles" style="font-size:.82rem">${items}</td>
       <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
-      <td data-label="Statut">${badgeStatus(c.statut)}${cuisineInfo}${barInfo}</td>
+      <td data-label="Statut">${badgeStatus(c.statut)}</td>
       <td data-label="Actions">
-        <button class="btn btn-secondary btn-sm" onclick="openEditCommande('${c.id}')" title="Modifier">
+        ${canEdit ? `<button class="btn btn-secondary btn-sm" onclick="openEditCommande('${c.id}')" title="Modifier">
           <i class="fas fa-edit"></i>
-        </button>
-        <button class="btn btn-success btn-sm" onclick="lancerLivraison('${c.id}','${c.numero}')">
-          <i class="fas fa-truck"></i> Lancer la livraison
-        </button>
+        </button>` : ''}
+        ${canFacture ? `<button class="btn btn-accent btn-sm" onclick="openNewFactureForCmd('${c.id}')">
+          <i class="fas fa-receipt"></i> Facturer
+        </button>` : ''}
       </td>
     </tr>`;
   }).join('');
-}
-
-window.lancerLivraison = async (id, numero) => {
-  if (!confirm(`Lancer la livraison de ${numero} et générer la facture ?`)) return;
-  showLoader();
-  const res = await api(`/api/commandes/${id}/livraison`, { method: 'PUT' });
-  hideLoader();
-  if (!res?.id) { toast(res?.error || 'Erreur', 'error'); return; }
-  toast(`Livraison lancée${res.factureUnifiee ? ` — facture ${res.factureUnifiee.numero} générée` : ''}`, 'success');
-  loadCommandesLigne();
-  if (res.factureUnifiee?.id) aperçuFacture(res.factureUnifiee.id);
-};
-
-// ─── CUISINE ───────────────────────────────────────────
-
-async function loadCuisine(entering = false) {
-  const today = new Date().toISOString().split('T')[0];
-  const [data, factures, paiements] = await Promise.all([
-    api('/api/commandes/cuisine'),
-    api(`/api/factures?debut=${today}&fin=${today}&type=cuisine`),
-    api(`/api/factures?debut=${today}&fin=${today}`),
-  ]);
-
-  const active   = data?.active   || [];
-  const terminee = data?.terminee || [];
-  const factureMap = {};
-  const paiementMap = {};
-  (paiements || []).forEach(f => { paiementMap[f.commandeId] = f; });
-
-  // ── Annonce vocale des commandes nourriture ──
-  const activeIds = new Set(active.map(c => c.id));
-  if (entering) {
-    active.forEach(c => speak(`Commande nourriture en cours : ${itemsSummary(c.items)}`));
-  } else if (state.cuisineKnownIds) {
-    active
-      .filter(c => !state.cuisineKnownIds.has(c.id))
-      .forEach(c => speak(`Nouvelle commande nourriture : ${itemsSummary(c.items)}`));
-  }
-  state.cuisineKnownIds = activeIds;
-  (factures || []).forEach(f => { factureMap[f.commandeId] = f; });
-
-  // ── Section commandes actives ──
-  const grid  = document.getElementById('cuisine-grid');
-  const count = document.getElementById('cuisine-count');
-
-  if (active.length === 0) {
-    grid.innerHTML = '<div class="empty-state"><i class="fas fa-check-circle" style="color:var(--success)"></i><p>Aucune commande en cours – tout est calme !</p></div>';
-    if (count) count.textContent = '0 commande';
-  } else {
-    if (count) count.textContent = `${active.length} commande(s) en cours`;
-    grid.innerHTML = active.map(c => {
-      const minutesAgo = Math.floor((Date.now() - new Date(c.createdAt).getTime()) / 60000);
-      const items = (c.items || []).map(i => `
-        <div class="commande-item">
-          <span><span class="commande-item-qty">${i.quantite}</span> ${i.nom}</span>
-          <span style="color:var(--gray);font-size:.78rem">${fmt(i.prix)} FCFA</span>
-        </div>`).join('');
-      const totalPlats = (c.items || []).reduce((s, i) => s + i.sousTotal, 0);
-      const isOnline = c.source === 'en-ligne';
-      const actionBtn = isOnline
-        ? ''
-        : c.statut === 'en-attente'
-        ? `<button class="btn btn-warning btn-sm" onclick="updateStatutCommande('${c.id}','prete')">
-             <i class="fas fa-fire"></i> Démarrer
-           </button>`
-        : `<button class="btn btn-success btn-sm" onclick="updateStatutCommande('${c.id}','prete')">
-             <i class="fas fa-check"></i> Prête !
-           </button>`;
-      return `
-      <div class="commande-card ${c.statut}" id="card-${c.id}">
-        <div class="commande-card-header">
-          <div>
-            <div class="commande-numero">${c.numero}</div>
-            ${c.tableNumero ? `<div class="commande-table"><i class="fas fa-chair"></i> ${escapeHtml(c.tableNumero)}</div>` : ''}
-            ${isOnline ? `<div class="commande-table" style="color:#0d47a1"><i class="fas fa-globe"></i> Commande en ligne</div>` : ''}
-          </div>
-          <div style="text-align:right">
-            ${badgeStatus(c.statut)}
-            <div class="commande-time">${minutesAgo < 1 ? 'À l\'instant' : `il y a ${minutesAgo} min`}</div>
-          </div>
-        </div>
-        <div class="commande-items">${items}</div>
-        ${c.note ? `<div class="commande-note"><i class="fas fa-sticky-note"></i> ${escapeHtml(c.note)}</div>` : ''}
-        <div class="commande-total">${fmt(totalPlats)} FCFA</div>
-        ${isOnline ? '<p style="font-size:.72rem;color:var(--gray);text-align:center;margin-top:6px"><i class="fas fa-info-circle"></i> Facturée par la caissière — pas de validation ici</p>' : `<div class="commande-actions">${actionBtn}</div>`}
-      </div>`;
-    }).join('');
-  }
-
-  // ── Section factures du jour ──
-  const bilanSection = document.getElementById('cuisine-bilan-section');
-  const bilanGrid    = document.getElementById('cuisine-bilan-grid');
-  const bilanCount   = document.getElementById('cuisine-bilan-count');
-
-  if (terminee.length === 0) {
-    bilanSection.style.display = 'none';
-  } else {
-    bilanSection.style.display = 'block';
-    bilanCount.textContent = `${terminee.length} facture(s)`;
-
-    bilanGrid.innerHTML = terminee.map(c => {
-      const f = factureMap[c.id];
-      const paiement = paiementMap[c.id];
-      const items = (c.items || []).map(i => `
-        <div class="commande-item" style="font-size:.8rem">
-          <span><span class="commande-item-qty">${i.quantite}</span> ${i.nom}</span>
-          <span style="color:var(--gray)">${fmt(i.sousTotal)} FCFA</span>
-        </div>`).join('');
-      const factureInfo = f
-        ? `<div style="margin-top:10px;padding:8px;background:#f0fdf4;border-radius:6px;border:1px solid #bbf7d0">
-             <div style="font-size:.78rem;color:var(--gray);margin-bottom:4px">
-               <i class="fas fa-receipt"></i> <strong>${f.numero}</strong>
-             </div>
-             <div style="display:flex;justify-content:flex-end;font-size:.82rem">
-               <strong style="color:var(--success)">${fmt(f.total)} FCFA</strong>
-             </div>
-             <div style="font-size:.75rem;color:var(--gray);margin-top:2px">
-               ${paiement?.statut === 'payee' ? '<span style="color:var(--success)">✓ Payée</span>' : '<span style="color:var(--warning)">⏳ En attente paiement</span>'}
-             </div>
-           </div>`
-        : `<div style="margin-top:10px;padding:8px;background:#fef9c3;border-radius:6px;font-size:.78rem;color:var(--gray)">
-             <i class="fas fa-spinner fa-spin"></i> Facture en cours de génération…
-           </div>`;
-      const printBtn = f
-        ? `<button class="btn btn-secondary btn-sm" onclick="aperçuFactureCuisine('${f.id}')">
-             <i class="fas fa-print"></i> Bon cuisine
-           </button>`
-        : '';
-      return `
-      <div class="commande-card prete" style="opacity:.85;border-left:4px solid var(--success)">
-        <div class="commande-card-header">
-          <div>
-            <div class="commande-numero">${c.numero}</div>
-            ${c.tableNumero ? `<div class="commande-table"><i class="fas fa-chair"></i> ${escapeHtml(c.tableNumero)}</div>` : ''}
-          </div>
-          <div style="text-align:right">
-            ${badgeStatus(c.statut)}
-            <div class="commande-time" style="font-size:.7rem">${fmtDate(c.updatedAt)}</div>
-          </div>
-        </div>
-        <div class="commande-items">${items}</div>
-        ${c.note ? `<div class="commande-note"><i class="fas fa-sticky-note"></i> ${escapeHtml(c.note)}</div>` : ''}
-        ${factureInfo}
-        ${printBtn ? `<div class="commande-actions" style="margin-top:8px">${printBtn}</div>` : ''}
-      </div>`;
-    }).join('');
-  }
-}
-
-window.updateStatutCommande = async (id, statut) => {
-  const res = await api(`/api/commandes/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify({ statut }),
-  });
-  if (res?.id) {
-    const msgs = {
-      'en-preparation': 'Préparation démarrée !',
-      'prete': 'Commande prête – facture générée automatiquement !',
-    };
-    toast(msgs[statut] || 'Statut mis à jour', 'success');
-    loadCuisine();
-  }
-};
-
-// Impression du bilan complet du jour depuis la cuisine
-window.printBilanJour = function printBilanJour() {
-  const today = new Date().toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
-  const cards = document.getElementById('cuisine-bilan-grid').innerHTML;
-  const w = window.open('', '_blank');
-  w.document.write(`<!DOCTYPE html><html><head><title>Bilan du Jour – Cook Africa</title>
-    <style>
-      body { font-family: Arial, sans-serif; max-width: 860px; margin: 20px auto; font-size: 13px; }
-      h1  { color: #8B1A1A; font-size: 1.1rem; border-bottom: 2px solid #8B1A1A; padding-bottom: 8px; }
-      .cuisine-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px,1fr)); gap: 14px; }
-      .commande-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; page-break-inside: avoid; }
-      .commande-numero { font-weight: 800; font-size: .95rem; }
-      .commande-item  { display: flex; justify-content: space-between; padding: 3px 0; font-size: .8rem; }
-      .commande-item-qty { background: #8B1A1A; color: white; border-radius: 4px; padding: 1px 6px; font-size: .75rem; }
-      .badge-status   { padding: 2px 8px; border-radius: 12px; font-size: .72rem; }
-      @media print { button { display: none; } }
-    </style>
-  </head><body>
-    <h1><i>COOK AFRICA</i> – Bilan du ${today}</h1>
-    <div class="cuisine-grid">${cards}</div>
-  </body></html>`);
-  w.document.close();
-  w.print();
 }
 
 // ─── FACTURATION ───────────────────────────────────────
@@ -1365,19 +1126,16 @@ async function loadFactures() {
   const debut  = document.getElementById('filter-fact-start')?.value || '';
   const fin    = document.getElementById('filter-fact-end')?.value   || '';
   const statut = document.getElementById('filter-fact-statut')?.value || '';
-  const type   = document.getElementById('filter-fact-type')?.value  || '';
 
   let url = '/api/factures?';
   if (debut)  url += `debut=${debut}&`;
   if (fin)    url += `fin=${fin}&`;
-  if (statut) url += `statut=${statut}&`;
-  if (type)   url += `type=${type}`;
+  if (statut) url += `statut=${statut}`;
 
   const factures = await api(url);
   if (!factures) return;
   state.factures = factures;
 
-  const isBonus = type === 'cuisine' || type === 'bar';
   const tbody = document.getElementById('factures-tbody');
 
   if (factures.length === 0) {
@@ -1388,40 +1146,26 @@ async function loadFactures() {
   // Afficher le bouton de réparation s'il existe des numéros invalides
   const repairBtn = document.getElementById('btn-repair-numeros');
   if (repairBtn && state.user?.role === 'admin') {
-    const hasBroken = factures.some(f => (!f.type || f.type === 'facture') && f.numero && f.numero.includes('NaN'));
+    const hasBroken = factures.some(f => f.numero && f.numero.includes('NaN'));
     repairBtn.style.display = hasBroken ? 'inline-flex' : 'none';
   }
 
   tbody.innerHTML = factures.map(f => {
     const nbArticles = (f.items || []).length;
-    const fType      = f.type || 'facture';
-    const isPayFact  = !f.type || f.type === 'facture';
-    const canPay     = isPayFact && f.statut === 'partielle';
-
-    const typeBadge = fType === 'cuisine'
-      ? `<span style="background:#FFF3E0;color:#E65100;border:1px solid #FFCC02;border-radius:12px;padding:2px 8px;font-size:.72rem;font-weight:600"><i class="fas fa-fire"></i> Cuisine</span>`
-      : fType === 'bar'
-      ? `<span style="background:#E3F2FD;color:#1565C0;border:1px solid #90CAF9;border-radius:12px;padding:2px 8px;font-size:.72rem;font-weight:600"><i class="fas fa-wine-glass-alt"></i> Bar</span>`
-      : '';
-
-    const printAction = fType === 'cuisine'
-      ? `<button class="btn btn-secondary btn-sm" title="Bon cuisine" onclick="aperçuFactureCuisine('${f.id}')"><i class="fas fa-print"></i></button>`
-      : fType === 'bar'
-      ? `<button class="btn btn-secondary btn-sm" title="Bon bar" onclick="aperçuBonBar('${f.id}')"><i class="fas fa-print"></i></button>`
-      : `<button class="btn btn-secondary btn-sm" onclick="aperçuFacture('${f.id}')"><i class="fas fa-print"></i></button>`;
+    const canPay = f.statut === 'partielle';
 
     return `
     <tr>
-      <td data-label="N°"><strong>${f.numero}</strong>${typeBadge ? ' ' + typeBadge : ''}</td>
+      <td data-label="N°"><strong>${f.numero}</strong></td>
       <td data-label="Date" style="font-size:.8rem">${fmtDateOnly(f.date)}</td>
       <td data-label="Commande" style="font-size:.82rem;color:var(--gray)">${f.commandeNumero || '—'}</td>
       <td data-label="Articles" style="font-size:.82rem">${nbArticles} article(s)</td>
       <td data-label="Total"><strong>${fmt(f.total)} FCFA</strong></td>
-      <td data-label="Reste" style="color:${isPayFact && f.reste > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:700">${isPayFact ? fmt(f.reste) + ' FCFA' : '—'}</td>
+      <td data-label="Reste" style="color:${f.reste > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:700">${fmt(f.reste)} FCFA</td>
       <td data-label="Paiement" style="font-size:.82rem;color:var(--gray)">${f.modePaiement || '—'}</td>
-      <td data-label="Statut">${isPayFact ? badgeStatus(f.statut) : '<span style="color:var(--gray);font-size:.8rem">Bon interne</span>'}</td>
+      <td data-label="Statut">${badgeStatus(f.statut)}</td>
       <td data-label="Actions">
-        ${printAction}
+        <button class="btn btn-secondary btn-sm" onclick="aperçuFacture('${f.id}')"><i class="fas fa-print"></i></button>
         ${canPay ? `<button class="btn btn-success btn-sm" onclick="openPayFacture('${f.id}','${fmt(f.reste)}')"><i class="fas fa-check"></i> Payer</button>` : ''}
         ${canPay ? `<button class="btn btn-secondary btn-sm" onclick="openEditFacture('${f.id}')" title="Modifier (nécessite un code admin)"><i class="fas fa-edit"></i></button>` : ''}
         ${(canPay && state.user?.role === 'admin') ? `<button class="btn btn-accent btn-sm" onclick="openEditGrant('${f.id}')" title="Générer un code de modification"><i class="fas fa-key"></i></button>` : ''}
@@ -1580,11 +1324,7 @@ function openNewFacture() {
   // Commande éligible : toutes les parties validées + pas encore facturée
   const cmdsEligibles = state.commandes.filter(c => {
     if (state.factures.some(f => f.commandeId === c.id)) return false;
-    const hasBoissons = (c.items || []).some(i => i.categorie === 'Boissons');
-    const hasPlats    = (c.items || []).some(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet');
-    const kitchenOk   = !hasPlats || ['prete', 'servie'].includes(c.statut);
-    const barOk       = !hasBoissons || c.boissonsStatut === 'prete';
-    return kitchenOk && barOk;
+    return c.statut === 'en-preparation';
   });
   const sel = document.getElementById('new-facture-commande');
   sel.innerHTML = '<option value="">Sélectionner une commande…</option>' +
@@ -1763,16 +1503,6 @@ window.aperçuFacture = async (id) => {
     </tr>
     ${renderRows(buffetItems)}` : '';
 
-  const validateurs = [];
-  if (f.validatedByCuisinier) {
-    const nomCuisinier = f.validatedByCuisinierNom || f.validatedByCuisinier;
-    validateurs.push(`<span><i class="fas fa-fire" style="color:var(--primary)"></i> Cuisine : <strong>${nomCuisinier}</strong></span>`);
-  }
-  if (f.validatedByBarman) {
-    const nomBarman = f.validatedByBarmanNom || f.validatedByBarman;
-    validateurs.push(`<span><i class="fas fa-wine-glass-alt" style="color:#1565C0"></i> Bar : <strong>${nomBarman}</strong></span>`);
-  }
-
   document.getElementById('facture-print-area').innerHTML = `
     <div class="facture-print">
       <div class="facture-print-header">
@@ -1799,7 +1529,6 @@ window.aperçuFacture = async (id) => {
           : `<tr><td style="color:var(--success)"><strong>PAYÉE ✓</strong></td><td></td></tr>`}
       </table>
       <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border);font-size:.78rem;color:var(--gray)">
-        ${validateurs.length ? `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:6px">${validateurs.join('')}</div>` : ''}
         <p>Mode de paiement : <strong>${f.modePaiement || '—'}</strong></p>
         <p style="margin-top:6px;text-align:center">Merci de votre visite !</p>
         <p style="font-size:.7rem;text-align:center;margin-top:4px">Cook Africa – Le restaurant qui rassemble</p>
@@ -1832,342 +1561,6 @@ function printFacture() {
   w.print();
 }
 
-// Aperçu + impression du bon cuisine (plats uniquement, sans boissons)
-window.aperçuFactureCuisine = async (id) => {
-  let f = state.factures.find(x => x.id === id);
-  if (!f) {
-    const res = await api(`/api/factures/${id}`);
-    if (!res) return;
-    f = res;
-  }
-
-  const logoUrl = window.location.origin + '/logo-cookafrica.png';
-  const platsItems = (f.items || []).filter(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet');
-  if (platsItems.length === 0) { toast('Aucun plat dans cette facture', 'warning'); return; }
-  const totalPlats = platsItems.reduce((s, i) => s + i.sousTotal, 0);
-
-  const rows = platsItems.map(i => `
-    <tr>
-      <td>${i.nom}</td>
-      <td style="text-align:center">${i.quantite}</td>
-      <td style="text-align:right">${fmt(i.prix)}</td>
-      <td style="text-align:right"><strong>${fmt(i.sousTotal)}</strong></td>
-    </tr>`).join('');
-
-  document.getElementById('facture-print-area').innerHTML = `
-    <div class="facture-print">
-      <div class="facture-print-header">
-        <img src="${logoUrl}" alt="Cook Africa" style="height:60px;margin-bottom:6px;display:block;margin-left:auto;margin-right:auto"
-             onerror="this.style.display='none'">
-        <p style="margin-top:4px;font-size:1rem;color:var(--primary)"><strong><i class="fas fa-fire"></i> BON CUISINE</strong></p>
-        <p style="font-size:.78rem;color:var(--gray)">Réf. facture : ${f.numero}</p>
-        <p style="font-size:.78rem;color:var(--gray)">Date : ${fmtDateOnly(f.date)}</p>
-        ${f.tableNumero ? `<p style="font-size:.78rem"><strong>Table :</strong> ${escapeHtml(f.tableNumero)}</p>` : ''}
-        ${f.commandeNumero ? `<p style="font-size:.78rem;color:var(--gray)">Commande : ${f.commandeNumero}</p>` : ''}
-      </div>
-      <table class="facture-items">
-        <thead><tr><th>Plat</th><th>Qté</th><th>Prix unit.</th><th>Sous-total</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-      <table class="facture-totaux">
-        <tr class="facture-total-final">
-          <td><strong>TOTAL CUISINE</strong></td>
-          <td><strong>${fmt(totalPlats)} FCFA</strong></td>
-        </tr>
-      </table>
-      <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border);font-size:.78rem;color:var(--gray)">
-        ${f.serveurNom ? `<p><i class="fas fa-user"></i> Servi par : <strong>${escapeHtml(f.serveurNom)}</strong></p>` : ''}
-        ${f.caissiereName ? `<p><i class="fas fa-user-tie"></i> Caissière : <strong>${f.caissiereName}</strong></p>` : ''}
-        ${f.validatedByCuisinier ? `<p><i class="fas fa-fire" style="color:var(--primary)"></i> Cuisinier : <strong>${f.validatedByCuisinierNom || f.validatedByCuisinier}</strong></p>` : ''}
-        <p style="margin-top:6px;text-align:center;font-style:italic">Bon interne – Usage cuisine uniquement</p>
-        <p style="font-size:.7rem;text-align:center;margin-top:4px">Cook Africa – Le restaurant qui rassemble</p>
-      </div>
-    </div>`;
-
-  openModal('apercu-facture');
-};
-
-// Aperçu + impression du bon bar depuis un ID de facture BD (bons stockés en BD)
-window.aperçuBonBar = async (id) => {
-  let f = state.factures.find(x => x.id === id);
-  if (!f) {
-    const res = await api(`/api/factures/${id}`);
-    if (!res) return;
-    f = res;
-  }
-
-  const logoUrl = window.location.origin + '/logo-cookafrica.png';
-  const boissonsItems = (f.items || []).filter(i => i.categorie === 'Boissons');
-  if (boissonsItems.length === 0) { toast('Aucune boisson dans ce bon', 'warning'); return; }
-  const totalBar = boissonsItems.reduce((s, i) => s + i.sousTotal, 0);
-
-  const rows = boissonsItems.map(i => `
-    <tr>
-      <td>${i.nom}</td>
-      <td style="text-align:center">${i.quantite}</td>
-      <td style="text-align:right">${fmt(i.prix)}</td>
-      <td style="text-align:right"><strong>${fmt(i.sousTotal)}</strong></td>
-    </tr>`).join('');
-
-  document.getElementById('facture-print-area').innerHTML = `
-    <div class="facture-print">
-      <div class="facture-print-header">
-        <img src="${logoUrl}" alt="Cook Africa" style="height:60px;margin-bottom:6px;display:block;margin-left:auto;margin-right:auto"
-             onerror="this.style.display='none'">
-        <p style="margin-top:4px;font-size:1rem;color:#1565C0"><strong><i class="fas fa-wine-glass-alt"></i> BON BAR</strong></p>
-        <p style="font-size:.78rem;color:var(--gray)">Réf. : ${f.numero}</p>
-        <p style="font-size:.78rem;color:var(--gray)">Date : ${fmtDateOnly(f.date)}</p>
-        ${f.tableNumero ? `<p style="font-size:.78rem"><strong>Table :</strong> ${escapeHtml(f.tableNumero)}</p>` : ''}
-        ${f.commandeNumero ? `<p style="font-size:.78rem;color:var(--gray)">Commande : ${f.commandeNumero}</p>` : ''}
-      </div>
-      <table class="facture-items">
-        <thead><tr><th>Boisson</th><th>Qté</th><th>Prix unit.</th><th>Sous-total</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-      <table class="facture-totaux">
-        <tr class="facture-total-final">
-          <td><strong>TOTAL BAR</strong></td>
-          <td><strong>${fmt(totalBar)} FCFA</strong></td>
-        </tr>
-      </table>
-      <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border);font-size:.78rem;color:var(--gray)">
-        ${f.serveurNom ? `<p><i class="fas fa-user"></i> Servi par : <strong>${escapeHtml(f.serveurNom)}</strong></p>` : ''}
-        ${f.validatedByBarman ? `<p><i class="fas fa-wine-glass-alt" style="color:#1565C0"></i> Barman : <strong>${f.validatedByBarmanNom || f.validatedByBarman}</strong></p>` : ''}
-        <p style="margin-top:6px;text-align:center;font-style:italic">Bon interne – Usage bar uniquement</p>
-        <p style="font-size:.7rem;text-align:center;margin-top:4px">Cook Africa – Le restaurant qui rassemble</p>
-      </div>
-    </div>`;
-
-  openModal('apercu-facture');
-};
-
-// ─── ÉCRAN BAR ─────────────────────────────────────────
-
-async function loadBarman(entering = false) {
-  const data = await api('/api/commandes/bar');
-  if (!data) return;
-
-  const active       = data.active       || [];
-  const done         = data.done         || [];
-  const facturesMap  = data.facturesMap  || {};
-  const paiementsMap = data.paiementsMap || {};
-  state.barFactures = facturesMap; // factures indexées par commandeId
-
-  // ── Annonce vocale des commandes boissons ──
-  const activeIds = new Set(active.map(c => c.id));
-  if (entering) {
-    active.forEach(c => {
-      const boissonsItems = (c.items || []).filter(i => i.categorie === 'Boissons');
-      speak(`Commande boissons en cours : ${itemsSummary(boissonsItems)}`);
-    });
-  } else if (state.barKnownIds) {
-    active
-      .filter(c => !state.barKnownIds.has(c.id))
-      .forEach(c => {
-        const boissonsItems = (c.items || []).filter(i => i.categorie === 'Boissons');
-        speak(`Nouvelle commande boissons : ${itemsSummary(boissonsItems)}`);
-      });
-  }
-  state.barKnownIds = activeIds;
-
-  // ── Commandes boissons actives ──
-  const grid  = document.getElementById('barman-grid');
-  const count = document.getElementById('barman-count');
-
-  if (active.length === 0) {
-    grid.innerHTML = '<div class="empty-state"><i class="fas fa-wine-glass-alt" style="color:var(--success)"></i><p>Aucune commande de boisson en attente !</p></div>';
-    if (count) count.textContent = '0 boisson en attente';
-  } else {
-    if (count) count.textContent = `${active.length} commande(s) de boissons`;
-    grid.innerHTML = active.map(c => {
-      const minutesAgo = Math.floor((Date.now() - new Date(c.createdAt).getTime()) / 60000);
-      const boissonsItems = (c.items || []).filter(i => i.categorie === 'Boissons');
-      const items = boissonsItems.map(i => `
-        <div class="commande-item">
-          <span><span class="commande-item-qty">${i.quantite}</span> ${i.nom}</span>
-          <span style="color:var(--gray);font-size:.78rem">${fmt(i.prix)} FCFA</span>
-        </div>`).join('');
-      const total = boissonsItems.reduce((s, i) => s + i.sousTotal, 0);
-      const isOnline = c.source === 'en-ligne';
-      return `
-      <div class="commande-card en-attente bar-card" id="bar-card-${c.id}">
-        <div class="commande-card-header">
-          <div>
-            <div class="commande-numero">${c.numero}</div>
-            ${c.tableNumero ? `<div class="commande-table"><i class="fas fa-chair"></i> ${escapeHtml(c.tableNumero)}</div>` : ''}
-            ${isOnline ? `<div class="commande-table" style="color:#0d47a1"><i class="fas fa-globe"></i> Commande en ligne</div>` : ''}
-          </div>
-          <div style="text-align:right">
-            ${badgeStatus(c.statut)}
-            <div class="commande-time">${minutesAgo < 1 ? "À l'instant" : `il y a ${minutesAgo} min`}</div>
-          </div>
-        </div>
-        <div class="commande-items">${items}</div>
-        ${c.note ? `<div class="commande-note"><i class="fas fa-sticky-note"></i> ${escapeHtml(c.note)}</div>` : ''}
-        <div class="commande-total">${fmt(total)} FCFA</div>
-        ${isOnline
-          ? '<p style="font-size:.72rem;color:var(--gray);text-align:center;margin-top:6px"><i class="fas fa-info-circle"></i> Facturée par la caissière — pas de validation ici</p>'
-          : `<div class="commande-actions">
-               <button class="btn btn-success btn-sm" style="background:#1565C0;border-color:#1565C0" onclick="barmanPret('${c.id}')">
-                 <i class="fas fa-wine-glass-alt"></i> Prêt !
-               </button>
-             </div>`}
-      </div>`;
-    }).join('');
-  }
-
-  // ── Stock boissons ──
-  loadBarmanStock();
-
-  // ── Boissons servies du jour ──
-  const bilanSection = document.getElementById('barman-bilan-section');
-  const bilanGrid    = document.getElementById('barman-bilan-grid');
-  const bilanCount   = document.getElementById('barman-bilan-count');
-
-  if (done.length === 0) {
-    bilanSection.style.display = 'none';
-  } else {
-    bilanSection.style.display = 'block';
-    bilanCount.textContent = `${done.length}`;
-    bilanGrid.innerHTML = done.map(c => {
-      const boissonsItems = (c.items || []).filter(i => i.categorie === 'Boissons');
-      const total = boissonsItems.reduce((s, i) => s + i.sousTotal, 0);
-      const items = boissonsItems.map(i => `
-        <div class="commande-item" style="font-size:.8rem">
-          <span><span class="commande-item-qty">${i.quantite}</span> ${i.nom}</span>
-          <span style="color:var(--gray)">${fmt(i.sousTotal)} FCFA</span>
-        </div>`).join('');
-      const f = facturesMap[c.id];
-      const paiement = paiementsMap[c.id];
-      const factureInfo = f
-        ? `<div style="margin-top:10px;padding:8px;background:#eff6ff;border-radius:6px;border:1px solid #bfdbfe">
-             <div style="font-size:.78rem;color:var(--gray);margin-bottom:4px">
-               <i class="fas fa-receipt"></i> <strong>${f.numero}</strong>
-             </div>
-             <div style="font-size:.75rem;color:var(--gray);margin-top:2px">
-               ${paiement?.statut === 'payee' ? '<span style="color:var(--success)">✓ Payée</span>' : '<span style="color:var(--warning)">⏳ En attente paiement</span>'}
-             </div>
-           </div>`
-        : `<div style="margin-top:10px;padding:8px;background:#fef9c3;border-radius:6px;font-size:.78rem;color:var(--gray)">
-             <i class="fas fa-spinner fa-spin"></i> Facture en cours…
-           </div>`;
-      const printBtn = f
-        ? `<div class="commande-actions" style="margin-top:8px">
-             <button class="btn btn-sm" style="background:#1565C0;color:#fff;border-color:#1565C0" onclick="aperçuFactureBar('${c.id}')">
-               <i class="fas fa-print"></i> Bon bar
-             </button>
-           </div>`
-        : '';
-      return `
-      <div class="commande-card prete bar-card" style="opacity:.85;border-left:4px solid #1565C0">
-        <div class="commande-card-header">
-          <div>
-            <div class="commande-numero">${c.numero}</div>
-            ${c.tableNumero ? `<div class="commande-table"><i class="fas fa-chair"></i> ${escapeHtml(c.tableNumero)}</div>` : ''}
-          </div>
-          <div style="text-align:right">
-            <span class="badge-status prete">✅ Boissons servies</span>
-            <div class="commande-time" style="font-size:.7rem">${fmtDate(c.updatedAt)}</div>
-          </div>
-        </div>
-        <div class="commande-items">${items}</div>
-        ${c.note ? `<div class="commande-note"><i class="fas fa-sticky-note"></i> ${escapeHtml(c.note)}</div>` : ''}
-        <div class="commande-total">${fmt(total)} FCFA</div>
-        ${factureInfo}
-        ${printBtn}
-      </div>`;
-    }).join('');
-  }
-}
-
-async function loadBarmanStock() {
-  const stocks = await api('/api/stocks');
-  if (!stocks) return;
-  const boissonsStocks = stocks.filter(s => s.categorie === 'Boissons');
-  const tbody = document.getElementById('barman-stock-tbody');
-  if (!tbody) return;
-
-  if (boissonsStocks.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--gray)">Aucun stock de boissons enregistré</td></tr>';
-    return;
-  }
-
-  tbody.innerHTML = boissonsStocks.map(s => {
-    const isBas = s.quantite < s.minimum;
-    return `
-    <tr style="${isBas ? 'background:#fff5f5' : ''}">
-      <td data-label="Boisson"><strong>${s.nom}</strong></td>
-      <td data-label="Quantité"><strong style="color:${isBas ? 'var(--danger)' : 'var(--dark)'}">${s.quantite}</strong></td>
-      <td data-label="Minimum" style="color:var(--gray)">${s.minimum}</td>
-      <td data-label="Unité" style="color:var(--gray);font-size:.82rem">${s.unite}</td>
-      <td data-label="État"><span class="badge-status ${isBas ? 'bas' : 'disponible'}">${isBas ? '⚠️ Stock bas' : '✅ OK'}</span></td>
-    </tr>`;
-  }).join('');
-}
-
-window.barmanPret = async (id) => {
-  const res = await api(`/api/commandes/${id}/bar-pret`, { method: 'PUT', body: '{}' });
-  if (res?.boissonsStatut === 'prete') {
-    const msg = res.factureUnifiee
-      ? `Boissons prêtes – Facture ${res.factureUnifiee.numero} générée !`
-      : 'Boissons prêtes – en attente de la cuisine.';
-    toast(msg, 'success');
-    loadBarman();
-  } else {
-    toast(res?.error || 'Erreur', 'error');
-  }
-};
-
-window.aperçuFactureBar = (commandeId) => {
-  const f = state.barFactures?.[commandeId];
-  if (!f) { toast('Bon bar introuvable', 'error'); return; }
-
-  const logoUrl = window.location.origin + '/logo-cookafrica.png';
-  const boissonsItems = (f.items || []).filter(i => i.categorie === 'Boissons');
-  if (boissonsItems.length === 0) { toast('Aucune boisson dans cette facture', 'warning'); return; }
-  const totalBoissons = boissonsItems.reduce((s, i) => s + i.sousTotal, 0);
-
-  const items = boissonsItems.map(i => `
-    <tr>
-      <td>${i.nom}</td>
-      <td style="text-align:center">${i.quantite}</td>
-      <td style="text-align:right">${fmt(i.prix)}</td>
-      <td style="text-align:right"><strong>${fmt(i.sousTotal)}</strong></td>
-    </tr>`).join('');
-
-  document.getElementById('facture-print-area').innerHTML = `
-    <div class="facture-print">
-      <div class="facture-print-header">
-        <img src="${logoUrl}" alt="Cook Africa" style="height:60px;margin-bottom:6px;display:block;margin-left:auto;margin-right:auto"
-             onerror="this.style.display='none'">
-        <p style="margin-top:4px;font-size:1rem;color:#1565C0"><strong><i class="fas fa-wine-glass-alt"></i> BON BAR</strong></p>
-        <p style="font-size:.78rem;color:var(--gray)">Réf. facture : ${f.numero}</p>
-        <p style="font-size:.78rem;color:var(--gray)">Date : ${fmtDateOnly(f.date)}</p>
-        ${f.tableNumero ? `<p style="font-size:.78rem"><strong>Table :</strong> ${escapeHtml(f.tableNumero)}</p>` : ''}
-        ${f.commandeNumero ? `<p style="font-size:.78rem;color:var(--gray)">Commande : ${f.commandeNumero}</p>` : ''}
-      </div>
-      <table class="facture-items">
-        <thead><tr><th>Boisson</th><th>Qté</th><th>Prix unit.</th><th>Sous-total</th></tr></thead>
-        <tbody>${items}</tbody>
-      </table>
-      <table class="facture-totaux">
-        <tr class="facture-total-final">
-          <td><strong>TOTAL BAR</strong></td>
-          <td><strong>${fmt(totalBoissons)} FCFA</strong></td>
-        </tr>
-      </table>
-      <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border);font-size:.78rem;color:var(--gray)">
-        ${f.serveurNom ? `<p><i class="fas fa-user"></i> Servi par : <strong>${escapeHtml(f.serveurNom)}</strong></p>` : ''}
-        ${f.caissiereName ? `<p><i class="fas fa-user-tie"></i> Caissière : <strong>${f.caissiereName}</strong></p>` : ''}
-        ${f.validatedByBarman ? `<p><i class="fas fa-wine-glass-alt" style="color:#1565C0"></i> Barman : <strong>${f.validatedByBarmanNom || f.validatedByBarman}</strong></p>` : ''}
-        <p style="margin-top:6px;text-align:center;font-style:italic">Bon interne – Usage bar uniquement</p>
-        <p style="font-size:.7rem;text-align:center;margin-top:4px">Cook Africa – Le restaurant qui rassemble</p>
-      </div>
-    </div>`;
-
-  openModal('apercu-facture');
-};
-
 // ─── MENU ──────────────────────────────────────────────
 
 async function loadMenu() {
@@ -2191,7 +1584,7 @@ async function loadMenu() {
     const allCats  = [...new Set([...defaults, ...cats])].sort();
     const prev = platCatSel.value;
     platCatSel.innerHTML = allCats
-      .map(c => `<option value="${c}"${c === prev ? ' selected' : ''}>${c === 'Buffet' ? 'Buffet (non envoyé en cuisine)' : c}</option>`).join('');
+      .map(c => `<option value="${c}"${c === prev ? ' selected' : ''}>${c}</option>`).join('');
   }
 
   renderMenu(menu);
@@ -3030,16 +2423,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     addToEditCommande(opt.value, opt.dataset.nom, Number(opt.dataset.prix), opt.dataset.cat);
     this.value = '';
   });
-
-  // ── Cuisine ──
-  document.getElementById('btn-refresh-cuisine').addEventListener('click', () => loadCuisine());
-  document.getElementById('btn-sound-cuisine').addEventListener('click', () => enableSound('cuisine'));
-  document.getElementById('btn-play-cuisine').addEventListener('click', () => { enableSound('cuisine', false); loadCuisine(true); });
-
-  // ── Bar ──
-  document.getElementById('btn-refresh-barman').addEventListener('click', () => loadBarman());
-  document.getElementById('btn-sound-barman').addEventListener('click', () => enableSound('bar'));
-  document.getElementById('btn-play-barman').addEventListener('click', () => { enableSound('bar', false); loadBarman(true); });
 
   updateSoundButtons();
 

@@ -8,7 +8,7 @@ const eventBus = require('../utils/eventBus');
 const router = express.Router();
 
 function invalidate() {
-  cache.del('factures:list', 'commandes:bar', 'commandes:cuisine');
+  cache.del('factures:list', 'commandes:list');
 }
 
 async function getNextNumeroFacture() {
@@ -27,13 +27,9 @@ async function getNextNumeroFacture() {
 }
 
 // GET /api/factures
-// ?type=facture (défaut) → factures de paiement uniquement
-// ?type=cuisine          → bons cuisine uniquement
-// ?type=bar              → bons bar uniquement
-// ?type=all              → tout (paiement + bons internes)
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const { debut, fin, statut, type } = req.query;
+    const { debut, fin, statut } = req.query;
 
     let all = cache.get('factures:list');
     if (!all) {
@@ -42,16 +38,10 @@ router.get('/', authenticateToken, async (req, res) => {
       cache.set('factures:list', all, 60_000);
     }
 
-    let factures = all;
+    let factures = all.filter(f => !f.type || f.type === 'facture');
     if (debut)  factures = factures.filter(f => f.date >= debut);
     if (fin)    factures = factures.filter(f => f.date <= fin);
     if (statut) factures = factures.filter(f => f.statut === statut);
-
-    // Filtre par type : par défaut n'affiche que les factures de paiement
-    if (type === 'all')          { /* pas de filtre */ }
-    else if (type === 'cuisine') { factures = factures.filter(f => f.type === 'cuisine'); }
-    else if (type === 'bar')     { factures = factures.filter(f => f.type === 'bar'); }
-    else                         { factures = factures.filter(f => !f.type || f.type === 'facture'); }
 
     res.json(factures);
   } catch (err) {
@@ -132,15 +122,8 @@ router.post('/', authenticateToken, requireRole('admin', 'caissiere'), async (re
     const existing = await db.collection('factures').where('commandeId', '==', commandeId).limit(1).get();
     if (!existing.empty) return res.status(409).json({ error: 'Une facture existe déjà pour cette commande' });
 
-    const hasBoissons = (commande.items || []).some(i => i.categorie === 'Boissons');
-    // Le buffet est en libre-service : il n'attend pas la validation cuisine.
-    const hasPlats    = (commande.items || []).some(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet');
-
-    if (hasPlats && !['prete', 'servie'].includes(commande.statut)) {
-      return res.status(400).json({ error: 'Les plats ne sont pas encore prêts (la cuisine n\'a pas validé)' });
-    }
-    if (hasBoissons && commande.boissonsStatut !== 'prete') {
-      return res.status(400).json({ error: 'Les boissons ne sont pas encore prêtes (le barman n\'a pas validé)' });
+    if (commande.statut !== 'en-preparation') {
+      return res.status(400).json({ error: 'La commande doit d\'abord être envoyée à la facturation' });
     }
 
     const allItems = commande.items || [];
@@ -164,10 +147,6 @@ router.post('/', authenticateToken, requireRole('admin', 'caissiere'), async (re
       statut: 'partielle',
       serveurNom: commande.createdByNom || commande.createdBy || '',
       caissiereName: req.user.nom || req.user.username || '',
-      validatedByCuisinier: commande.validatedByCuisinier || '',
-      validatedByCuisinierNom: commande.validatedByCuisinierNom || '',
-      validatedByBarman: commande.validatedByBarman || '',
-      validatedByBarmanNom: commande.validatedByBarmanNom || '',
       date: now.toISOString().split('T')[0],
       createdBy: req.user.username,
       createdAt: now.toISOString(),

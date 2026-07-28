@@ -1,5 +1,5 @@
 const express = require('express');
-const { db, admin } = require('../firebase-admin');
+const { db } = require('../firebase-admin');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { pushNotification } = require('../utils/notifications');
 const cache    = require('../utils/cache');
@@ -10,7 +10,7 @@ const router = express.Router();
 
 // Invalide tous les caches commandes + factures (à appeler après chaque écriture)
 function invalidate() {
-  cache.del('commandes:list', 'commandes:cuisine', 'commandes:bar', 'factures:list');
+  cache.del('commandes:list', 'factures:list');
 }
 
 async function getNextNumero() {
@@ -19,135 +19,6 @@ async function getNextNumero() {
   const last = snap.docs[0].data();
   const lastNum = parseInt((last.numero || 'CMD-0000').split('-')[1] || '0', 10);
   return `CMD-${String(lastNum + 1).padStart(4, '0')}`;
-}
-
-async function getNextNumeroFacture() {
-  // Scan 200 docs pour trouver le plus grand FACT-XXXX, en ignorant les bons CUI-/BAR-
-  // (limit(1) causait parseInt("CMD",10)→NaN→"FACT-0NaN" quand le dernier doc était un bon interne)
-  const snap = await db.collection('factures').orderBy('createdAt', 'desc').limit(200).get();
-  let maxNum = 0;
-  snap.docs.forEach(doc => {
-    const { numero } = doc.data();
-    if (!numero || !numero.startsWith('FACT-')) return;
-    const n = parseInt(numero.slice(5), 10);
-    if (!isNaN(n) && n > maxNum) maxNum = n;
-  });
-  return `FACT-${String(maxNum + 1).padStart(4, '0')}`;
-}
-
-// 'Buffet' est en libre-service : jamais envoyé en cuisine, jamais bloquant pour la facturation.
-function needsCuisine(items) {
-  return (items || []).some(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet');
-}
-
-// Bon interne cuisine — créé dès que la cuisinière valide (plats uniquement, hors buffet)
-async function generateCuisineSubInvoice(commandeId, commande, validatedByCuisinier, now) {
-  const docRef = db.collection('factures').doc(`cui_${commandeId}`);
-  if ((await docRef.get()).exists) return null; // déjà créé
-
-  const platsItems = (commande.items || []).filter(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet');
-  if (platsItems.length === 0) return null;
-
-  const data = {
-    numero: `CUI-${commande.numero}`,
-    type: 'cuisine',
-    commandeId,
-    commandeNumero: commande.numero,
-    items: platsItems,
-    tableNumero: commande.tableNumero || '',
-    note: commande.note || '',
-    total: platsItems.reduce((s, i) => s + i.sousTotal, 0),
-    validatedByCuisinier: validatedByCuisinier || '',
-    validatedByCuisinierNom: commande.validatedByCuisinierNom || '',
-    serveurNom: commande.createdByNom || commande.createdBy || '',
-    date: now.toISOString().split('T')[0],
-    createdBy: validatedByCuisinier || '',
-    createdAt: now.toISOString(),
-  };
-
-  await docRef.set(data);
-  cache.del('factures:list');
-  return { id: `cui_${commandeId}`, ...data };
-}
-
-// Bon interne bar — créé dès que le barman valide (boissons uniquement)
-async function generateBarSubInvoice(commandeId, commande, validatedByBarman, now) {
-  const docRef = db.collection('factures').doc(`bar_${commandeId}`);
-  if ((await docRef.get()).exists) return null; // déjà créé
-
-  const boissonsItems = (commande.items || []).filter(i => i.categorie === 'Boissons');
-  if (boissonsItems.length === 0) return null;
-
-  const data = {
-    numero: `BAR-${commande.numero}`,
-    type: 'bar',
-    commandeId,
-    commandeNumero: commande.numero,
-    items: boissonsItems,
-    tableNumero: commande.tableNumero || '',
-    total: boissonsItems.reduce((s, i) => s + i.sousTotal, 0),
-    validatedByBarman: validatedByBarman || '',
-    validatedByBarmanNom: commande.validatedByBarmanNom || '',
-    serveurNom: commande.createdByNom || commande.createdBy || '',
-    date: now.toISOString().split('T')[0],
-    createdBy: validatedByBarman || '',
-    createdAt: now.toISOString(),
-  };
-
-  await docRef.set(data);
-  cache.del('factures:list', 'commandes:bar');
-  return { id: `bar_${commandeId}`, ...data };
-}
-
-// Génère la facture unifiée (paiement) dès que les deux parties sont prêtes
-async function generateCombinedInvoice(commandeId, commande, validatedByCuisinier, validatedByBarman, now) {
-  // Vérifier uniquement les factures de paiement (pas les bons internes cuisine/bar)
-  const existingSnap = await db.collection('factures').where('commandeId', '==', commandeId).get();
-  const hasPaymentFact = existingSnap.docs.some(d => {
-    const t = d.data().type;
-    return !t || t === 'facture';
-  });
-  if (hasPaymentFact) return null;
-
-  const allItems = commande.items || [];
-  if (allItems.length === 0) return null;
-
-  const total = allItems.reduce((sum, i) => sum + i.sousTotal, 0);
-  const numero = await getNextNumeroFacture();
-
-  const data = {
-    numero,
-    type: 'facture',
-    commandeId,
-    commandeNumero: commande.numero,
-    items: allItems,
-    tableNumero: commande.tableNumero || '',
-    note: commande.note || '',
-    total,
-    reste: total,
-    modePaiement: 'especes',
-    statut: 'partielle',
-    serveurNom: commande.createdByNom || commande.createdBy || '',
-    validatedByCuisinier: validatedByCuisinier || '',
-    validatedByCuisinierNom: commande.validatedByCuisinierNom || '',
-    validatedByBarman: validatedByBarman || '',
-    validatedByBarmanNom: commande.validatedByBarmanNom || '',
-    date: now.toISOString().split('T')[0],
-    createdBy: commande.createdBy || '',
-    createdAt: now.toISOString(),
-  };
-
-  const ref = await db.collection('factures').add(data);
-  cache.del('factures:list', 'commandes:bar');
-
-  pushNotification({
-    type: 'success', icon: 'receipt',
-    titre: `Facture ${numero} prête`,
-    message: `${commande.numero} – Total : ${total.toLocaleString('fr-FR')} FCFA`,
-    createdBy: validatedByCuisinier || validatedByBarman || 'système',
-  });
-
-  return { id: ref.id, ...data };
 }
 
 // GET /api/commandes
@@ -172,85 +43,12 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/commandes/bar — commandes avec boissons (pour le barman)
-router.get('/bar', authenticateToken, requireRole('admin', 'barman'), async (req, res) => {
-  try {
-    const cached = cache.get('commandes:bar');
-    if (cached) return res.json(cached);
-
-    const today = new Date().toISOString().split('T')[0];
-
-    const [activeSnap, todaySnap, facturesSnap] = await Promise.all([
-      db.collection('commandes').where('boissonsStatut', '==', 'en-attente').get(),
-      db.collection('commandes').where('date', '==', today).orderBy('createdAt', 'desc').get(),
-      db.collection('factures').where('date', '==', today).get(),
-    ]);
-
-    const active = activeSnap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .filter(c => c.statut !== 'annulee')
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-    const done = todaySnap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .filter(c => c.boissonsStatut === 'prete');
-
-    const facturesMap = {};
-    const paiementsMap = {};
-    facturesSnap.docs.forEach(d => {
-      const f = { id: d.id, ...d.data() };
-      if (!f.commandeId) return;
-      if (f.type === 'bar') facturesMap[f.commandeId] = f;
-      else if (!f.type || f.type === 'facture') paiementsMap[f.commandeId] = f;
-    });
-
-    const result = { active, done, facturesMap, paiementsMap };
-    cache.set('commandes:bar', result, 15_000);
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// GET /api/commandes/cuisine — commandes actives + terminées du jour (plats uniquement)
-router.get('/cuisine', authenticateToken, async (req, res) => {
-  try {
-    const cached = cache.get('commandes:cuisine');
-    if (cached) return res.json(cached);
-
-    const today = new Date().toISOString().split('T')[0];
-
-    const [activeSnap, todaySnap] = await Promise.all([
-      db.collection('commandes')
-        .where('statut', 'in', ['en-attente', 'en-preparation'])
-        .orderBy('createdAt', 'asc').get(),
-      db.collection('commandes')
-        .where('date', '==', today)
-        .orderBy('createdAt', 'desc').get(),
-    ]);
-
-    const active = activeSnap.docs
-      .map(d => {
-        const data = d.data();
-        return { id: d.id, ...data, items: (data.items || []).filter(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet') };
-      })
-      .filter(c => c.items.length > 0);
-
-    const terminee = todaySnap.docs
-      .map(d => {
-        const data = d.data();
-        return { id: d.id, ...data, items: (data.items || []).filter(i => i.categorie !== 'Boissons' && i.categorie !== 'Buffet') };
-      })
-      .filter(c => ['prete', 'servie'].includes(c.statut) && c.items.length > 0);
-
-    const result = { active, terminee };
-    cache.set('commandes:cuisine', result, 15_000);
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // POST /api/commandes
+// Le serveur crée une commande qui reste sous son contrôle (statut 'en-attente') tant
+// qu'il ne l'a pas explicitement envoyée à la facturation (PUT /:id/envoyer).
+// Une commande créée directement par l'admin/la caissière (dont les commandes en ligne)
+// part immédiatement au statut 'en-preparation' : elle reste au niveau de la caissière,
+// pas besoin d'un envoi depuis un serveur.
 router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere'), async (req, res) => {
   try {
     const { items, note, tableNumero, source } = req.body;
@@ -274,11 +72,6 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere')
       categorie: i.categorie || '',
     }));
 
-    const hasBoissons = mappedItems.some(i => i.categorie === 'Boissons');
-    // Commande 100% buffet (+ éventuels desserts/accompagnements déjà exclus) : rien à préparer,
-    // ni en cuisine ni au bar → directement facturable dès la validation du serveur.
-    const autoReady = !needsCuisine(mappedItems) && !hasBoissons;
-
     const data = {
       numero,
       items: mappedItems,
@@ -286,7 +79,7 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere')
       note: note || '',
       tableNumero: tableNumero || '',
       source: isOnline ? 'en-ligne' : 'sur-place',
-      statut: autoReady ? 'prete' : 'en-attente',
+      statut: req.user.role === 'serveur' ? 'en-attente' : 'en-preparation',
       date: now.toISOString().split('T')[0],
       createdBy: req.user.username,
       createdByNom: req.user.nom || req.user.username,
@@ -294,15 +87,9 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere')
       updatedAt: now.toISOString(),
     };
 
-    if (hasBoissons) data.boissonsStatut = 'en-attente';
-
     const ref = await db.collection('commandes').add(data);
     invalidate();
     eventBus.emit('commandes');
-
-    if (autoReady) {
-      await generateCombinedInvoice(ref.id, { ...data, id: ref.id }, '', '', now);
-    }
 
     // Décrémenter quantiteRestante dans stocks_plats pour chaque article commandé
     const today = now.toISOString().split('T')[0];
@@ -340,60 +127,47 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere')
   }
 });
 
-// PUT /api/commandes/:id/livraison — la caissière lance la livraison d'une commande en ligne
-// et génère la facture immédiatement, sans attendre la validation cuisine/bar (le plat reste
-// visible en cuisine pour préparation, mais ne bloque pas la facturation de ce canal).
-router.put('/:id/livraison', authenticateToken, requireRole('admin', 'caissiere'), async (req, res) => {
+// PUT /api/commandes/:id/envoyer — le serveur envoie sa commande à la facturation.
+// Elle passe alors sous le contrôle de la caissière (elle peut la modifier et la facturer).
+router.put('/:id/envoyer', authenticateToken, requireRole('admin', 'serveur'), async (req, res) => {
   try {
     const docRef = db.collection('commandes').doc(req.params.id);
     const doc = await docRef.get();
     if (!doc.exists) return res.status(404).json({ error: 'Commande introuvable' });
 
     const commande = doc.data();
-    if (commande.source !== 'en-ligne') {
-      return res.status(400).json({ error: 'Pas une commande en ligne' });
-    }
-    if (['annulee', 'servie'].includes(commande.statut)) {
-      return res.status(400).json({ error: 'Commande déjà terminée' });
+    if (commande.statut !== 'en-attente') {
+      return res.status(400).json({ error: 'Cette commande a déjà été envoyée à la facturation' });
     }
 
     const now = new Date();
     const update = {
-      statut: 'servie',
-      livraisonBy: req.user.username,
-      livraisonByNom: req.user.nom || req.user.username,
-      livraisonAt: now.toISOString(),
+      statut: 'en-preparation',
+      envoyeeAt: now.toISOString(),
+      envoyeeBy: req.user.username,
+      envoyeeByNom: req.user.nom || req.user.username,
       updatedAt: now.toISOString(),
     };
     await docRef.update(update);
     invalidate();
     eventBus.emit('commandes');
 
-    const updatedCommande = { ...commande, ...update, id: req.params.id };
-    const factureUnifiee = await generateCombinedInvoice(
-      req.params.id,
-      updatedCommande,
-      commande.validatedByCuisinier || '',
-      commande.validatedByBarman || '',
-      now
-    );
-
     pushNotification({
-      type: 'success', icon: 'truck',
-      titre: 'Livraison lancée',
-      message: `${commande.numero} – en livraison${factureUnifiee ? ` – facture ${factureUnifiee.numero} générée` : ''}`,
+      type: 'info', icon: 'paper-plane',
+      titre: 'Commande envoyée à la facturation',
+      message: `${commande.numero} – prête à être facturée`,
       createdBy: req.user.username,
     });
 
-    res.json({ id: req.params.id, ...updatedCommande, factureUnifiee });
+    res.json({ id: req.params.id, ...commande, ...update });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// PUT /api/commandes/:id/items — le serveur modifie librement les articles d'une commande
-// tant qu'aucune facture n'a encore été générée (au-delà, seul l'admin peut via le code
-// de modification de facture). Réouvre cuisine/bar si nécessaire pour refléter le changement.
+// PUT /api/commandes/:id/items — modification libre des articles d'une commande, tant
+// qu'aucune facture n'a encore été générée. Le serveur ne peut plus modifier une commande
+// une fois envoyée à la facturation : elle appartient alors à la caissière.
 router.put('/:id/items', authenticateToken, requireRole('admin', 'serveur', 'caissiere'), async (req, res) => {
   try {
     const { items } = req.body;
@@ -408,6 +182,9 @@ router.put('/:id/items', authenticateToken, requireRole('admin', 'serveur', 'cai
     const existing = doc.data();
     if (['annulee', 'servie'].includes(existing.statut)) {
       return res.status(400).json({ error: 'Commande déjà terminée, modification impossible' });
+    }
+    if (existing.statut === 'en-preparation' && req.user.role === 'serveur') {
+      return res.status(400).json({ error: 'Commande déjà envoyée à la facturation — seule la caissière peut la modifier' });
     }
 
     const existingFactSnap = await db.collection('factures').where('commandeId', '==', req.params.id).get();
@@ -427,37 +204,18 @@ router.put('/:id/items', authenticateToken, requireRole('admin', 'serveur', 'cai
     const total = mappedItems.reduce((s, i) => s + i.sousTotal, 0);
     const now = new Date();
 
-    const hasBoissons = mappedItems.some(i => i.categorie === 'Boissons');
-    const autoReady = !needsCuisine(mappedItems) && !hasBoissons;
-
     const update = {
       items: mappedItems,
       total,
-      statut: autoReady ? 'prete' : 'en-attente',
       updatedAt: now.toISOString(),
       lastEditedBy: req.user.username,
       lastEditedByNom: req.user.nom || req.user.username,
       lastEditedAt: now.toISOString(),
     };
-    // Objet propre pour la réponse/generateCombinedInvoice (sans sentinelle Firestore)
-    const updatedCommande = { ...existing, ...update, boissonsStatut: hasBoissons ? 'en-attente' : null };
-    if (hasBoissons) update.boissonsStatut = 'en-attente';
-    else update.boissonsStatut = admin.firestore.FieldValue.delete();
-
-    // Les bons déjà générés reflétaient les anciens articles — on les supprime pour que
-    // cuisine/bar les régénèrent correctement à leur prochaine validation.
-    await Promise.all([
-      db.collection('factures').doc(`cui_${req.params.id}`).delete().catch(() => {}),
-      db.collection('factures').doc(`bar_${req.params.id}`).delete().catch(() => {}),
-    ]);
 
     await docRef.update(update);
     invalidate();
     eventBus.emit('commandes');
-
-    if (autoReady) {
-      await generateCombinedInvoice(req.params.id, { ...updatedCommande, id: req.params.id }, '', '', now);
-    }
 
     pushNotification({
       type: 'info', icon: 'edit',
@@ -466,70 +224,13 @@ router.put('/:id/items', authenticateToken, requireRole('admin', 'serveur', 'cai
       createdBy: req.user.username,
     });
 
-    res.json({ id: req.params.id, ...updatedCommande });
+    res.json({ id: req.params.id, ...existing, ...update });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// PUT /api/commandes/:id/bar-pret — barman marque les boissons comme prêtes
-router.put('/:id/bar-pret', authenticateToken, requireRole('admin', 'barman'), async (req, res) => {
-  try {
-    const docRef = db.collection('commandes').doc(req.params.id);
-    const doc = await docRef.get();
-    if (!doc.exists) return res.status(404).json({ error: 'Commande introuvable' });
-
-    const commande = doc.data();
-    if (commande.boissonsStatut !== 'en-attente') {
-      return res.status(400).json({ error: 'Boissons déjà traitées' });
-    }
-
-    const now = new Date();
-    const allBoissons = (commande.items || []).every(i => i.categorie === 'Boissons');
-
-    const commandeUpdate = {
-      boissonsStatut: 'prete',
-      validatedByBarman: req.user.username,
-      validatedByBarmanNom: req.user.nom,
-      updatedAt: now.toISOString(),
-    };
-    if (allBoissons) commandeUpdate.statut = 'prete';
-    await docRef.update(commandeUpdate);
-    invalidate();
-    eventBus.emit('commandes');
-
-    const updatedCommande = { ...commande, ...commandeUpdate };
-    const platsReady = !needsCuisine(commande.items) || commande.statut === 'prete';
-
-    // Bon interne bar (stocké en BD dès la validation barman)
-    await generateBarSubInvoice(req.params.id, updatedCommande, req.user.username, now);
-
-    // Facture de paiement unifiée (seulement si la cuisine est déjà prête aussi)
-    let factureUnifiee = null;
-    if (platsReady) {
-      factureUnifiee = await generateCombinedInvoice(
-        req.params.id,
-        updatedCommande,
-        commande.validatedByCuisinier || '',
-        req.user.username,
-        now
-      );
-    }
-
-    pushNotification({
-      type: 'success', icon: 'wine-glass-alt',
-      titre: 'Boissons prêtes',
-      message: `${commande.numero} – boissons prêtes à servir !${factureUnifiee ? ` Facture ${factureUnifiee.numero} générée.` : ''}`,
-      createdBy: req.user.username,
-    });
-
-    res.json({ id: req.params.id, boissonsStatut: 'prete', factureUnifiee });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// PUT /api/commandes/:id — mise à jour statut ou infos
+// PUT /api/commandes/:id — mise à jour statut ou infos (note, table)
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const docRef = db.collection('commandes').doc(req.params.id);
@@ -542,44 +243,17 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const { update, error } = buildCommandeUpdate(req.body, now);
     if (error) return res.status(400).json({ error });
 
-    if (update.statut === 'prete') {
-      update.validatedByCuisinier = req.user.username;
-      update.validatedByCuisinierNom = req.user.nom;
-    }
-
     await docRef.update(update);
     invalidate();
     eventBus.emit('commandes');
 
     if (update.statut && update.statut !== existing.statut) {
       const messages = {
-        'en-preparation': { type: 'info',    icon: 'fire',           titre: 'En préparation', msg: `${existing.numero} – démarré en cuisine` },
-        'prete':          { type: 'success', icon: 'check-circle',   titre: 'Commande prête', msg: `${existing.numero} – prête à servir !` },
-        'servie':         { type: 'success', icon: 'concierge-bell', titre: 'Commande servie', msg: `${existing.numero} – servie au client` },
-        'annulee':        { type: 'danger',  icon: 'times-circle',   titre: 'Commande annulée', msg: `${existing.numero} – annulée` },
+        'servie':  { type: 'success', icon: 'concierge-bell', titre: 'Commande servie', msg: `${existing.numero} – servie au client` },
+        'annulee': { type: 'danger',  icon: 'times-circle',   titre: 'Commande annulée', msg: `${existing.numero} – annulée` },
       };
       const notif = messages[update.statut];
       if (notif) pushNotification({ type: notif.type, icon: notif.icon, titre: notif.titre, message: notif.msg, createdBy: req.user.username });
-
-      if (update.statut === 'prete') {
-        const hasBoissons = (existing.items || []).some(i => i.categorie === 'Boissons');
-        const boissonsReady = !hasBoissons || existing.boissonsStatut === 'prete';
-        const updatedCommande = { ...existing, ...update };
-
-        // Bon interne cuisine (stocké en BD dès la validation cuisinière)
-        await generateCuisineSubInvoice(req.params.id, updatedCommande, req.user.username, now);
-
-        // Facture de paiement unifiée (seulement si le bar est déjà prêt aussi)
-        if (boissonsReady) {
-          await generateCombinedInvoice(
-            req.params.id,
-            updatedCommande,
-            req.user.username,
-            existing.validatedByBarman || '',
-            now
-          );
-        }
-      }
     }
 
     res.json({ id: req.params.id, ...existing, ...update });

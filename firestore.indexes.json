@@ -17,14 +17,6 @@
       ]
     },
     {
-      "collectionGroup": "commandes",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "boissonsStatut", "order": "ASCENDING" },
-        { "fieldPath": "createdAt",      "order": "ASCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "factures",
       "queryScope": "COLLECTION",
       "fields": [

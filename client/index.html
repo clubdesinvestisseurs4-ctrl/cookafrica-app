@@ -123,7 +123,7 @@
         <i class="fas fa-tachometer-alt"></i><span>Dashboard</span>
       </a>
 
-      <div class="nav-section-label" id="nav-section-salle">Cuisine</div>
+      <div class="nav-section-label" id="nav-section-salle">Service</div>
       <a class="nav-item" data-page="commandes" id="nav-commandes">
         <i class="fas fa-list-alt"></i><span>Commandes</span>
       </a>
@@ -134,17 +134,9 @@
         <i class="fas fa-globe"></i><span>Commandes en Ligne</span>
       </a>
 
-      <div class="nav-section-label" id="nav-section-cuisine">Cuisine</div>
-      <a class="nav-item" data-page="cuisine" id="nav-cuisine">
-        <i class="fas fa-fire"></i><span>Écran Cuisine</span>
-      </a>
+      <div class="nav-section-label" id="nav-section-cuisine">Stocks</div>
       <a class="nav-item" data-page="stocks" id="nav-stocks">
         <i class="fas fa-boxes"></i><span>Stocks</span>
-      </a>
-
-      <div class="nav-section-label" id="nav-section-bar">Bar</div>
-      <a class="nav-item" data-page="barman" id="nav-barman">
-        <i class="fas fa-wine-glass-alt"></i><span>Écran Bar</span>
       </a>
 
       <div class="nav-section-label" id="nav-section-admin">Administration</div>
@@ -230,6 +222,18 @@
             <div class="stat-icon purple"><i class="fas fa-exclamation-triangle"></i></div>
             <div><div class="stat-value" id="stat-alertes">—</div><div class="stat-label">Alertes stock</div></div>
           </div>
+          <div class="stat-card">
+            <div class="stat-icon orange"><i class="fas fa-utensils"></i></div>
+            <div><div class="stat-value" id="stat-total-plats">—</div><div class="stat-label">Total plats (FCFA)</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon blue"><i class="fas fa-wine-glass-alt"></i></div>
+            <div><div class="stat-value" id="stat-total-boissons">—</div><div class="stat-label">Total boissons (FCFA)</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon purple"><i class="fas fa-globe"></i></div>
+            <div><div class="stat-value" id="stat-commandes-en-ligne">—</div><div class="stat-label">Commandes en ligne</div></div>
+          </div>
         </div>
 
         <div class="dashboard-grid">
@@ -262,9 +266,8 @@
         <div class="filters">
           <select id="filter-cmd-statut">
             <option value="">Tous les statuts</option>
-            <option value="en-attente">En attente</option>
-            <option value="en-preparation">En préparation</option>
-            <option value="prete">Prête</option>
+            <option value="en-attente">En cours (serveur)</option>
+            <option value="en-preparation">Envoyée à la caisse</option>
             <option value="servie">Servie</option>
             <option value="annulee">Annulée</option>
           </select>
@@ -282,101 +285,6 @@
         </div>
       </section>
 
-      <!-- ── ÉCRAN CUISINE ────────────────────── -->
-      <section id="page-cuisine" class="page">
-        <div class="cuisine-header">
-          <div>
-            <h2 style="font-size:1.1rem;font-weight:800;color:var(--primary)">
-              <i class="fas fa-fire"></i> Écran Cuisine
-            </h2>
-            <p style="font-size:.8rem;color:var(--gray);margin-top:4px">
-              Actualisation automatique toutes les 20 secondes
-            </p>
-          </div>
-          <div style="display:flex;gap:10px;align-items:center">
-            <span id="cuisine-count" style="font-size:.85rem;color:var(--gray)"></span>
-            <button class="btn btn-warning btn-sm" id="btn-sound-cuisine">
-              <i class="fas fa-volume-mute"></i> Activer le son
-            </button>
-            <button class="btn btn-secondary btn-sm" id="btn-play-cuisine" title="Entendre les commandes en cours">
-              <i class="fas fa-play"></i> Lire
-            </button>
-            <button class="btn btn-secondary btn-sm" id="btn-refresh-cuisine">
-              <i class="fas fa-sync-alt"></i> Actualiser
-            </button>
-          </div>
-        </div>
-        <div class="cuisine-grid" id="cuisine-grid">
-          <div class="empty-state">
-            <i class="fas fa-check-circle"></i>
-            <p>Aucune commande en attente</p>
-          </div>
-        </div>
-
-        <!-- ── Bilan du Jour ── -->
-        <div id="cuisine-bilan-section" style="display:none;margin-top:28px">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-top:16px;border-top:2px solid var(--border)">
-            <h3 style="font-size:.95rem;font-weight:800;color:var(--dark);margin:0">
-              <i class="fas fa-receipt" style="color:var(--success)"></i> Factures du Jour
-            </h3>
-            <span id="cuisine-bilan-count"
-              style="background:var(--success);color:#fff;padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700">
-            </span>
-            <button class="btn btn-secondary btn-sm" onclick="printBilanJour()" style="margin-left:auto">
-              <i class="fas fa-print"></i> Imprimer le bilan
-            </button>
-          </div>
-          <div class="cuisine-grid" id="cuisine-bilan-grid"></div>
-        </div>
-      </section>
-
-      <!-- ── ÉCRAN BAR ──────────────────────────── -->
-      <section id="page-barman" class="page">
-        <div class="cuisine-header">
-          <div>
-            <h2 style="font-size:1.1rem;font-weight:800;color:#1565C0">
-              <i class="fas fa-wine-glass-alt"></i> Écran Bar
-            </h2>
-            <p style="font-size:.8rem;color:var(--gray);margin-top:4px">
-              Actualisation automatique toutes les 20 secondes
-            </p>
-          </div>
-          <div style="display:flex;gap:10px;align-items:center">
-            <span id="barman-count" style="font-size:.85rem;color:var(--gray)"></span>
-            <button class="btn btn-bar btn-sm" id="btn-sound-barman">
-              <i class="fas fa-volume-mute"></i> Activer le son
-            </button>
-            <button class="btn btn-secondary btn-sm" id="btn-play-barman" title="Entendre les commandes en cours">
-              <i class="fas fa-play"></i> Lire
-            </button>
-            <button class="btn btn-secondary btn-sm" id="btn-refresh-barman">
-              <i class="fas fa-sync-alt"></i> Actualiser
-            </button>
-          </div>
-        </div>
-
-        <!-- Commandes boissons en attente -->
-        <div class="cuisine-grid" id="barman-grid">
-          <div class="empty-state">
-            <i class="fas fa-wine-glass-alt"></i>
-            <p>Aucune commande de boisson en attente</p>
-          </div>
-        </div>
-
-        <!-- Boissons servies aujourd'hui -->
-        <div id="barman-bilan-section" style="display:none;margin-top:28px">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-top:16px;border-top:2px solid var(--border)">
-            <h3 style="font-size:.95rem;font-weight:800;color:var(--dark);margin:0">
-              <i class="fas fa-receipt" style="color:var(--success)"></i> Boissons Servies Aujourd'hui
-            </h3>
-            <span id="barman-bilan-count"
-              style="background:#1565C0;color:#fff;padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700">
-            </span>
-          </div>
-          <div class="cuisine-grid" id="barman-bilan-grid"></div>
-        </div>
-      </section>
-
       <!-- ── FACTURATION ───────────────────────── -->
       <section id="page-facturation" class="page">
         <div class="page-actions">
@@ -386,12 +294,6 @@
             <option value="">Tous statuts</option>
             <option value="payee">Payée</option>
             <option value="partielle">Partielle</option>
-          </select>
-          <select id="filter-fact-type">
-            <option value="">Factures paiement</option>
-            <option value="cuisine">Bons cuisine</option>
-            <option value="bar">Bons bar</option>
-            <option value="all">Tout afficher</option>
           </select>
           <button class="btn btn-secondary" id="btn-filter-fact"><i class="fas fa-filter"></i> Filtrer</button>
           <button class="btn btn-primary" id="btn-new-facture"><i class="fas fa-plus"></i> Nouvelle facture</button>
@@ -421,7 +323,7 @@
         <div class="page-actions">
           <button class="btn btn-primary" id="btn-new-commande-ligne"><i class="fas fa-plus"></i> Nouvelle commande en ligne</button>
           <span style="font-size:.8rem;color:var(--gray);margin-left:8px">
-            <i class="fas fa-info-circle"></i> Les articles s'affichent en cuisine/bar pour préparation, mais la facturation ne les attend pas.
+            <i class="fas fa-info-circle"></i> Modifiez si besoin puis cliquez sur « Facturer » pour valider la facture.
           </span>
         </div>
         <div class="table-wrapper">
@@ -684,7 +586,7 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" data-modal="commande">Annuler</button>
       <button class="btn btn-primary" id="btn-save-commande">
-        <i class="fas fa-paper-plane"></i> Envoyer en cuisine
+        <i class="fas fa-check"></i> Créer la commande
       </button>
     </div>
   </div>
@@ -854,7 +756,7 @@
               <option value="Accompagnement">Accompagnement</option>
               <option value="Sauce">Sauce</option>
               <option value="Desserts">Desserts</option>
-              <option value="Buffet">Buffet (non envoyé en cuisine)</option>
+              <option value="Buffet">Buffet</option>
               <option value="Boissons">Boissons</option>
             </select>
           </div>

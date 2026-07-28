@@ -24,7 +24,7 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
 
     const [todayCommandesSnap, activeCommandesSnap, facturesSnap, stocksSnap] = await Promise.all([
       db.collection('commandes').where('date', '==', today).get(),
-      db.collection('commandes').where('statut', 'in', ['en-attente', 'en-preparation', 'prete']).get(),
+      db.collection('commandes').where('statut', 'in', ['en-attente', 'en-preparation']).get(),
       db.collection('factures').where('date', '==', today).get(),
       db.collection('stocks').get(),
     ]);
@@ -35,22 +35,32 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
     activeCommandesSnap.docs.forEach(d => commandesMap.set(d.id, { id: d.id, ...d.data() }));
     const commandes = Array.from(commandesMap.values());
 
-    const factures = facturesSnap.docs.map(d => d.data());
+    const factures = facturesSnap.docs.map(d => d.data())
+      .filter(f => !f.type || f.type === 'facture');
     const stocks   = stocksSnap.docs.map(d => d.data());
 
     const commandesJour    = commandes.filter(c => c.date === today);
     const commandesActives = commandes.filter(c => ['en-attente', 'en-preparation'].includes(c.statut));
 
-    const revenusJour = factures
-      .filter(f => f.statut === 'payee')
-      .reduce((s, f) => s + (f.total || 0), 0);
+    const facturesPayees = factures.filter(f => f.statut === 'payee');
+    const revenusJour = facturesPayees.reduce((s, f) => s + (f.total || 0), 0);
+
+    // Ventilation du chiffre d'affaires payé du jour entre plats et boissons
+    let totalPlats = 0, totalBoissons = 0;
+    facturesPayees.forEach(f => {
+      (f.items || []).forEach(item => {
+        if (item.categorie === 'Boissons') totalBoissons += item.sousTotal || 0;
+        else totalPlats += item.sousTotal || 0;
+      });
+    });
+
+    const commandesEnLigne = commandesJour.filter(c => c.source === 'en-ligne' && c.statut !== 'annulee').length;
 
     const alertesStock = stocks.filter(s => s.quantite < s.minimum).length;
 
     const commandesParStatut = {
       'en-attente':      commandes.filter(c => c.statut === 'en-attente').length,
       'en-preparation':  commandes.filter(c => c.statut === 'en-preparation').length,
-      'prete':           commandes.filter(c => c.statut === 'prete').length,
       'servie':          commandesJour.filter(c => c.statut === 'servie').length,
     };
 
@@ -58,6 +68,9 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       commandesJour: commandesJour.length,
       commandesActives: commandesActives.length,
       revenusJour,
+      totalPlats,
+      totalBoissons,
+      commandesEnLigne,
       alertesStock,
       commandesParStatut,
       commandesRecentes: commandesJour.slice(-5).reverse(),

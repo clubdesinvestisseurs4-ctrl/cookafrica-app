@@ -9,16 +9,19 @@ Stack : **Vanilla JS + Express.js + Firebase Firestore** — hébergement **Verc
 
 | Rôle | Accès |
 |------|-------|
-| **Directeur** | Dashboard global, commandes, cuisine, facturation, menu, stocks, rapports, sessions |
-| **Réceptionniste** | Saisie des commandes, génération de factures, enregistrement des paiements |
-| **Cuisinier** | Écran cuisine (commandes en temps réel), gestion des stocks |
+| **Directeur** | Dashboard global, commandes, facturation, menu, stocks, rapports, sessions |
+| **Serveur** | Saisie et modification libre des commandes, envoi à la facturation |
+| **Caissière** | Réception des commandes envoyées, modification, génération et validation des factures, paiements |
+
+> Les écrans Cuisine et Bar (rôles `cuisiniere`/`barman`) sont **coupés pour l'instant** : ces comptes
+> peuvent toujours se connecter mais n'ont accès qu'au dashboard, en attendant une éventuelle réactivation.
 
 ### Pages de l'application
 
-- **Dashboard** — KPIs du jour (commandes, revenus, alertes stock, commandes en cours)
-- **Commandes** — saisie via panier, suivi des statuts, génération de facture
-- **Écran Cuisine** — affichage temps réel des commandes, boutons "Démarrer / Prête"
-- **Facturation** — génération facture avec TVA 18%, impression, enregistrement paiement
+- **Dashboard** — KPIs du jour (commandes, revenus, total plats, total boissons, commandes en ligne, alertes stock)
+- **Commandes** — saisie via panier, modification libre par le serveur, envoi à la facturation
+- **Facturation** — réception des commandes envoyées, modification, génération facture (TVA 18%), impression, paiement
+- **Commandes en Ligne** — créées directement par la caissière/l'admin, même flux modification + facturation
 - **Menu** — gestion des plats par catégorie (Plats, Entrées, Desserts, Boissons)
 - **Stocks** — gestion des ingrédients, alertes stock bas
 - **Rapports** — CA, top plats, ventes par catégorie, export CSV
@@ -27,9 +30,13 @@ Stack : **Vanilla JS + Express.js + Firebase Firestore** — hébergement **Verc
 ### Workflow commande
 
 ```
-Saisie réceptionniste → [en-attente] → Cuisine démarre → [en-preparation]
-→ Cuisine termine → [prête] → Réceptionniste facture → [servie] + Facture générée
+Serveur saisit la commande → [en-attente] (modifiable librement par le serveur)
+  → Serveur envoie à la facturation → [en-preparation] (appartient à la caissière)
+  → Caissière modifie si besoin, génère la facture (partielle) → encaisse le paiement → [servie]
 ```
+
+Une commande en ligne (créée par la caissière/l'admin) démarre directement au statut
+`en-preparation` : pas d'étape d'envoi, elle reste au niveau de la caissière du début à la fin.
 
 ---
 
@@ -47,7 +54,7 @@ COOKAFRICA-APP/
 │   │   └── auth.js               ← JWT + contrôle des rôles
 │   ├── routes/
 │   │   ├── auth.js               ← login / logout / sessions / seed
-│   │   ├── commandes.js          ← CRUD commandes + écran cuisine
+│   │   ├── commandes.js          ← CRUD commandes + envoi à la facturation
 │   │   ├── menu.js               ← CRUD plats + seed menu
 │   │   ├── factures.js           ← génération + paiement (TVA 18%)
 │   │   ├── stocks.js             ← CRUD stocks + alertes + seed
