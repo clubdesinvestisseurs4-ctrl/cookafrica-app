@@ -522,7 +522,16 @@
       <input type="hidden" id="editcmd-id">
       <div class="form-group">
         <label>Ajouter un article</label>
-        <select id="editcmd-add-select" style="width:100%"></select>
+        <div class="menu-search-wrapper" id="editcmd-search-wrapper">
+          <div class="menu-search-input-row">
+            <i class="fas fa-search menu-search-icon"></i>
+            <input type="text" id="editcmd-menu-search" placeholder="Rechercher un plat ou une boisson…" autocomplete="off">
+            <button type="button" class="menu-search-clear" id="editcmd-menu-clear" style="display:none" tabindex="-1">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+          <div class="menu-search-dropdown" id="editcmd-menu-dropdown" style="display:none"></div>
+        </div>
       </div>
       <div id="editcmd-items" style="margin-top:10px"></div>
       <div style="text-align:right;font-weight:800;margin-top:10px;font-size:1.05rem" id="editcmd-total"></div>
@@ -662,7 +671,16 @@
       <div id="editfact-items-step">
         <div class="form-group">
           <label>Ajouter un article</label>
-          <select id="editfact-add-select" style="width:100%"></select>
+          <div class="menu-search-wrapper" id="editfact-search-wrapper">
+            <div class="menu-search-input-row">
+              <i class="fas fa-search menu-search-icon"></i>
+              <input type="text" id="editfact-menu-search" placeholder="Rechercher un plat ou une boisson…" autocomplete="off">
+              <button type="button" class="menu-search-clear" id="editfact-menu-clear" style="display:none" tabindex="-1">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+            <div class="menu-search-dropdown" id="editfact-menu-dropdown" style="display:none"></div>
+          </div>
         </div>
         <div id="editfact-items" style="margin-top:10px"></div>
         <div style="text-align:right;font-weight:800;margin-top:10px;font-size:1.05rem" id="editfact-total"></div>

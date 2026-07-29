@@ -52,6 +52,10 @@ const state = {
   payFactureItems:     null,
 };
 
+// Sélecteurs "rechercher un article" (panier, modification commande, modification
+// facture) — initialisés une fois au démarrage, voir setupMenuSearchPicker().
+let panierPicker, editcmdPicker, editfactPicker;
+
 // ─── Labels des rôles ─────────────────────────────────
 const ROLE_LABELS = {
   admin:      'Administrateur',
@@ -816,11 +820,7 @@ window.openEditCommande = async (id) => {
     const menu = await api('/api/menu');
     if (menu) state.menu = menu;
   }
-  const select = document.getElementById('editcmd-add-select');
-  select.innerHTML = '<option value="">+ Ajouter un article…</option>' +
-    state.menu.filter(m => m.disponible).map(m =>
-      `<option value="${m.id}" data-nom="${m.nom}" data-prix="${m.prix}" data-cat="${m.categorie || ''}">${m.nom} — ${fmt(m.prix)} FCFA</option>`
-    ).join('');
+  editcmdPicker.reset();
 
   renderEditCommandeItems();
   openModal('edit-commande');
@@ -895,10 +895,7 @@ async function openNewCommande(source = 'sur-place') {
   state.panier = [];
   state.panierSource = source;
   renderPanier();
-  const search = document.getElementById('cmd-menu-search');
-  search.value = '';
-  document.getElementById('cmd-menu-clear').style.display = 'none';
-  document.getElementById('menu-search-dropdown').style.display = 'none';
+  panierPicker.reset();
   document.getElementById('modal-commande-title').textContent =
     source === 'en-ligne' ? 'Nouvelle commande en ligne' : 'Nouvelle commande';
   openModal('commande');
@@ -911,8 +908,9 @@ function addToPanier(id, nom, prix, categorie) {
   renderPanier();
 }
 
-function renderMenuDropdown(query) {
-  const dropdown  = document.getElementById('menu-search-dropdown');
+// Construit la liste de résultats dans un dropdown de recherche donné.
+// onSelect(id, nom, prix, categorie) est appelé au clic sur un article.
+function renderMenuSearchDropdown(query, dropdown, onSelect) {
   const menuDispo = state.menu.filter(m => m.disponible);
   const q = query.toLowerCase();
   const filtered  = q ? menuDispo.filter(m => m.nom.toLowerCase().includes(q)) : menuDispo;
@@ -948,12 +946,51 @@ function renderMenuDropdown(query) {
 
   dropdown.querySelectorAll('.menu-search-item').forEach(el => {
     el.addEventListener('click', () => {
-      addToPanier(el.dataset.id, el.dataset.nom, Number(el.dataset.prix), el.dataset.cat);
-      document.getElementById('cmd-menu-search').value = '';
-      document.getElementById('cmd-menu-clear').style.display = 'none';
-      dropdown.style.display = 'none';
+      onSelect(el.dataset.id, el.dataset.nom, Number(el.dataset.prix), el.dataset.cat);
     });
   });
+}
+
+// Câble un champ "rechercher un article" réutilisable (panier, modification
+// commande, modification facture) : saisie libre + résultats en dropdown,
+// au lieu d'un <select> qu'il faut parcourir sans pouvoir taper.
+function setupMenuSearchPicker(wrapperId, inputId, clearId, dropdownId, onSelect) {
+  const input    = document.getElementById(inputId);
+  const clearBtn = document.getElementById(clearId);
+  const dropdown = document.getElementById(dropdownId);
+
+  function handleSelect(id, nom, prix, cat) {
+    onSelect(id, nom, prix, cat);
+    input.value = '';
+    clearBtn.style.display = 'none';
+    dropdown.style.display = 'none';
+  }
+
+  function doRender(query) {
+    renderMenuSearchDropdown(query, dropdown, handleSelect);
+  }
+
+  input.addEventListener('input', () => {
+    const q = input.value.trim();
+    clearBtn.style.display = q ? 'block' : 'none';
+    doRender(q);
+  });
+  input.addEventListener('focus', () => {
+    if (state.menu.length) doRender(input.value.trim());
+  });
+  clearBtn.addEventListener('click', () => {
+    input.value = '';
+    clearBtn.style.display = 'none';
+    dropdown.style.display = 'none';
+    input.focus();
+  });
+  document.addEventListener('click', e => {
+    if (!e.target.closest(`#${wrapperId}`)) dropdown.style.display = 'none';
+  });
+
+  return {
+    reset() { input.value = ''; clearBtn.style.display = 'none'; dropdown.style.display = 'none'; },
+  };
 }
 
 function hlSearch(text, query) {
@@ -1184,11 +1221,7 @@ window.openEditFacture = async (factureId) => {
     const menu = await api('/api/menu');
     if (menu) state.menu = menu;
   }
-  const select = document.getElementById('editfact-add-select');
-  select.innerHTML = '<option value="">+ Ajouter un article…</option>' +
-    state.menu.filter(m => m.disponible).map(m =>
-      `<option value="${m.id}" data-nom="${m.nom}" data-prix="${m.prix}" data-cat="${m.categorie || ''}">${m.nom} — ${fmt(m.prix)} FCFA</option>`
-    ).join('');
+  editfactPicker.reset();
 
   renderEditFactureItems();
   openModal('edit-facture');
@@ -2309,37 +2342,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-new-commande').addEventListener('click', () => openNewCommande('sur-place'));
   document.getElementById('btn-new-commande-ligne')?.addEventListener('click', () => openNewCommande('en-ligne'));
 
-  // ── Recherche plat (commande) ──
-  const menuSearch   = document.getElementById('cmd-menu-search');
-  const menuDropdown = document.getElementById('menu-search-dropdown');
-  const menuClear    = document.getElementById('cmd-menu-clear');
-  menuSearch.addEventListener('input', () => {
-    const q = menuSearch.value.trim();
-    menuClear.style.display = q ? 'block' : 'none';
-    renderMenuDropdown(q);
-  });
-  menuSearch.addEventListener('focus', () => {
-    if (state.menu.length) renderMenuDropdown(menuSearch.value.trim());
-  });
-  menuClear.addEventListener('click', () => {
-    menuSearch.value = '';
-    menuClear.style.display = 'none';
-    menuDropdown.style.display = 'none';
-    menuSearch.focus();
-  });
-  document.addEventListener('click', e => {
-    if (!e.target.closest('#menu-search-wrapper')) menuDropdown.style.display = 'none';
-  });
+  // ── Recherche d'article : panier (nouvelle commande) + modification commande ──
+  panierPicker  = setupMenuSearchPicker('menu-search-wrapper', 'cmd-menu-search', 'cmd-menu-clear', 'menu-search-dropdown', addToPanier);
+  editcmdPicker = setupMenuSearchPicker('editcmd-search-wrapper', 'editcmd-menu-search', 'editcmd-menu-clear', 'editcmd-menu-dropdown', addToEditCommande);
 
   document.getElementById('btn-save-commande').addEventListener('click', saveCommande);
   document.getElementById('btn-filter-cmd').addEventListener('click', loadCommandes);
   document.getElementById('btn-editcmd-save').addEventListener('click', saveEditCommande);
-  document.getElementById('editcmd-add-select').addEventListener('change', function () {
-    const opt = this.options[this.selectedIndex];
-    if (!opt.value) return;
-    addToEditCommande(opt.value, opt.dataset.nom, Number(opt.dataset.prix), opt.dataset.cat);
-    this.value = '';
-  });
 
   updateSoundButtons();
 
@@ -2354,12 +2363,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-sound-facturation').addEventListener('click', () => enableSound('facturation'));
   document.getElementById('btn-play-facturation').addEventListener('click', () => { enableSound('facturation', false); checkFacturationReady(true); });
   document.getElementById('btn-editfact-save').addEventListener('click', saveEditFacture);
-  document.getElementById('editfact-add-select').addEventListener('change', function () {
-    const opt = this.options[this.selectedIndex];
-    if (!opt.value) return;
-    addToEditFacture(opt.value, opt.dataset.nom, Number(opt.dataset.prix), opt.dataset.cat);
-    this.value = '';
-  });
+  editfactPicker = setupMenuSearchPicker('editfact-search-wrapper', 'editfact-menu-search', 'editfact-menu-clear', 'editfact-menu-dropdown', addToEditFacture);
 
   // ── Menu ──
   document.getElementById('btn-new-plat').addEventListener('click', openNewPlat);

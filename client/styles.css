@@ -557,12 +557,12 @@ body {
 }
 .menu-search-input-row:focus-within { border-color: var(--primary); }
 .menu-search-icon { padding: 0 11px; color: var(--gray); font-size: .85rem; flex-shrink: 0; }
-#cmd-menu-search {
+.menu-search-input-row input[type="text"] {
   flex: 1; border: none; outline: none;
   padding: 9px 4px; font-size: .88rem; background: transparent;
   min-width: 0;
 }
-#cmd-menu-search::placeholder { color: var(--gray); }
+.menu-search-input-row input[type="text"]::placeholder { color: var(--gray); }
 .menu-search-clear {
   background: none; border: none; cursor: pointer;
   padding: 0 12px; color: var(--gray); font-size: .8rem; flex-shrink: 0;
