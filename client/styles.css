@@ -827,11 +827,12 @@ mark.search-hl {
   /* Rapports */
   .rapports-grid { grid-template-columns: 1fr; gap: 12px; }
 
-  /* Modals : bottom sheet */
-  .modal-overlay  { align-items: flex-end; padding: 0; }
+  /* Modals : centrées (la sidebar est un tiroir superposé sur mobile, elle ne
+     prend pas de place réelle — pas besoin de la compensation utilisée sur desktop) */
+  .modal-overlay  { align-items: center; padding: 16px; }
   .modal-box      {
-    max-width: 100%; max-height: 92vh;
-    border-radius: 18px 18px 0 0;
+    max-width: 100%; max-height: 88vh;
+    border-radius: 14px;
     margin: 0;
   }
   .modal-header { padding: 14px 18px; }
