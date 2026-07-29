@@ -15,11 +15,10 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
 
     const today = new Date().toISOString().split('T')[0];
 
-    const [todayCommandesSnap, activeCommandesSnap, facturesSnap, stocksSnap] = await Promise.all([
+    const [todayCommandesSnap, activeCommandesSnap, facturesSnap] = await Promise.all([
       db.collection('commandes').where('date', '==', today).get(),
       db.collection('commandes').where('statut', 'in', ['en-attente', 'en-preparation']).get(),
       db.collection('factures').where('date', '==', today).get(),
-      db.collection('stocks').get(),
     ]);
 
     // Merge and deduplicate commandes (today's + active from any date)
@@ -30,7 +29,6 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
 
     const factures = facturesSnap.docs.map(d => d.data())
       .filter(f => !f.type || f.type === 'facture');
-    const stocks   = stocksSnap.docs.map(d => d.data());
 
     const commandesJour    = commandes.filter(c => c.date === today);
     const commandesActives = commandes.filter(c => ['en-attente', 'en-preparation'].includes(c.statut));
@@ -47,10 +45,6 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       });
     });
 
-    const commandesEnLigne = commandesJour.filter(c => c.source === 'en-ligne' && c.statut !== 'annulee').length;
-
-    const alertesStock = stocks.filter(s => s.quantite < s.minimum).length;
-
     const commandesParStatut = {
       'en-attente':      commandes.filter(c => c.statut === 'en-attente').length,
       'en-preparation':  commandes.filter(c => c.statut === 'en-preparation').length,
@@ -63,8 +57,6 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       revenusJour,
       totalPlats,
       totalBoissons,
-      commandesEnLigne,
-      alertesStock,
       commandesParStatut,
       commandesRecentes: commandesJour.slice(-5).reverse(),
     };

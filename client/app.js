@@ -655,10 +655,8 @@ async function loadDashboard() {
   document.getElementById('stat-commandes-jour').textContent    = data.commandesJour ?? '—';
   document.getElementById('stat-commandes-actives').textContent = data.commandesActives ?? '—';
   document.getElementById('stat-revenus-jour').textContent      = fmt(data.revenusJour);
-  document.getElementById('stat-alertes').textContent           = data.alertesStock ?? '—';
   document.getElementById('stat-total-plats').textContent       = fmt(data.totalPlats);
   document.getElementById('stat-total-boissons').textContent    = fmt(data.totalBoissons);
-  document.getElementById('stat-commandes-en-ligne').textContent = data.commandesEnLigne ?? '—';
 
   // Commandes actives
   const actives = document.getElementById('dash-commandes-actives');
@@ -687,18 +685,6 @@ async function loadDashboard() {
     <div class="list-item"><span>✅ Servies aujourd'hui</span><strong>${parStatut['servie'] || 0}</strong></div>
   `;
 
-  // Stock alerts
-  const stockAlerts = document.getElementById('dash-stock-alerts');
-  const alerts = await api('/api/stocks/alerts');
-  if (!alerts || alerts.length === 0) {
-    stockAlerts.innerHTML = '<p style="color:var(--success);font-size:.85rem"><i class="fas fa-check"></i> Stocks OK</p>';
-  } else {
-    stockAlerts.innerHTML = alerts.map(s => `
-      <div class="alert-item">
-        <i class="fas fa-exclamation-triangle"></i>
-        <span>${s.nom} : ${s.quantite} / ${s.minimum} ${s.unite}</span>
-      </div>`).join('');
-  }
 }
 
 // ─── COMMANDES ─────────────────────────────────────────
