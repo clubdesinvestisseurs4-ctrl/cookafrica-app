@@ -1,23 +1,16 @@
 const express = require('express');
 const { db } = require('../firebase-admin');
 const { authenticateToken } = require('../middleware/auth');
+const cache = require('../utils/cache');
 
 const router = express.Router();
-
-const _cache = new Map();
-function getCached(key, ttlMs = 60000) {
-  const entry = _cache.get(key);
-  if (entry && Date.now() - entry.ts < ttlMs) return entry.data;
-  return null;
-}
-function setCache(key, data) {
-  _cache.set(key, { ts: Date.now(), data });
-}
 
 // GET /api/stats/dashboard
 router.get('/dashboard', authenticateToken, async (req, res) => {
   try {
-    const cached = getCached('dashboard');
+    // Cache partagé avec commandes/factures : invalidé par leurs écritures,
+    // donc jamais périmé plus de quelques secondes après un événement SSE.
+    const cached = cache.get('stats:dashboard');
     if (cached) return res.json(cached);
 
     const today = new Date().toISOString().split('T')[0];
@@ -76,7 +69,7 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       commandesRecentes: commandesJour.slice(-5).reverse(),
     };
 
-    setCache('dashboard', result);
+    cache.set('stats:dashboard', result, 60_000);
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -142,7 +135,7 @@ router.get('/rapport', authenticateToken, async (req, res) => {
 // GET /api/stats/notifications
 router.get('/notifications', authenticateToken, async (req, res) => {
   try {
-    const cached = getCached('stats-notifications', 30000);
+    const cached = cache.get('stats:notifications');
     if (cached) return res.json(cached);
 
     const [stocksSnap, activeCommandesSnap, partiellesSnap] = await Promise.all([
@@ -184,7 +177,7 @@ router.get('/notifications', authenticateToken, async (req, res) => {
       });
     }
 
-    setCache('stats-notifications', notifications);
+    cache.set('stats:notifications', notifications, 30_000);
     res.json(notifications);
   } catch (err) {
     res.status(500).json({ error: err.message });

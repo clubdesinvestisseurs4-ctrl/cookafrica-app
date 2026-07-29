@@ -10,7 +10,7 @@ const router = express.Router();
 
 // Invalide tous les caches commandes + factures (à appeler après chaque écriture)
 function invalidate() {
-  cache.del('commandes:list', 'factures:list');
+  cache.del('commandes:list', 'factures:list', 'stats:dashboard', 'stats:notifications');
 }
 
 async function getNextNumero() {

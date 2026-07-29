@@ -392,6 +392,10 @@ body {
   position: fixed; inset: 0; background: rgba(0,0,0,.5);
   display: flex; align-items: center; justify-content: center;
   z-index: 1000; padding: 20px;
+  /* La sidebar occupe de l'espace réel à gauche : sans ce décalage, une modale
+     centrée sur tout l'écran paraît poussée vers la gauche par rapport à la
+     zone de contenu réellement visible. */
+  padding-left: calc(var(--sidebar-w) + 20px);
 }
 .modal-overlay.hidden { display: none; }
 .modal-box {

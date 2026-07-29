@@ -8,7 +8,7 @@ const eventBus = require('../utils/eventBus');
 const router = express.Router();
 
 function invalidate() {
-  cache.del('factures:list', 'commandes:list');
+  cache.del('factures:list', 'commandes:list', 'stats:dashboard', 'stats:notifications');
 }
 
 async function getNextNumeroFacture() {
