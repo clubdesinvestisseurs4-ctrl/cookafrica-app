@@ -48,7 +48,6 @@ const state = {
   factureKnownIds:     null,
   voiceReminderInterval: null,
   editFactureItems:    [],
-  editFactureCode:     '',
   editCommandeItems:   [],
   payFactureItems:     null,
 };
@@ -1167,8 +1166,7 @@ async function loadFactures() {
       <td data-label="Actions">
         <button class="btn btn-secondary btn-sm" onclick="aperçuFacture('${f.id}')"><i class="fas fa-print"></i></button>
         ${canPay ? `<button class="btn btn-success btn-sm" onclick="openPayFacture('${f.id}','${fmt(f.reste)}')"><i class="fas fa-check"></i> Payer</button>` : ''}
-        ${canPay ? `<button class="btn btn-secondary btn-sm" onclick="openEditFacture('${f.id}')" title="Modifier (nécessite un code admin)"><i class="fas fa-edit"></i></button>` : ''}
-        ${(canPay && state.user?.role === 'admin') ? `<button class="btn btn-accent btn-sm" onclick="openEditGrant('${f.id}')" title="Générer un code de modification"><i class="fas fa-key"></i></button>` : ''}
+        ${canPay ? `<button class="btn btn-secondary btn-sm" onclick="openEditFacture('${f.id}')" title="Modifier la facture"><i class="fas fa-edit"></i></button>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -1185,68 +1183,16 @@ async function repairNumeros() {
   loadFactures();
 }
 
-// ─── Autorisation temporaire de modification de facture ───
-
-window.openEditGrant = (factureId) => {
-  const f = state.factures.find(x => x.id === factureId);
-  if (!f) return;
-  document.getElementById('edit-grant-facture-id').value = factureId;
-  document.getElementById('edit-grant-info').textContent = `Facture ${f.numero} — ${fmt(f.total)} FCFA`;
-  document.getElementById('edit-grant-minutes').value = 15;
-  document.getElementById('edit-grant-code-display').style.display = 'none';
-  openModal('edit-grant');
-};
-
-async function generateEditCode() {
-  const factureId = document.getElementById('edit-grant-facture-id').value;
-  const minutes = Number(document.getElementById('edit-grant-minutes').value);
-  showLoader();
-  const res = await api(`/api/factures/${factureId}/edit-grant`, {
-    method: 'POST',
-    body: JSON.stringify({ minutes }),
-  });
-  hideLoader();
-  if (!res?.code) { toast(res?.error || 'Erreur lors de la génération du code', 'error'); return; }
-
-  document.getElementById('edit-grant-code').textContent = res.code;
-  document.getElementById('edit-grant-expiry').textContent =
-    new Date(res.expiresAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  document.getElementById('edit-grant-code-display').style.display = 'block';
-  toast(`Code généré pour ${res.numero}`, 'success');
-}
-
 // ─── Modification d'une facture (côté caissière) ───────
+// La caissière (ou l'admin) modifie librement les articles et prix d'une
+// facture non encore payée — à la hausse comme à la baisse, sans autorisation.
 
-window.openEditFacture = (factureId) => {
+window.openEditFacture = async (factureId) => {
   const f = state.factures.find(x => x.id === factureId);
   if (!f) return;
   document.getElementById('editfact-facture-id').value = factureId;
   document.getElementById('editfact-numero').textContent = f.numero;
-  document.getElementById('editfact-code').value = '';
-  document.getElementById('editfact-code-step').style.display = 'block';
-  document.getElementById('editfact-items-step').style.display = 'none';
-  document.getElementById('btn-editfact-save').style.display = 'none';
-  state.editFactureItems = [];
-  state.editFactureCode = '';
-  openModal('edit-facture');
-};
-
-async function unlockEditFacture() {
-  const factureId = document.getElementById('editfact-facture-id').value;
-  const code = document.getElementById('editfact-code').value.trim();
-  if (!code) { toast('Entrez le code', 'warning'); return; }
-
-  showLoader();
-  const res = await api(`/api/factures/${factureId}/edit-grant/verify`, {
-    method: 'POST',
-    body: JSON.stringify({ code }),
-  });
-  hideLoader();
-  if (!res?.ok) { toast(res?.error || 'Code invalide', 'error'); return; }
-
-  const f = state.factures.find(x => x.id === factureId);
-  state.editFactureCode = code;
-  state.editFactureItems = (f?.items || []).map(i => ({ ...i }));
+  state.editFactureItems = (f.items || []).map(i => ({ ...i }));
 
   if (state.menu.length === 0) {
     const menu = await api('/api/menu');
@@ -1258,11 +1204,9 @@ async function unlockEditFacture() {
       `<option value="${m.id}" data-nom="${m.nom}" data-prix="${m.prix}" data-cat="${m.categorie || ''}">${m.nom} — ${fmt(m.prix)} FCFA</option>`
     ).join('');
 
-  document.getElementById('editfact-code-step').style.display = 'none';
-  document.getElementById('editfact-items-step').style.display = 'block';
-  document.getElementById('btn-editfact-save').style.display = 'inline-flex';
   renderEditFactureItems();
-}
+  openModal('edit-facture');
+};
 
 function renderEditFactureItems() {
   const container = document.getElementById('editfact-items');
@@ -1310,7 +1254,7 @@ async function saveEditFacture() {
   showLoader();
   const res = await api(`/api/factures/${factureId}/edit-items`, {
     method: 'POST',
-    body: JSON.stringify({ code: state.editFactureCode, items: state.editFactureItems }),
+    body: JSON.stringify({ items: state.editFactureItems }),
   });
   hideLoader();
 
@@ -1368,17 +1312,9 @@ window.openPayFacture = (id, reste) => {
   document.getElementById('pay-facture-id').value   = id;
   document.getElementById('pay-facture-info').textContent = `Facture – Reste à payer : ${reste} FCFA`;
   document.getElementById('pay-facture-prices').style.display = 'none';
-  document.getElementById('pay-facture-code-group').style.display = 'none';
-  document.getElementById('pay-facture-discount-code').value = '';
   state.payFactureItems = null; // tant que non ouvert, on paie au prix de la facture telle quelle
   openModal('pay-facture');
 };
-
-// Prix standard d'un article : celui du menu (par menuItemId), sinon son prix actuel sur la facture
-function standardPriceFor(item) {
-  const menuItem = state.menu.find(m => m.id === item.menuItemId);
-  return menuItem ? menuItem.prix : item.prix;
-}
 
 async function togglePayFacturePrices() {
   const panel = document.getElementById('pay-facture-prices');
@@ -1425,9 +1361,6 @@ function renderPayFacturePrices() {
 function updatePayFactureTotals() {
   const total = state.payFactureItems.reduce((s, i) => s + i.sousTotal, 0);
   document.getElementById('pay-facture-total-live').textContent = `Nouveau total : ${fmt(total)} FCFA`;
-
-  const belowStandard = state.payFactureItems.some(i => i.prix < standardPriceFor(i));
-  document.getElementById('pay-facture-code-group').style.display = belowStandard ? 'block' : 'none';
 }
 
 async function confirmPayFacture() {
@@ -1437,8 +1370,6 @@ async function confirmPayFacture() {
 
   if (state.payFactureItems) {
     body.items = state.payFactureItems;
-    const code = document.getElementById('pay-facture-discount-code').value.trim();
-    if (code) body.discountCode = code;
   }
 
   showLoader();
@@ -2436,8 +2367,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-repair-numeros')?.addEventListener('click', repairNumeros);
   document.getElementById('btn-sound-facturation').addEventListener('click', () => enableSound('facturation'));
   document.getElementById('btn-play-facturation').addEventListener('click', () => { enableSound('facturation', false); checkFacturationReady(true); });
-  document.getElementById('btn-generate-edit-code').addEventListener('click', generateEditCode);
-  document.getElementById('btn-editfact-unlock').addEventListener('click', unlockEditFacture);
   document.getElementById('btn-editfact-save').addEventListener('click', saveEditFacture);
   document.getElementById('editfact-add-select').addEventListener('change', function () {
     const opt = this.options[this.selectedIndex];

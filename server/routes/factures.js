@@ -1,5 +1,5 @@
 const express = require('express');
-const { db, admin } = require('../firebase-admin');
+const { db } = require('../firebase-admin');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { pushNotification } = require('../utils/notifications');
 const cache    = require('../utils/cache');
@@ -171,12 +171,11 @@ router.post('/', authenticateToken, requireRole('admin', 'caissiere'), async (re
 });
 
 // PUT /api/factures/:id/pay — enregistrer le paiement
-// Autorise une modification de prix par article au moment du paiement :
-// - hausse par rapport au prix standard du menu : libre.
-// - baisse sous le prix standard : nécessite le code de dérogation admin (editGrant).
+// La caissière (ou l'admin) peut ajuster librement le prix de chaque article,
+// à la hausse comme à la baisse, sans autorisation particulière.
 router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere'), async (req, res) => {
   try {
-    const { modePaiement, items, discountCode } = req.body;
+    const { modePaiement, items } = req.body;
     const docRef = db.collection('factures').doc(req.params.id);
     const doc = await docRef.get();
     if (!doc.exists) return res.status(404).json({ error: 'Facture introuvable' });
@@ -194,13 +193,8 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere'), asy
     };
 
     let finalItems = facture.items || [];
-    let consumedGrant = false;
 
     if (Array.isArray(items) && items.length > 0) {
-      const menuSnap = await db.collection('menu').get();
-      const menuById = {};
-      menuSnap.docs.forEach(d => { menuById[d.id] = d.data(); });
-
       const mappedItems = items.map(i => ({
         menuItemId: i.menuItemId || '',
         nom: i.nom,
@@ -210,31 +204,10 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere'), asy
         categorie: i.categorie || '',
       }));
 
-      const belowStandard = mappedItems.some(i => {
-        const standard = menuById[i.menuItemId]?.prix ?? i.prix;
-        return i.prix < standard;
-      });
-
-      if (belowStandard) {
-        const grant = facture.editGrant;
-        if (!grant || !grant.code) {
-          return res.status(403).json({ error: 'Baisse sous le prix standard : demandez un code de dérogation à l\'admin' });
-        }
-        if (grant.code !== String(discountCode || '').trim()) {
-          return res.status(403).json({ error: 'Code de dérogation incorrect' });
-        }
-        if (new Date(grant.expiresAt).getTime() < Date.now()) {
-          return res.status(403).json({ error: 'Code de dérogation expiré' });
-        }
-        consumedGrant = true;
-      }
-
       finalItems = mappedItems;
       update.items = mappedItems;
       update.total = mappedItems.reduce((s, i) => s + i.sousTotal, 0);
     }
-
-    if (consumedGrant) update.editGrant = admin.firestore.FieldValue.delete();
 
     await docRef.update(update);
     invalidate();
@@ -277,88 +250,17 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere'), asy
       createdBy: req.user.username,
     });
 
-    res.json({ id: req.params.id, ...facture, ...update, items: finalItems, total: finalTotal, editGrant: null });
+    res.json({ id: req.params.id, ...facture, ...update, items: finalItems, total: finalTotal });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/factures/:id/edit-grant/verify — vérifie un code sans muter la facture
-// (permet de déverrouiller l'éditeur côté caissière avant de composer les modifications)
-router.post('/:id/edit-grant/verify', authenticateToken, requireRole('admin', 'caissiere'), async (req, res) => {
-  try {
-    const { code } = req.body;
-    const doc = await db.collection('factures').doc(req.params.id).get();
-    if (!doc.exists) return res.status(404).json({ error: 'Facture introuvable' });
-
-    const facture = doc.data();
-    const grant = facture.editGrant;
-    if (!grant || !grant.code) return res.status(403).json({ error: 'Aucune autorisation de modification en cours pour cette facture' });
-    if (grant.code !== String(code || '').trim()) return res.status(403).json({ error: 'Code incorrect' });
-    if (new Date(grant.expiresAt).getTime() < Date.now()) return res.status(403).json({ error: 'Code expiré — redemandez une autorisation à l\'admin' });
-
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /api/factures/:id/edit-grant — admin : autorise la caissière à modifier une facture
-// pendant une durée limitée, via un code court communiqué de vive voix.
-router.post('/:id/edit-grant', authenticateToken, requireRole('admin'), async (req, res) => {
-  try {
-    const minutes = Number(req.body?.minutes);
-    if (!minutes || minutes <= 0 || minutes > 120) {
-      return res.status(400).json({ error: 'Durée invalide (1 à 120 minutes)' });
-    }
-
-    const docRef = db.collection('factures').doc(req.params.id);
-    const doc = await docRef.get();
-    if (!doc.exists) return res.status(404).json({ error: 'Facture introuvable' });
-
-    const facture = doc.data();
-    if (facture.type && facture.type !== 'facture') {
-      return res.status(400).json({ error: 'Seules les factures de paiement sont modifiables' });
-    }
-    if (facture.statut === 'payee') {
-      return res.status(400).json({ error: 'Facture déjà payée, modification impossible' });
-    }
-
-    const now = new Date();
-    const code = String(Math.floor(100000 + Math.random() * 900000)); // 6 chiffres
-    const expiresAt = new Date(now.getTime() + minutes * 60_000).toISOString();
-
-    const editGrant = {
-      code,
-      expiresAt,
-      grantedBy: req.user.username,
-      grantedByNom: req.user.nom || req.user.username,
-      grantedAt: now.toISOString(),
-    };
-
-    await docRef.update({ editGrant, updatedAt: now.toISOString() });
-    invalidate();
-
-    pushNotification({
-      type: 'info', icon: 'key',
-      titre: 'Code de modification généré',
-      message: `Facture ${facture.numero} — modifiable pendant ${minutes} min`,
-      createdBy: req.user.username,
-    });
-
-    // Le code n'est renvoyé qu'ici, une seule fois — à l'admin de le communiquer à la caissière.
-    res.json({ code, expiresAt, numero: facture.numero });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /api/factures/:id/edit-items — caissière (ou admin) : applique la modification
-// des articles d'une facture, en validant le code temporaire généré par l'admin.
+// POST /api/factures/:id/edit-items — caissière (ou admin) : modifie librement les articles
+// d'une facture non encore payée (prix, quantités, ajout/suppression), sans autorisation requise.
 router.post('/:id/edit-items', authenticateToken, requireRole('admin', 'caissiere'), async (req, res) => {
   try {
-    const { code, items } = req.body;
-    if (!code) return res.status(400).json({ error: 'Code requis' });
+    const { items } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'La facture doit contenir au moins un article' });
     }
@@ -370,17 +272,6 @@ router.post('/:id/edit-items', authenticateToken, requireRole('admin', 'caissier
     const facture = doc.data();
     if (facture.statut === 'payee') {
       return res.status(400).json({ error: 'Facture déjà payée, modification impossible' });
-    }
-
-    const grant = facture.editGrant;
-    if (!grant || !grant.code) {
-      return res.status(403).json({ error: 'Aucune autorisation de modification en cours pour cette facture' });
-    }
-    if (grant.code !== String(code).trim()) {
-      return res.status(403).json({ error: 'Code incorrect' });
-    }
-    if (new Date(grant.expiresAt).getTime() < Date.now()) {
-      return res.status(403).json({ error: 'Code expiré — redemandez une autorisation à l\'admin' });
     }
 
     const mappedItems = items.map(i => ({
@@ -402,7 +293,6 @@ router.post('/:id/edit-items', authenticateToken, requireRole('admin', 'caissier
       lastEditedBy: req.user.username,
       lastEditedByNom: req.user.nom || req.user.username,
       lastEditedAt: now.toISOString(),
-      editGrant: null, // code à usage unique
     };
 
     await docRef.update(update);
