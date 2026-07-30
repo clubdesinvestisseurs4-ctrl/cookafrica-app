@@ -1145,8 +1145,17 @@ async function checkFacturationReady(entering = false) {
 }
 
 async function loadFactures() {
-  const debut  = document.getElementById('filter-fact-start')?.value || '';
-  const fin    = document.getElementById('filter-fact-end')?.value   || '';
+  const startEl = document.getElementById('filter-fact-start');
+  const endEl   = document.getElementById('filter-fact-end');
+
+  // Par défaut la vue se réinitialise chaque jour sur "aujourd'hui" au lieu
+  // d'accumuler tout l'historique — comme le dashboard. La caissière peut
+  // choisir une autre période, ça filtre aussitôt (voir écouteurs 'change').
+  if (startEl && !startEl.value) startEl.value = today();
+  if (endEl   && !endEl.value)   endEl.value   = today();
+
+  const debut  = startEl?.value || '';
+  const fin    = endEl?.value   || '';
   const statut = document.getElementById('filter-fact-statut')?.value || '';
 
   let url = '/api/factures?';
@@ -2360,6 +2369,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-confirm-pay-facture').addEventListener('click', confirmPayFacture);
   document.getElementById('btn-toggle-pay-prices').addEventListener('click', togglePayFacturePrices);
   document.getElementById('btn-filter-fact').addEventListener('click', loadFactures);
+  // Filtrage immédiat au changement de période/statut, sans avoir à cliquer sur "Filtrer"
+  document.getElementById('filter-fact-start').addEventListener('change', loadFactures);
+  document.getElementById('filter-fact-end').addEventListener('change', loadFactures);
+  document.getElementById('filter-fact-statut').addEventListener('change', loadFactures);
   document.getElementById('btn-print-facture').addEventListener('click', printFacture);
   document.getElementById('btn-repair-numeros')?.addEventListener('click', repairNumeros);
   document.getElementById('btn-sound-facturation').addEventListener('click', () => enableSound('facturation'));
