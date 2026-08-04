@@ -1471,9 +1471,7 @@ window.aperçuFacture = async (id) => {
         <p style="font-size:.78rem;color:var(--gray)">Date : ${fmtDateOnly(f.date)}</p>
         ${f.tableNumero ? `<p style="font-size:.78rem"><strong>Table :</strong> ${escapeHtml(f.tableNumero)}</p>` : ''}
         ${f.commandeNumero ? `<p style="font-size:.78rem;color:var(--gray)">Commande : ${f.commandeNumero}</p>` : ''}
-        <!-- "Servi par" masqué à la demande — remettre en réactivant la ligne ci-dessous si besoin un jour.
         ${f.serveurNom ? `<p style="font-size:.78rem">Servi par : <strong>${escapeHtml(f.serveurNom)}</strong></p>` : ''}
-        -->
         ${f.caissiereName ? `<p style="font-size:.78rem"><i class="fas fa-user-tie"></i> Caissière : <strong>${f.caissiereName}</strong></p>` : ''}
       </div>
       <table class="facture-items">
