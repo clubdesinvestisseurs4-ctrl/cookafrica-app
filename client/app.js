@@ -694,8 +694,13 @@ async function loadDashboard() {
 // ─── COMMANDES ─────────────────────────────────────────
 
 async function loadCommandes() {
+  const dateEl = document.getElementById('filter-cmd-date');
+  // Par défaut la vue se réinitialise chaque jour sur "aujourd'hui" au lieu
+  // d'accumuler tout l'historique — comme Facturation et le dashboard.
+  if (dateEl && !dateEl.value) dateEl.value = today();
+
   const statut = document.getElementById('filter-cmd-statut')?.value || '';
-  const date   = document.getElementById('filter-cmd-date')?.value   || '';
+  const date   = dateEl?.value || '';
   let url = '/api/commandes?';
   if (statut) url += `statut=${statut}&`;
   if (date)   url += `date=${date}`;
@@ -793,7 +798,10 @@ async function viewCommande(id) {
 async function annulerCommande(id, numero) {
   if (!confirm(`Annuler la commande ${numero} ?`)) return;
   const res = await api(`/api/commandes/${id}`, { method: 'DELETE' });
-  if (res?.message) { toast('Commande annulée', 'warning'); loadCommandes(); }
+  if (res?.message) {
+    toast(res.factureSupprimee ? 'Commande annulée — sa facture a été supprimée' : 'Commande annulée', 'warning');
+    loadCommandes();
+  }
 }
 
 window.envoyerFacturation = async (id, numero) => {

@@ -263,15 +263,29 @@ router.put('/:id', authenticateToken, async (req, res) => {
 });
 
 // DELETE /api/commandes/:id — annulation (admin uniquement)
+// Si la commande avait déjà été envoyée à la facturation et qu'une facture a
+// été générée pour elle, cette facture n'a plus lieu d'être : on la supprime
+// aussi pour éviter qu'elle reste visible en facturation pour une commande annulée.
 router.delete('/:id', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
-    await db.collection('commandes').doc(req.params.id).update({
+    const docRef = db.collection('commandes').doc(req.params.id);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ error: 'Commande introuvable' });
+
+    await docRef.update({
       statut: 'annulee',
       updatedAt: new Date().toISOString(),
     });
+
+    const factSnap = await db.collection('factures').where('commandeId', '==', req.params.id).get();
+    const factureSupprimee = !factSnap.empty;
+    await Promise.all(factSnap.docs.map(d => d.ref.delete()));
+
     invalidate();
     eventBus.emit('commandes');
-    res.json({ message: 'Commande annulée' });
+    if (factureSupprimee) eventBus.emit('factures');
+
+    res.json({ message: 'Commande annulée', factureSupprimee });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
