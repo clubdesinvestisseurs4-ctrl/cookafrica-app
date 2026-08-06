@@ -1871,11 +1871,17 @@ async function loadRapport() {
       `<li><span>${mode}</span><strong>${fmt(total)} FCFA</strong></li>`
     ).join('') || '<li><span>Aucune donnée</span></li>';
 
-  // Top plats
-  const topPlats = data.topPlats || [];
-  document.getElementById('rapp-top-plats').innerHTML =
-    topPlats.map(p => `<li><span>${p.nom}</span><strong>${p.quantite} vendus</strong></li>`).join('')
-    || '<li><span>Aucune donnée</span></li>';
+  // Plats & boissons vendus (quantités)
+  document.getElementById('rapp-total-plats-qte').textContent    = data.totalPlatsQte ?? '—';
+  document.getElementById('rapp-total-boissons-qte').textContent = data.totalBoissonsQte ?? '—';
+
+  // Top plats / Top boissons — article précis, quantité vendue et CA généré
+  const renderTop = (items) => (items || []).map(p =>
+    `<li><span>${escapeHtml(p.nom)}</span><strong>${p.quantite} vendus — ${fmt(p.total)} FCFA</strong></li>`
+  ).join('') || '<li><span>Aucune donnée</span></li>';
+
+  document.getElementById('rapp-top-plats').innerHTML    = renderTop(data.topPlats);
+  document.getElementById('rapp-top-boissons').innerHTML = renderTop(data.topBoissons);
 
   // Par catégorie
   const parCat = data.parCategorie || {};

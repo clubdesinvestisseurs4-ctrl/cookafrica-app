@@ -89,22 +89,31 @@ router.get('/rapport', authenticateToken, async (req, res) => {
       if (parStatut[f.statut] !== undefined) parStatut[f.statut]++;
     });
 
+    // Ventilation plats/boissons : quantités totales vendues + classement des
+    // articles les plus vendus (nom précis, pas juste la catégorie), avec le
+    // chiffre d'affaires que chacun rapporte.
     const parCategorie = {};
+    const platsVentes = {};
+    const boissonsVentes = {};
+    let totalPlatsQte = 0, totalBoissonsQte = 0;
+
     factures.forEach(f => {
       (f.items || []).forEach(item => {
-        parCategorie[item.categorie || 'Autre'] = (parCategorie[item.categorie || 'Autre'] || 0) + (item.sousTotal || 0);
+        const cat = item.categorie || 'Autre';
+        parCategorie[cat] = (parCategorie[cat] || 0) + (item.sousTotal || 0);
+
+        const isBoisson = cat === 'Boissons';
+        const ventes = isBoisson ? boissonsVentes : platsVentes;
+        if (!ventes[item.nom]) ventes[item.nom] = { quantite: 0, total: 0 };
+        ventes[item.nom].quantite += item.quantite || 0;
+        ventes[item.nom].total   += item.sousTotal || 0;
+
+        if (isBoisson) totalBoissonsQte += item.quantite || 0;
+        else            totalPlatsQte    += item.quantite || 0;
       });
     });
 
-    const topPlats = {};
-    factures.forEach(f => {
-      (f.items || []).forEach(item => {
-        if (!topPlats[item.nom]) topPlats[item.nom] = { quantite: 0, total: 0 };
-        topPlats[item.nom].quantite += item.quantite || 0;
-        topPlats[item.nom].total   += item.sousTotal || 0;
-      });
-    });
-    const topPlatsArr = Object.entries(topPlats)
+    const topVentes = (ventes) => Object.entries(ventes)
       .map(([nom, v]) => ({ nom, ...v }))
       .sort((a, b) => b.quantite - a.quantite)
       .slice(0, 5);
@@ -116,7 +125,10 @@ router.get('/rapport', authenticateToken, async (req, res) => {
       parMode,
       parStatut,
       parCategorie,
-      topPlats: topPlatsArr,
+      totalPlatsQte,
+      totalBoissonsQte,
+      topPlats: topVentes(platsVentes),
+      topBoissons: topVentes(boissonsVentes),
       factures: factures.sort((a, b) => (b.date > a.date ? 1 : -1)),
     });
   } catch (err) {
