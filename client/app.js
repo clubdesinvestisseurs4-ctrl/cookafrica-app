@@ -1094,7 +1094,7 @@ async function loadCommandesLigne() {
   const enLigne = commandes.filter(c => c._pending || (c.source === 'en-ligne' && !['annulee', 'servie'].includes(c.statut)));
   const tbody = document.getElementById('commandes-ligne-tbody');
   if (enLigne.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="empty-state" style="padding:32px"><i class="fas fa-globe"></i><p>Aucune commande en ligne en cours</p></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state" style="padding:32px"><i class="fas fa-globe"></i><p>Aucune commande en ligne en cours</p></td></tr>';
     return;
   }
 
@@ -1105,6 +1105,7 @@ async function loadCommandesLigne() {
       <tr class="commande-pending">
         <td data-label="N°"><strong>${c.numero}</strong></td>
         <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
+        <td data-label="Table / Client">—</td>
         <td data-label="Articles" style="font-size:.82rem">${items}</td>
         <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
         <td data-label="Statut"><span class="badge-pending-sync"><i class="fas fa-cloud-upload-alt"></i> Hors ligne — en attente de synchro</span></td>
@@ -1114,14 +1115,22 @@ async function loadCommandesLigne() {
     const alreadyFactured = state.factures.some(f => f.commandeId === c.id);
     const canEdit    = !alreadyFactured && !['annulee', 'servie'].includes(c.statut);
     const canFacture = !alreadyFactured && c.statut === 'en-preparation';
+    const qui = c.commandeClient
+      ? `<span style="background:#FFF3E0;color:#E65100;border:1px solid #FFCC80;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600;white-space:nowrap"><i class="fas fa-user"></i> Client</span>`
+      : `<span style="background:#E3F2FD;color:#0d47a1;border:1px solid #90CAF9;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600;white-space:nowrap"><i class="fas fa-cash-register"></i> Caisse</span>`;
+    const table = c.tableNumero ? `<div style="font-size:.78rem;color:var(--gray);margin-top:3px">Table ${escapeHtml(c.tableNumero)}</div>` : '';
     return `
     <tr>
       <td data-label="N°"><strong>${c.numero}</strong></td>
       <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
+      <td data-label="Table / Client">${qui}${table}</td>
       <td data-label="Articles" style="font-size:.82rem">${items}</td>
       <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
       <td data-label="Statut">${badgeStatus(c.statut)}</td>
       <td data-label="Actions">
+        <button class="btn btn-secondary btn-sm" onclick="viewCommande('${c.id}')" title="Voir le détail">
+          <i class="fas fa-eye"></i>
+        </button>
         ${canEdit ? `<button class="btn btn-secondary btn-sm" onclick="openEditCommande('${c.id}')" title="Modifier">
           <i class="fas fa-edit"></i>
         </button>` : ''}
@@ -2364,6 +2373,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Commandes ──
   document.getElementById('btn-new-commande').addEventListener('click', () => openNewCommande('sur-place'));
   document.getElementById('btn-new-commande-ligne')?.addEventListener('click', () => openNewCommande('en-ligne'));
+  document.getElementById('btn-copy-lien-client')?.addEventListener('click', async () => {
+    const lien = `${window.location.origin}/commander`;
+    try {
+      await navigator.clipboard.writeText(lien);
+      toast('Lien client copié — partagez-le au client', 'success');
+    } catch {
+      prompt('Copiez ce lien à partager au client :', lien);
+    }
+  });
 
   // ── Recherche d'article : panier (nouvelle commande) + modification commande ──
   panierPicker  = setupMenuSearchPicker('menu-search-wrapper', 'cmd-menu-search', 'cmd-menu-clear', 'menu-search-dropdown', addToPanier);

@@ -74,6 +74,7 @@ app.use('/api/stocks',        require('./routes/stocks'));
 app.use('/api/stats',         require('./routes/stats'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/wifi-config',   require('./routes/wifi-config'));
+app.use('/api/public',        require('./routes/commande-publique'));
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), service: 'Cook Africa API' });

@@ -8,6 +8,7 @@ const corsOrigins = require('../config/corsOrigins');
 const { ipInCidr, normalizeIp, getClientIp } = require('../utils/wifi');
 const { buildCommandeUpdate, ALLOWED_FIELDS } = require('../utils/commandeUpdate');
 const { requireRole } = require('../middleware/auth');
+const { resolvePublicItems, MAX_LIGNES, MAX_QTE_PAR_LIGNE } = require('../utils/publicCommande');
 
 // ─── CORS ───────────────────────────────────────────────────────────────────
 
@@ -139,4 +140,56 @@ test('requireRole — refuse si req.user est absent (token manquant en amont)', 
 
   assert.strictEqual(nextCalled, false);
   assert.strictEqual(res.statusCode, 403);
+});
+
+// ─── Commande publique (client) — le prix vient toujours du serveur ───────
+
+const MENU_TEST = [
+  { id: 'm1', nom: 'Attiéké Poisson', prix: 2000, categorie: 'Plats', disponible: true },
+  { id: 'm2', nom: 'Coca-Cola',       prix: 700,  categorie: 'Boissons', disponible: true },
+  { id: 'm3', nom: 'Plat épuisé',     prix: 5000, categorie: 'Plats', disponible: false },
+];
+
+test('resolvePublicItems — refuse un panier vide', () => {
+  const { error } = resolvePublicItems([], MENU_TEST);
+  assert.strictEqual(error, 'Le panier est vide');
+});
+
+test('resolvePublicItems — ignore le prix envoyé par le client et reprend celui du menu', () => {
+  // Un client malveillant modifie sa requête pour tenter de payer 1 FCFA.
+  const { items, total, error } = resolvePublicItems(
+    [{ menuItemId: 'm1', quantite: 2, prix: 1, nom: 'GRATUIT' }],
+    MENU_TEST
+  );
+  assert.strictEqual(error, undefined);
+  assert.strictEqual(items[0].prix, 2000, 'le prix doit venir du menu serveur, pas de la requête');
+  assert.strictEqual(items[0].nom, 'Attiéké Poisson', 'le nom doit venir du menu serveur, pas de la requête');
+  assert.strictEqual(total, 4000);
+});
+
+test('resolvePublicItems — refuse un article introuvable au menu', () => {
+  const { error } = resolvePublicItems([{ menuItemId: 'inconnu', quantite: 1 }], MENU_TEST);
+  assert.strictEqual(error, 'Un article du panier n\'existe plus au menu');
+});
+
+test('resolvePublicItems — refuse un article marqué indisponible', () => {
+  const { error } = resolvePublicItems([{ menuItemId: 'm3', quantite: 1 }], MENU_TEST);
+  assert.match(error, /n'est plus disponible/);
+});
+
+test('resolvePublicItems — refuse une quantité nulle, négative ou non numérique', () => {
+  assert.ok(resolvePublicItems([{ menuItemId: 'm1', quantite: 0 }], MENU_TEST).error);
+  assert.ok(resolvePublicItems([{ menuItemId: 'm1', quantite: -3 }], MENU_TEST).error);
+  assert.ok(resolvePublicItems([{ menuItemId: 'm1', quantite: 'beaucoup' }], MENU_TEST).error);
+});
+
+test('resolvePublicItems — refuse une quantité supérieure au maximum autorisé', () => {
+  const { error } = resolvePublicItems([{ menuItemId: 'm1', quantite: MAX_QTE_PAR_LIGNE + 1 }], MENU_TEST);
+  assert.ok(error);
+});
+
+test('resolvePublicItems — refuse un panier avec trop de lignes distinctes', () => {
+  const items = Array.from({ length: MAX_LIGNES + 1 }, () => ({ menuItemId: 'm1', quantite: 1 }));
+  const { error } = resolvePublicItems(items, MENU_TEST);
+  assert.ok(error);
 });

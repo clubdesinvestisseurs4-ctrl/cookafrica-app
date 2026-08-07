@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#8B1A1A">
+  <meta name="description" content="Commandez en ligne chez Cook Africa">
+  <title>Cook Africa – Commander</title>
+
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="icon" href="/icons/icon-192.png">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+        crossorigin="anonymous" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="commander.css">
+</head>
+<body class="pub-body">
+
+<div id="pub-app">
+
+  <!-- ── Chargement ─────────────────────────────── -->
+  <div id="pub-loading" class="pub-loading">
+    <img src="logo-cookafrica.png" class="pub-loading-logo" alt="Cook Africa" onerror="this.style.display='none'">
+    <h1 class="pub-loading-title">COOK AFRICA</h1>
+    <div class="spinner" style="margin:18px auto"></div>
+    <p id="pub-loading-status" class="pub-loading-status">Chargement du menu…</p>
+  </div>
+
+  <!-- ── Erreur de chargement ───────────────────── -->
+  <div id="pub-error" class="pub-error" style="display:none">
+    <i class="fas fa-triangle-exclamation"></i>
+    <p id="pub-error-msg">Impossible de charger le menu pour le moment.</p>
+    <button class="btn btn-primary" id="pub-retry-btn"><i class="fas fa-rotate-right"></i> Réessayer</button>
+  </div>
+
+  <!-- ── Écran menu ─────────────────────────────── -->
+  <div id="pub-screen-menu" class="pub-screen" style="display:none">
+    <header class="pub-header">
+      <img src="logo-cookafrica.png" class="pub-header-logo" alt="" onerror="this.style.display='none'">
+      <div class="pub-header-text">
+        <h1>Cook Africa</h1>
+        <p>Commandez en ligne — c'est simple et rapide</p>
+      </div>
+    </header>
+
+    <div class="pub-table-bar">
+      <i class="fas fa-chair"></i>
+      <input type="text" id="pub-table-input" placeholder="Numéro de table (optionnel)" maxlength="20" inputmode="numeric">
+    </div>
+
+    <nav class="pub-cats" id="pub-cats"></nav>
+
+    <main class="pub-menu-list" id="pub-menu-list"></main>
+
+    <div class="pub-cart-bar" id="pub-cart-bar">
+      <button id="pub-cart-bar-btn" class="pub-cart-bar-btn">
+        <span class="pub-cart-bar-count" id="pub-cart-count">0</span>
+        <span class="pub-cart-bar-label"><i class="fas fa-bag-shopping"></i> Voir mon panier</span>
+        <span class="pub-cart-bar-total" id="pub-cart-total">0 FCFA</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Écran panier ───────────────────────────── -->
+  <div id="pub-screen-cart" class="pub-screen pub-sheet" style="display:none">
+    <header class="pub-sheet-header">
+      <button class="pub-icon-btn" id="pub-cart-back" aria-label="Retour"><i class="fas fa-arrow-left"></i></button>
+      <h2>Mon panier</h2>
+    </header>
+
+    <div class="pub-cart-body">
+      <div class="pub-cart-items" id="pub-cart-items"></div>
+
+      <div class="pub-cart-form">
+        <label class="pub-field">
+          <span>Numéro de table</span>
+          <input type="text" id="pub-cart-table" placeholder="Ex : 5" maxlength="20" inputmode="numeric">
+        </label>
+        <label class="pub-field">
+          <span>Votre nom <em>(optionnel)</em></span>
+          <input type="text" id="pub-cart-nom" placeholder="Ex : Awa" maxlength="60">
+        </label>
+        <label class="pub-field">
+          <span>Note pour la cuisine <em>(optionnel)</em></span>
+          <textarea id="pub-cart-note" placeholder="Ex : sans piment" maxlength="300" rows="2"></textarea>
+        </label>
+      </div>
+    </div>
+
+    <div class="pub-cart-footer">
+      <div class="pub-cart-footer-total">
+        <span>Total</span>
+        <strong id="pub-cart-footer-total-val">0 FCFA</strong>
+      </div>
+      <button class="btn btn-primary pub-btn-lg" id="pub-submit-btn">
+        <i class="fas fa-paper-plane"></i> Envoyer ma commande
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Écran confirmation / suivi ─────────────── -->
+  <div id="pub-screen-confirm" class="pub-screen" style="display:none">
+    <div class="pub-confirm">
+      <div class="pub-confirm-check"><i class="fas fa-check"></i></div>
+      <h2>Commande envoyée !</h2>
+      <p class="pub-confirm-numero" id="pub-confirm-numero">CMD-0000</p>
+      <p class="pub-confirm-sub">Merci — la caisse a bien reçu votre commande.</p>
+
+      <div class="pub-status-track" id="pub-status-track">
+        <div class="pub-status-step is-active" data-statut="en-preparation">
+          <span class="pub-status-dot"><i class="fas fa-receipt"></i></span>
+          <span>Reçue</span>
+        </div>
+        <div class="pub-status-step" data-statut="servie">
+          <span class="pub-status-dot"><i class="fas fa-concierge-bell"></i></span>
+          <span>Servie</span>
+        </div>
+      </div>
+      <p class="pub-status-cancelled" id="pub-status-cancelled" style="display:none">
+        <i class="fas fa-circle-xmark"></i> Cette commande a été annulée. Adressez-vous à la caisse.
+      </p>
+
+      <div class="pub-confirm-items" id="pub-confirm-items"></div>
+      <div class="pub-confirm-total" id="pub-confirm-total"></div>
+
+      <button class="btn btn-secondary" id="pub-new-order-btn">
+        <i class="fas fa-plus"></i> Passer une nouvelle commande
+      </button>
+    </div>
+  </div>
+
+  <div class="pub-toast" id="pub-toast"></div>
+</div>
+
+<script src="commander.js"></script>
+</body>
+</html>

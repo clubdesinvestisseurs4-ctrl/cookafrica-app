@@ -5,20 +5,13 @@ const { pushNotification } = require('../utils/notifications');
 const cache    = require('../utils/cache');
 const eventBus = require('../utils/eventBus');
 const { buildCommandeUpdate } = require('../utils/commandeUpdate');
+const { getNextNumero, decrementStocksForItems } = require('../utils/commandes');
 
 const router = express.Router();
 
 // Invalide tous les caches commandes + factures (à appeler après chaque écriture)
 function invalidate() {
   cache.del('commandes:list', 'factures:list', 'stats:dashboard', 'stats:notifications');
-}
-
-async function getNextNumero() {
-  const snap = await db.collection('commandes').orderBy('createdAt', 'desc').limit(1).get();
-  if (snap.empty) return 'CMD-0001';
-  const last = snap.docs[0].data();
-  const lastNum = parseInt((last.numero || 'CMD-0000').split('-')[1] || '0', 10);
-  return `CMD-${String(lastNum + 1).padStart(4, '0')}`;
 }
 
 // GET /api/commandes
@@ -60,7 +53,7 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere')
     }
 
     const total = items.reduce((sum, i) => sum + (Number(i.prix) * Number(i.quantite)), 0);
-    const numero = await getNextNumero();
+    const numero = await getNextNumero(db);
     const now = new Date();
 
     const mappedItems = items.map(i => ({
@@ -92,18 +85,7 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere')
     eventBus.emit('commandes');
 
     // Décrémenter quantiteRestante dans stocks_plats pour chaque article commandé
-    const today = now.toISOString().split('T')[0];
-    const epuises = [];
-    for (const item of mappedItems) {
-      if (!item.menuItemId) continue;
-      const stockRef = db.collection('stocks_plats').doc(`${item.menuItemId}_${today}`);
-      const stockDoc = await stockRef.get();
-      if (stockDoc.exists) {
-        const newRestante = Math.max(0, stockDoc.data().quantiteRestante - item.quantite);
-        await stockRef.update({ quantiteRestante: newRestante, updatedAt: now.toISOString() });
-        if (newRestante === 0) epuises.push(item.nom);
-      }
-    }
+    const epuises = await decrementStocksForItems(db, mappedItems, now);
 
     pushNotification({
       type: 'info', icon: 'utensils',
