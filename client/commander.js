@@ -253,6 +253,17 @@ function renderCartScreen() {
     });
   }
   document.getElementById('pub-cart-footer-total-val').textContent = fmt(panierTotal());
+  updateSubmitState();
+}
+
+// Le bouton reste grisé tant que le panier n'est pas rempli et que prénom,
+// nom, téléphone et localisation ne sont pas tous renseignés.
+function updateSubmitState() {
+  const prenom = document.getElementById('pub-cart-prenom').value.trim();
+  const nom = document.getElementById('pub-cart-nom').value.trim();
+  const telDigits = document.getElementById('pub-cart-tel').value.replace(/\D/g, '');
+  const ready = state.panier.length > 0 && !!prenom && !!nom && telDigits.length >= 8 && !!state.localisation;
+  document.getElementById('pub-submit-btn').disabled = !ready;
 }
 
 document.getElementById('pub-cart-bar-btn').addEventListener('click', () => {
@@ -308,6 +319,7 @@ function captureLocalisation() {
       state.localisation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
       saveContact();
       renderGeolocSuccess(state.localisation);
+      updateSubmitState();
     },
     (err) => {
       state.localisation = null;
@@ -318,6 +330,7 @@ function captureLocalisation() {
         3: 'La demande de localisation a expiré. Réessayez.',
       };
       setGeolocUi('is-error', messages[err.code] || 'Impossible de récupérer votre position. Réessayez.');
+      updateSubmitState();
     },
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 300000 }
   );
@@ -329,6 +342,7 @@ geolocBtn.addEventListener('click', captureLocalisation);
   document.getElementById(id).addEventListener('input', (e) => {
     e.target.classList.remove('pub-field-invalid');
     saveContact();
+    updateSubmitState();
   });
 });
 
