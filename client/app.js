@@ -750,13 +750,16 @@ async function loadCommandes() {
     const canCancel  = role === 'admin' && !['annulee', 'servie'].includes(c.statut);
     const canEdit    = !alreadyFactured && !['annulee', 'servie'].includes(c.statut)
       && !(c.statut === 'en-preparation' && role === 'serveur');
+    const nomClientCmd = c.commandeClient ? `${escapeHtml(c.clientPrenom || '')} ${escapeHtml(c.clientNom || '')}`.trim() : '';
     return `
     <tr>
-      <td data-label="N°"><strong>${c.numero}</strong> ${badgeQui(c)}</td>
+      <td data-label="N°"><strong>${c.numero}</strong> ${badgeQui(c)}${nomClientCmd ? `<div style="font-size:.78rem;color:var(--gray);margin-top:2px">${nomClientCmd}</div>` : ''}</td>
       <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
       <td data-label="Articles" style="font-size:.82rem">${items}</td>
       <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
-      <td data-label="Table" style="color:var(--gray);font-size:.82rem">${escapeHtml(c.tableNumero) || '—'}</td>
+      <td data-label="Table" style="color:var(--gray);font-size:.82rem">${c.commandeClient
+        ? `${c.clientTelephone ? `<a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);text-decoration:none;white-space:nowrap"><i class="fas fa-phone"></i> ${escapeHtml(c.clientTelephone)}</a>` : '—'}${c.clientLocalisation?.mapsUrl ? `<br><a href="${escapeHtml(c.clientLocalisation.mapsUrl)}" target="_blank" rel="noopener" style="color:var(--primary);font-weight:600;text-decoration:none;white-space:nowrap"><i class="fas fa-location-dot"></i> Localisation</a>` : ''}`
+        : (escapeHtml(c.tableNumero) || '—')}</td>
       <td data-label="Statut">${badgeStatus(c.statut)}</td>
       <td data-label="Actions">
         <button class="btn btn-secondary btn-sm" onclick="viewCommande('${c.id}')">
@@ -1136,7 +1139,7 @@ async function loadCommandesLigne() {
     <tr>
       <td data-label="N°"><strong>${c.numero}</strong></td>
       <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
-      <td data-label="Client">${badgeQui(c)}${nomClient ? `<div style="font-size:.78rem;margin-top:3px">${nomClient}</div>` : ''}</td>
+      <td data-label="Client">${badgeQui(c)}${nomClient ? `<div style="font-size:.78rem;margin-top:3px">${nomClient}</div>` : ''}${c.clientTelephone ? `<div style="margin-top:2px"><a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);font-size:.76rem;text-decoration:none;white-space:nowrap"><i class="fas fa-phone"></i> ${escapeHtml(c.clientTelephone)}</a></div>` : ''}</td>
       <td data-label="Articles" style="font-size:.82rem">${items}</td>
       <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
       <td data-label="Statut">${badgeStatus(c.statut)}</td>
