@@ -42,11 +42,11 @@ router.get('/', authenticateToken, async (req, res) => {
 // Une commande créée directement par l'admin/la caissière (dont les commandes en ligne)
 // part immédiatement au statut 'en-preparation' : elle reste au niveau de la caissière,
 // pas besoin d'un envoi depuis un serveur.
-router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere'), async (req, res) => {
+router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere', 'caissier-en-ligne'), async (req, res) => {
   try {
     const { items, note, tableNumero, source } = req.body;
-    // Seuls admin/caissière peuvent marquer une commande "en ligne" (écran dédié)
-    const isOnline = source === 'en-ligne' && ['admin', 'caissiere'].includes(req.user.role);
+    // Seuls admin/caissière/caissier en ligne peuvent marquer une commande "en ligne" (écran dédié)
+    const isOnline = source === 'en-ligne' && ['admin', 'caissiere', 'caissier-en-ligne'].includes(req.user.role);
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'La commande doit contenir au moins un article' });
@@ -150,7 +150,7 @@ router.put('/:id/envoyer', authenticateToken, requireRole('admin', 'serveur'), a
 // PUT /api/commandes/:id/items — modification libre des articles d'une commande, tant
 // qu'aucune facture n'a encore été générée. Le serveur ne peut plus modifier une commande
 // une fois envoyée à la facturation : elle appartient alors à la caissière.
-router.put('/:id/items', authenticateToken, requireRole('admin', 'serveur', 'caissiere'), async (req, res) => {
+router.put('/:id/items', authenticateToken, requireRole('admin', 'serveur', 'caissiere', 'caissier-en-ligne'), async (req, res) => {
   try {
     const { items } = req.body;
     if (!Array.isArray(items) || items.length === 0) {

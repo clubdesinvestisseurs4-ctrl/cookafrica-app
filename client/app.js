@@ -63,13 +63,14 @@ const ROLE_LABELS = {
   serveur:    'Serveur',
   cuisiniere: 'Cuisinière',
   barman:     'Barman',
+  'caissier-en-ligne': 'Caissier en ligne',
 };
 
 // ─── Visibilité des pages par rôle ────────────────────
 const PAGE_ROLES = {
-  dashboard:      ['admin', 'caissiere', 'serveur', 'cuisiniere', 'barman'],
+  dashboard:      ['admin', 'caissiere', 'serveur', 'cuisiniere', 'barman', 'caissier-en-ligne'],
   commandes:      ['admin', 'serveur'],
-  'commandes-en-ligne': ['admin', 'caissiere'],
+  'commandes-en-ligne': ['admin', 'caissiere', 'caissier-en-ligne'],
   facturation:    ['admin', 'caissiere'],
   menu:           ['admin'],
   stocks:         ['admin'],
@@ -492,6 +493,7 @@ function defaultPage() {
   const role = state.user?.role;
   if (role === 'serveur')    return 'commandes';
   if (role === 'caissiere')  return 'facturation';
+  if (role === 'caissier-en-ligne') return 'commandes-en-ligne';
   return 'dashboard'; // admin, cuisiniere, barman (écrans cuisine/bar coupés pour l'instant)
 }
 
@@ -641,8 +643,8 @@ function startPolling() {
     }, POLL_MS);
   }
 
-  // Caissière — actualisation facturation + commandes en ligne (secours si SSE down)
-  if (role === 'admin' || role === 'caissiere') {
+  // Caissière / caissier en ligne — actualisation facturation + commandes en ligne (secours si SSE down)
+  if (role === 'admin' || role === 'caissiere' || role === 'caissier-en-ligne') {
     state.facturationInterval = setInterval(() => {
       if (state.sseConnected) return;
       if      (state.currentPage === 'facturation')        loadFactures();
@@ -1970,8 +1972,8 @@ async function loadUtilisateurs() {
   if (!users) return;
   state.utilisateurs = users;
 
-  const roleLabels = { admin: 'Admin', caissiere: 'Caissière', serveur: 'Serveur', cuisiniere: 'Cuisinière', barman: 'Barman' };
-  const roleColors = { admin: '#8B1A1A', caissiere: '#2C5F2E', serveur: '#9C27B0', cuisiniere: '#D4891A', barman: '#1565C0' };
+  const roleLabels = { admin: 'Admin', caissiere: 'Caissière', 'caissier-en-ligne': 'Caissier en ligne', serveur: 'Serveur', cuisiniere: 'Cuisinière', barman: 'Barman' };
+  const roleColors = { admin: '#8B1A1A', caissiere: '#2C5F2E', 'caissier-en-ligne': '#00897B', serveur: '#9C27B0', cuisiniere: '#D4891A', barman: '#1565C0' };
 
   const tbody = document.getElementById('utilisateurs-tbody');
   if (users.length === 0) {

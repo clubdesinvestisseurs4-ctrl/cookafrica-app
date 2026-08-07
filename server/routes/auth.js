@@ -16,6 +16,11 @@ const ROLE_MIGRATION = {
   cuisinier:       'cuisiniere',
 };
 
+// caissier-en-ligne : accès restreint au dashboard + à l'onglet Commandes en
+// Ligne (voir PAGE_ROLES côté client) — pour gérer les commandes du lien
+// client à distance, sans passer par la facturation sur place.
+const VALID_ROLES = ['admin', 'caissiere', 'serveur', 'cuisiniere', 'barman', 'caissier-en-ligne'];
+
 async function logSession(userId, username, nom, role, action, ip) {
   await db.collection('sessions').add({
     userId, username, nom, role, action,
@@ -197,7 +202,7 @@ router.get('/utilisateurs', authenticateToken, requireRole('admin'), async (req,
 router.post('/utilisateurs', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const { prenom, nom, username, password, role } = req.body;
-    const validRoles = ['admin', 'caissiere', 'serveur', 'cuisiniere', 'barman'];
+    const validRoles = VALID_ROLES;
     if (!nom || !username || !password || !role) {
       return res.status(400).json({ error: 'Nom, identifiant, mot de passe et rôle requis' });
     }
@@ -232,7 +237,7 @@ router.post('/utilisateurs', authenticateToken, requireRole('admin'), async (req
 router.put('/utilisateurs/:id', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const { prenom, nom, role, password, actif } = req.body;
-    const validRoles = ['admin', 'caissiere', 'serveur', 'cuisiniere', 'barman'];
+    const validRoles = VALID_ROLES;
     const update = { updatedAt: new Date().toISOString() };
     if (nom !== undefined)   update.nom = nom.trim();
     if (prenom !== undefined) update.prenom = prenom.trim();

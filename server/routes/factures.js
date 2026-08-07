@@ -109,7 +109,7 @@ router.post('/repair-numeros', authenticateToken, requireRole('admin'), async (r
 });
 
 // POST /api/factures — générer manuellement une facture depuis une commande
-router.post('/', authenticateToken, requireRole('admin', 'caissiere'), async (req, res) => {
+router.post('/', authenticateToken, requireRole('admin', 'caissiere', 'caissier-en-ligne'), async (req, res) => {
   try {
     const { commandeId, modePaiement } = req.body;
     if (!commandeId) return res.status(400).json({ error: 'commandeId requis' });
@@ -173,7 +173,7 @@ router.post('/', authenticateToken, requireRole('admin', 'caissiere'), async (re
 // PUT /api/factures/:id/pay — enregistrer le paiement
 // La caissière (ou l'admin) peut ajuster librement le prix de chaque article,
 // à la hausse comme à la baisse, sans autorisation particulière.
-router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere'), async (req, res) => {
+router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere', 'caissier-en-ligne'), async (req, res) => {
   try {
     const { modePaiement, items } = req.body;
     const docRef = db.collection('factures').doc(req.params.id);
@@ -258,7 +258,7 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere'), asy
 
 // POST /api/factures/:id/edit-items — caissière (ou admin) : modifie librement les articles
 // d'une facture non encore payée (prix, quantités, ajout/suppression), sans autorisation requise.
-router.post('/:id/edit-items', authenticateToken, requireRole('admin', 'caissiere'), async (req, res) => {
+router.post('/:id/edit-items', authenticateToken, requireRole('admin', 'caissiere', 'caissier-en-ligne'), async (req, res) => {
   try {
     const { items } = req.body;
     if (!Array.isArray(items) || items.length === 0) {

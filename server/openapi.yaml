@@ -15,7 +15,7 @@ info:
     commandes ; toute autre donnée reste protégée.
 
     ### Rôles
-    `admin`, `caissiere`, `serveur`, `cuisiniere`, `barman` — la plupart des routes
+    `admin`, `caissiere`, `serveur`, `cuisiniere`, `barman`, `caissier-en-ligne` — la plupart des routes
     restreignent l'accès à un sous-ensemble de rôles via un contrôle serveur (403 sinon).
 
     ### Restriction Wi-Fi
@@ -1106,7 +1106,7 @@ components:
 
     Role:
       type: string
-      enum: [admin, caissiere, serveur, cuisiniere, barman]
+      enum: [admin, caissiere, serveur, cuisiniere, barman, caissier-en-ligne]
 
     StatutCommande:
       type: string
