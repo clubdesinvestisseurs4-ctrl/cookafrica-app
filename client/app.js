@@ -394,18 +394,14 @@ function badgeQui(c) {
     : '<span style="background:#E3F2FD;color:#0d47a1;border:1px solid #90CAF9;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600;white-space:nowrap"><i class="fas fa-cash-register"></i> Caisse</span>';
 }
 
-// Ouvre la localisation du client livreur : sur téléphone, passe par le
-// sélecteur natif de partage (Maps, Waze, appli de livraison...) au lieu
-// d'ouvrir directement un onglet Google Maps. Retombe sur un nouvel onglet
-// si l'appareil ne supporte pas le partage natif (desktop notamment).
-window.openLocalisation = (event, mapsUrl, numero) => {
-  if (navigator.share) {
-    event.preventDefault();
-    navigator.share({ title: `Livraison – Commande ${numero}`, url: mapsUrl }).catch(() => {});
-    return false;
-  }
-  return true;
-};
+// Lien vers la localisation du client livreur. Sur Android, le lien geo:
+// déclenche le sélecteur natif "Ouvrir avec" (Maps, Waze, appli de
+// livraison...) dès le clic — pas la feuille de partage. Ailleurs (iOS,
+// desktop), on retombe sur le lien Google Maps classique.
+function localisationHref(loc) {
+  if (!loc) return null;
+  return /Android/i.test(navigator.userAgent) ? `geo:${loc.lat},${loc.lng}?q=${loc.lat},${loc.lng}` : loc.mapsUrl;
+}
 
 // ─── Auth ──────────────────────────────────────────────
 
@@ -771,7 +767,7 @@ async function loadCommandes() {
       <td data-label="Articles" style="font-size:.82rem">${items}</td>
       <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
       <td data-label="Table" style="color:var(--gray);font-size:.82rem">${c.commandeClient
-        ? `${c.clientTelephone ? `<a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);text-decoration:none;white-space:nowrap"><i class="fas fa-phone"></i> ${escapeHtml(c.clientTelephone)}</a>` : '—'}${c.clientLocalisation?.mapsUrl ? `<br><a href="${escapeHtml(c.clientLocalisation.mapsUrl)}" target="_blank" rel="noopener" onclick="return openLocalisation(event,'${c.clientLocalisation.mapsUrl}','${escapeHtml(c.numero)}')" style="color:var(--primary);font-weight:600;text-decoration:none;white-space:nowrap"><i class="fas fa-location-dot"></i> Localisation</a>` : ''}`
+        ? `${c.clientTelephone ? `<a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);text-decoration:none;white-space:nowrap"><i class="fas fa-phone"></i> ${escapeHtml(c.clientTelephone)}</a>` : '—'}${c.clientLocalisation ? `<br><a href="${escapeHtml(localisationHref(c.clientLocalisation))}" target="_blank" rel="noopener" style="color:var(--primary);font-weight:600;text-decoration:none;white-space:nowrap"><i class="fas fa-location-dot"></i> Localisation</a>` : ''}`
         : (escapeHtml(c.tableNumero) || '—')}</td>
       <td data-label="Statut">${badgeStatus(c.statut)}</td>
       <td data-label="Actions">
@@ -813,7 +809,7 @@ async function viewCommande(id) {
         <div style="background:var(--light);border-radius:8px;padding:10px 12px;margin-bottom:10px">
           <p style="font-weight:700">${escapeHtml(c.clientPrenom || '')} ${escapeHtml(c.clientNom || '')}</p>
           ${c.clientTelephone ? `<p style="font-size:.85rem;margin-top:3px"><i class="fas fa-phone"></i> <a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);text-decoration:none">${escapeHtml(c.clientTelephone)}</a></p>` : ''}
-          ${c.clientLocalisation?.mapsUrl ? `<p style="font-size:.85rem;margin-top:3px"><a href="${escapeHtml(c.clientLocalisation.mapsUrl)}" target="_blank" rel="noopener" onclick="return openLocalisation(event,'${c.clientLocalisation.mapsUrl}','${escapeHtml(c.numero)}')" style="color:var(--primary);font-weight:700;text-decoration:none"><i class="fas fa-location-dot"></i> Voir la localisation</a></p>` : ''}
+          ${c.clientLocalisation ? `<p style="font-size:.85rem;margin-top:3px"><a href="${escapeHtml(localisationHref(c.clientLocalisation))}" target="_blank" rel="noopener" style="color:var(--primary);font-weight:700;text-decoration:none"><i class="fas fa-location-dot"></i> Voir la localisation</a></p>` : ''}
         </div>` : ''}
       ${c.tableNumero ? `<p><strong>Table :</strong> ${escapeHtml(c.tableNumero)}</p>` : ''}
       ${c.note ? `<p style="color:var(--gray);font-size:.85rem;font-style:italic"><i class="fas fa-sticky-note"></i> ${escapeHtml(c.note)}</p>` : ''}
@@ -1157,7 +1153,7 @@ async function loadCommandesLigne() {
       <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
       <td data-label="Statut">${badgeStatus(c.statut)}</td>
       <td data-label="Actions">
-        ${c.clientLocalisation?.mapsUrl ? `<a class="btn btn-secondary btn-sm" href="${escapeHtml(c.clientLocalisation.mapsUrl)}" target="_blank" rel="noopener" onclick="return openLocalisation(event,'${c.clientLocalisation.mapsUrl}','${escapeHtml(c.numero)}')" title="Voir la localisation sur Google Maps">
+        ${c.clientLocalisation ? `<a class="btn btn-secondary btn-sm" href="${escapeHtml(localisationHref(c.clientLocalisation))}" target="_blank" rel="noopener" title="Voir la localisation">
           <i class="fas fa-location-dot"></i>
         </a>` : ''}
         <button class="btn btn-secondary btn-sm" onclick="viewCommande('${c.id}')" title="Voir le détail">
