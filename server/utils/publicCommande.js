@@ -41,4 +41,36 @@ function resolvePublicItems(requestedItems, menuDocs) {
   return { items, total };
 }
 
-module.exports = { resolvePublicItems, MAX_LIGNES, MAX_QTE_PAR_LIGNE };
+// Valide les coordonnées client obligatoires (nom, prénom, téléphone, localisation)
+// et reconstruit toujours le lien Google Maps à partir des coordonnées numériques
+// validées — jamais depuis une URL fournie par le client, pour empêcher qu'une
+// commande n'affiche un lien arbitraire (phishing) à la caissière qui clique dessus.
+function resolvePublicContact({ prenom, nom, telephone, localisation } = {}) {
+  const prenomSafe    = String(prenom || '').trim().slice(0, 60);
+  const nomSafe       = String(nom || '').trim().slice(0, 60);
+  const telephoneSafe = String(telephone || '').trim().slice(0, 30);
+  const telephoneDigits = telephoneSafe.replace(/\D/g, '');
+
+  if (!prenomSafe) return { error: 'Le prénom est requis' };
+  if (!nomSafe) return { error: 'Le nom est requis' };
+  if (telephoneDigits.length < 8 || telephoneDigits.length > 15) {
+    return { error: 'Numéro de téléphone invalide' };
+  }
+
+  const lat = Number(localisation?.lat);
+  const lng = Number(localisation?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return { error: 'Localisation requise — partagez votre position pour la livraison' };
+  }
+
+  return {
+    contact: {
+      prenom: prenomSafe,
+      nom: nomSafe,
+      telephone: telephoneSafe,
+      localisation: { lat, lng, mapsUrl: `https://www.google.com/maps?q=${lat},${lng}` },
+    },
+  };
+}
+
+module.exports = { resolvePublicItems, resolvePublicContact, MAX_LIGNES, MAX_QTE_PAR_LIGNE };

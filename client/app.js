@@ -793,6 +793,12 @@ async function viewCommande(id) {
   document.getElementById('modal-detail-body').innerHTML = `
     <div style="margin-bottom:12px">
       ${badgeQui(c) ? `<p style="margin-bottom:8px">${badgeQui(c)}</p>` : ''}
+      ${c.commandeClient ? `
+        <div style="background:var(--light);border-radius:8px;padding:10px 12px;margin-bottom:10px">
+          <p style="font-weight:700">${escapeHtml(c.clientPrenom || '')} ${escapeHtml(c.clientNom || '')}</p>
+          ${c.clientTelephone ? `<p style="font-size:.85rem;margin-top:3px"><i class="fas fa-phone"></i> <a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);text-decoration:none">${escapeHtml(c.clientTelephone)}</a></p>` : ''}
+          ${c.clientLocalisation?.mapsUrl ? `<p style="font-size:.85rem;margin-top:3px"><a href="${escapeHtml(c.clientLocalisation.mapsUrl)}" target="_blank" rel="noopener" style="color:var(--primary);font-weight:700;text-decoration:none"><i class="fas fa-location-dot"></i> Voir la localisation sur Google Maps</a></p>` : ''}
+        </div>` : ''}
       ${c.tableNumero ? `<p><strong>Table :</strong> ${escapeHtml(c.tableNumero)}</p>` : ''}
       ${c.note ? `<p style="color:var(--gray);font-size:.85rem;font-style:italic"><i class="fas fa-sticky-note"></i> ${escapeHtml(c.note)}</p>` : ''}
       <p><strong>Statut :</strong> ${badgeStatus(c.statut)}</p>
@@ -1125,15 +1131,19 @@ async function loadCommandesLigne() {
     const alreadyFactured = state.factures.some(f => f.commandeId === c.id);
     const canEdit    = !alreadyFactured && !['annulee', 'servie'].includes(c.statut);
     const canFacture = !alreadyFactured && c.statut === 'en-preparation';
+    const nomClient = c.commandeClient ? `${escapeHtml(c.clientPrenom || '')} ${escapeHtml(c.clientNom || '')}`.trim() : '';
     return `
     <tr>
       <td data-label="N°"><strong>${c.numero}</strong></td>
       <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
-      <td data-label="Client">${badgeQui(c)}</td>
+      <td data-label="Client">${badgeQui(c)}${nomClient ? `<div style="font-size:.78rem;margin-top:3px">${nomClient}</div>` : ''}</td>
       <td data-label="Articles" style="font-size:.82rem">${items}</td>
       <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
       <td data-label="Statut">${badgeStatus(c.statut)}</td>
       <td data-label="Actions">
+        ${c.clientLocalisation?.mapsUrl ? `<a class="btn btn-secondary btn-sm" href="${escapeHtml(c.clientLocalisation.mapsUrl)}" target="_blank" rel="noopener" title="Voir la localisation sur Google Maps">
+          <i class="fas fa-location-dot"></i>
+        </a>` : ''}
         <button class="btn btn-secondary btn-sm" onclick="viewCommande('${c.id}')" title="Voir le détail">
           <i class="fas fa-eye"></i>
         </button>

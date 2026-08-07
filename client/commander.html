@@ -67,10 +67,28 @@
       <div class="pub-cart-items" id="pub-cart-items"></div>
 
       <div class="pub-cart-form">
+        <div class="pub-field-row">
+          <label class="pub-field">
+            <span>Prénom <em class="pub-required">*</em></span>
+            <input type="text" id="pub-cart-prenom" placeholder="Ex : Awa" maxlength="60" required>
+          </label>
+          <label class="pub-field">
+            <span>Nom <em class="pub-required">*</em></span>
+            <input type="text" id="pub-cart-nom" placeholder="Ex : Koné" maxlength="60" required>
+          </label>
+        </div>
         <label class="pub-field">
-          <span>Votre nom <em>(optionnel)</em></span>
-          <input type="text" id="pub-cart-nom" placeholder="Ex : Awa" maxlength="60">
+          <span>Numéro de téléphone <em class="pub-required">*</em></span>
+          <input type="tel" id="pub-cart-tel" placeholder="Ex : 07 00 00 00 00" maxlength="30" required>
         </label>
+        <div class="pub-field">
+          <span>Localisation de livraison <em class="pub-required">*</em></span>
+          <button type="button" class="pub-geoloc-btn" id="pub-geoloc-btn">
+            <i class="fas fa-location-crosshairs"></i>
+            <span id="pub-geoloc-btn-label">Partager ma position</span>
+          </button>
+          <p class="pub-geoloc-status" id="pub-geoloc-status"></p>
+        </div>
       </div>
     </div>
 

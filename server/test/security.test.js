@@ -8,7 +8,7 @@ const corsOrigins = require('../config/corsOrigins');
 const { ipInCidr, normalizeIp, getClientIp } = require('../utils/wifi');
 const { buildCommandeUpdate, ALLOWED_FIELDS } = require('../utils/commandeUpdate');
 const { requireRole } = require('../middleware/auth');
-const { resolvePublicItems, MAX_LIGNES, MAX_QTE_PAR_LIGNE } = require('../utils/publicCommande');
+const { resolvePublicItems, resolvePublicContact, MAX_LIGNES, MAX_QTE_PAR_LIGNE } = require('../utils/publicCommande');
 
 // ─── CORS ───────────────────────────────────────────────────────────────────
 
@@ -192,4 +192,39 @@ test('resolvePublicItems — refuse un panier avec trop de lignes distinctes', (
   const items = Array.from({ length: MAX_LIGNES + 1 }, () => ({ menuItemId: 'm1', quantite: 1 }));
   const { error } = resolvePublicItems(items, MENU_TEST);
   assert.ok(error);
+});
+
+// ─── Coordonnées client (commande publique) — obligatoires + lien Maps fiable ──
+
+const CONTACT_VALIDE = { prenom: 'Awa', nom: 'Koné', telephone: '07 00 00 00 00', localisation: { lat: 5.36, lng: -4.01 } };
+
+test('resolvePublicContact — accepte des coordonnées valides et construit mapsUrl', () => {
+  const { contact, error } = resolvePublicContact(CONTACT_VALIDE);
+  assert.strictEqual(error, undefined);
+  assert.strictEqual(contact.prenom, 'Awa');
+  assert.strictEqual(contact.nom, 'Koné');
+  assert.strictEqual(contact.localisation.mapsUrl, 'https://www.google.com/maps?q=5.36,-4.01');
+});
+
+test('resolvePublicContact — ignore un mapsUrl envoyé par le client et le reconstruit', () => {
+  const { contact } = resolvePublicContact({
+    ...CONTACT_VALIDE,
+    localisation: { lat: 5.36, lng: -4.01, mapsUrl: 'https://evil.example/phishing' },
+  });
+  assert.strictEqual(contact.localisation.mapsUrl, 'https://www.google.com/maps?q=5.36,-4.01');
+});
+
+test('resolvePublicContact — refuse un prénom ou un nom manquant', () => {
+  assert.ok(resolvePublicContact({ ...CONTACT_VALIDE, prenom: '' }).error);
+  assert.ok(resolvePublicContact({ ...CONTACT_VALIDE, nom: '  ' }).error);
+});
+
+test('resolvePublicContact — refuse un téléphone trop court', () => {
+  assert.ok(resolvePublicContact({ ...CONTACT_VALIDE, telephone: '070000' }).error);
+});
+
+test('resolvePublicContact — refuse une localisation absente ou hors limites', () => {
+  assert.ok(resolvePublicContact({ ...CONTACT_VALIDE, localisation: undefined }).error);
+  assert.ok(resolvePublicContact({ ...CONTACT_VALIDE, localisation: { lat: 200, lng: -4.01 } }).error);
+  assert.ok(resolvePublicContact({ ...CONTACT_VALIDE, localisation: { lat: 5.36, lng: 'nawak' } }).error);
 });

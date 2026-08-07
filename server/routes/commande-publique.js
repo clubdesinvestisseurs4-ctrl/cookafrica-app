@@ -8,7 +8,7 @@ const { pushNotification } = require('../utils/notifications');
 const cache    = require('../utils/cache');
 const eventBus = require('../utils/eventBus');
 const { getNextNumero, decrementStocksForItems } = require('../utils/commandes');
-const { resolvePublicItems } = require('../utils/publicCommande');
+const { resolvePublicItems, resolvePublicContact } = require('../utils/publicCommande');
 
 const router = express.Router();
 
@@ -49,7 +49,7 @@ router.get('/menu', async (req, res) => {
 // (onglet Commandes en Ligne) exactement comme une commande en ligne créée par le staff.
 router.post('/commandes', orderLimiter, async (req, res) => {
   try {
-    const { items, clientNom } = req.body;
+    const { items, prenom, nom, telephone, localisation } = req.body;
 
     // Le menu est relu à chaque commande (jamais depuis le cache) pour garantir
     // que le prix facturé correspond toujours au prix réel au moment de l'achat.
@@ -57,9 +57,12 @@ router.post('/commandes', orderLimiter, async (req, res) => {
     const resolved = resolvePublicItems(items, menuDocs);
     if (resolved.error) return res.status(400).json({ error: resolved.error });
 
+    const resolvedContact = resolvePublicContact({ prenom, nom, telephone, localisation });
+    if (resolvedContact.error) return res.status(400).json({ error: resolvedContact.error });
+    const { contact } = resolvedContact;
+
     const numero = await getNextNumero(db);
     const now = new Date();
-    const clientNomSafe = String(clientNom || '').trim().slice(0, 60);
 
     const data = {
       numero,
@@ -67,11 +70,14 @@ router.post('/commandes', orderLimiter, async (req, res) => {
       total: resolved.total,
       source: 'en-ligne',
       commandeClient: true,
-      clientNom: clientNomSafe,
+      clientPrenom: contact.prenom,
+      clientNom: contact.nom,
+      clientTelephone: contact.telephone,
+      clientLocalisation: contact.localisation,
       statut: 'en-preparation',
       date: now.toISOString().split('T')[0],
       createdBy: 'client-web',
-      createdByNom: clientNomSafe || 'Client (en ligne)',
+      createdByNom: `${contact.prenom} ${contact.nom}`,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
     };
@@ -85,7 +91,7 @@ router.post('/commandes', orderLimiter, async (req, res) => {
     pushNotification({
       type: 'info', icon: 'user-clock',
       titre: `Nouvelle commande client ${numero}`,
-      message: `${resolved.items.length} article(s) – Total : ${resolved.total.toLocaleString('fr-FR')} FCFA`,
+      message: `${contact.prenom} ${contact.nom} – ${resolved.items.length} article(s) – Total : ${resolved.total.toLocaleString('fr-FR')} FCFA`,
       createdBy: 'client-web',
     });
 

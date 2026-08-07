@@ -494,6 +494,9 @@ paths:
         toute falsification de prix. La commande part directement au statut
         `en-preparation` avec `source: "en-ligne"` et `commandeClient: true`, et
         apparaît immédiatement dans l'onglet "Commandes en Ligne" côté caisse.
+        Prénom, nom, téléphone et localisation sont obligatoires (livraison) ;
+        `localisation.mapsUrl` est toujours reconstruit côté serveur à partir de
+        `lat`/`lng`, jamais accepté tel quel depuis le client.
       security: []
       requestBody:
         required: true
@@ -1239,7 +1242,11 @@ components:
         commandeClient:
           type: boolean
           description: Présent et vrai si la commande a été passée par le client lui-même via /commander.
+        clientPrenom: { type: string, description: Renseigné uniquement pour une commande client. }
         clientNom: { type: string, description: Renseigné uniquement pour une commande client. }
+        clientTelephone: { type: string, description: Renseigné uniquement pour une commande client. }
+        clientLocalisation:
+          $ref: '#/components/schemas/Localisation'
         statut: { $ref: '#/components/schemas/StatutCommande' }
         date: { type: string, format: date }
         createdBy: { type: string }
@@ -1283,19 +1290,33 @@ components:
         menuItemId: { type: string }
         quantite: { type: integer, minimum: 1, maximum: 20 }
 
+    Localisation:
+      type: object
+      description: Reconstruite côté serveur à partir de lat/lng validés — mapsUrl n'est jamais accepté depuis le client.
+      properties:
+        lat: { type: number, format: double, example: 5.359951 }
+        lng: { type: number, format: double, example: -4.008256 }
+        mapsUrl: { type: string, format: uri, example: 'https://www.google.com/maps?q=5.359951,-4.008256' }
+
     PublicCommandeCreateRequest:
       type: object
-      required: [items]
+      required: [items, prenom, nom, telephone, localisation]
       properties:
         items:
           type: array
           minItems: 1
           maxItems: 30
           items: { $ref: '#/components/schemas/PublicCommandeItemInput' }
-        clientNom:
-          type: string
-          maxLength: 60
-          description: Optionnel.
+        prenom: { type: string, maxLength: 60 }
+        nom: { type: string, maxLength: 60 }
+        telephone: { type: string, maxLength: 30, description: '8 à 15 chiffres une fois les caractères non numériques retirés.' }
+        localisation:
+          type: object
+          required: [lat, lng]
+          description: Coordonnées GPS capturées via l'API de géolocalisation du navigateur du client.
+          properties:
+            lat: { type: number, format: double, minimum: -90, maximum: 90 }
+            lng: { type: number, format: double, minimum: -180, maximum: 180 }
 
     PublicCommandeCreateResponse:
       type: object

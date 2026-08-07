@@ -160,14 +160,34 @@
 .pub-cart-item-remove { background: none; border: none; color: var(--danger); font-size: .95rem; cursor: pointer; padding: 6px; }
 
 .pub-cart-form { margin-top: 18px; display: flex; flex-direction: column; gap: 14px; }
+.pub-field-row { display: flex; gap: 12px; }
+.pub-field-row .pub-field { flex: 1; min-width: 0; }
 .pub-field { display: flex; flex-direction: column; gap: 6px; font-size: .8rem; font-weight: 700; color: var(--dark); }
 .pub-field em { font-weight: 400; color: var(--gray); font-style: normal; }
+.pub-field .pub-required { color: var(--primary); font-weight: 800; font-style: normal; }
 .pub-field input, .pub-field textarea {
   border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
   font-size: .88rem; font-family: inherit; outline: none; resize: vertical;
-  transition: border-color .15s ease;
+  transition: border-color .15s ease, box-shadow .15s ease;
+  width: 100%;
 }
 .pub-field input:focus, .pub-field textarea:focus { border-color: var(--primary); }
+.pub-field input.pub-field-invalid { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(231,76,60,.12); }
+
+.pub-geoloc-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; padding: 12px; border-radius: 10px; border: 1.5px dashed var(--border);
+  background: var(--light); color: var(--dark); font-weight: 700; font-size: .85rem;
+  cursor: pointer; transition: all .15s ease;
+}
+.pub-geoloc-btn:active { transform: scale(.98); }
+.pub-geoloc-btn.is-loading { color: var(--gray); pointer-events: none; }
+.pub-geoloc-btn.is-success { border-style: solid; border-color: var(--success); background: #EAF7EF; color: #1e7e42; }
+.pub-geoloc-btn.is-error { border-style: solid; border-color: var(--danger); background: #FDEDEC; color: var(--danger); }
+.pub-geoloc-status { font-size: .76rem; color: var(--gray); margin-top: 2px; }
+.pub-geoloc-status a { color: var(--primary); font-weight: 700; text-decoration: none; }
+.pub-geoloc-status a:hover { text-decoration: underline; }
+.pub-geoloc-status.is-error-text { color: var(--danger); }
 
 .pub-cart-footer {
   position: sticky; bottom: 0; background: var(--white); border-top: 1px solid var(--border);

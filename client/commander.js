@@ -7,7 +7,10 @@ const API = (window.location.hostname === 'localhost' || window.location.hostnam
   ? 'http://localhost:3001'
   : 'https://cookafrica-api-667992371198.us-central1.run.app';
 
-const CATEGORY_ORDER = ['Entrées', 'Plats', 'Boissons', 'Desserts'];
+// Ordre d'affichage des rayons : mots-clés cherchés dans le nom de catégorie
+// (insensible à la casse/accents approximatifs) plutôt qu'une liste exacte,
+// pour rester correct même si le libellé exact change au menu (ex. "Plats (sauce)").
+const CATEGORY_PRIORITY_KEYWORDS = ['plat', 'buffet', 'accompagnement', 'boisson'];
 const ORDER_TTL_MS = 6 * 60 * 60 * 1000; // une commande suivie reste affichée 6h après rechargement
 const POLL_MS = 8000;
 const POLL_MAX_MS = 45 * 60 * 1000; // arrête le suivi automatique après 45 min d'inactivité
@@ -16,6 +19,7 @@ const state = {
   menu: [],
   panier: [],
   activeCat: 'Toutes',
+  localisation: null, // { lat, lng } capturée via navigator.geolocation
   pollTimer: null,
   pollStartedAt: 0,
 };
@@ -117,11 +121,18 @@ document.getElementById('pub-retry-btn').addEventListener('click', initMenuFlow)
 
 // ─── Catégories + menu ──────────────────────────────────
 
+function categoryPriority(cat) {
+  const norm = cat.toLowerCase();
+  const idx = CATEGORY_PRIORITY_KEYWORDS.findIndex((k) => norm.includes(k));
+  return idx === -1 ? CATEGORY_PRIORITY_KEYWORDS.length : idx;
+}
+
 function orderedCategories() {
   const present = [...new Set(state.menu.map((m) => m.categorie || 'Autres'))];
-  const known = CATEGORY_ORDER.filter((c) => present.includes(c));
-  const rest = present.filter((c) => !CATEGORY_ORDER.includes(c)).sort((a, b) => a.localeCompare(b, 'fr'));
-  return [...known, ...rest];
+  return present.sort((a, b) => {
+    const pa = categoryPriority(a), pb = categoryPriority(b);
+    return pa !== pb ? pa - pb : a.localeCompare(b, 'fr');
+  });
 }
 
 function renderCategories() {
@@ -250,14 +261,100 @@ document.getElementById('pub-cart-bar-btn').addEventListener('click', () => {
 });
 document.getElementById('pub-cart-back').addEventListener('click', () => show('pub-screen-menu'));
 
+// ─── Coordonnées client (persistées pour la session) ────
+
+function saveContact() {
+  sessionStorage.setItem('ca_pub_contact', JSON.stringify({
+    prenom: document.getElementById('pub-cart-prenom').value,
+    nom: document.getElementById('pub-cart-nom').value,
+    tel: document.getElementById('pub-cart-tel').value,
+    localisation: state.localisation,
+  }));
+}
+function loadContact() {
+  try { return JSON.parse(sessionStorage.getItem('ca_pub_contact')) || null; } catch { return null; }
+}
+
+// ─── Localisation (obligatoire — géolocalisation navigateur) ──
+
+const geolocBtn    = document.getElementById('pub-geoloc-btn');
+const geolocLabel  = document.getElementById('pub-geoloc-btn-label');
+const geolocStatus = document.getElementById('pub-geoloc-status');
+
+function setGeolocUi(kind, html) {
+  geolocBtn.classList.remove('is-loading', 'is-success', 'is-error');
+  if (kind) geolocBtn.classList.add(kind);
+  geolocStatus.className = `pub-geoloc-status${kind === 'is-error' ? ' is-error-text' : ''}`;
+  geolocStatus.innerHTML = html || '';
+}
+
+function renderGeolocSuccess({ lat, lng }) {
+  geolocLabel.textContent = 'Position enregistrée';
+  const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+  setGeolocUi('is-success', `<i class="fas fa-check"></i> Position capturée — <a href="${mapsUrl}" target="_blank" rel="noopener">vérifier sur Google Maps</a> · <button type="button" class="pub-geoloc-refresh-link" id="pub-geoloc-refresh">Actualiser</button>`);
+  document.getElementById('pub-geoloc-refresh')?.addEventListener('click', captureLocalisation);
+}
+
+function captureLocalisation() {
+  if (!navigator.geolocation) {
+    setGeolocUi('is-error', "Votre navigateur ne permet pas la géolocalisation — indiquez votre adresse à la caisse par téléphone.");
+    return;
+  }
+  geolocLabel.textContent = 'Localisation en cours…';
+  setGeolocUi('is-loading', 'Autorisez l’accès à la position dans la fenêtre du navigateur…');
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      state.localisation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      saveContact();
+      renderGeolocSuccess(state.localisation);
+    },
+    (err) => {
+      state.localisation = null;
+      geolocLabel.textContent = 'Partager ma position';
+      const messages = {
+        1: "Autorisation refusée. Activez la localisation pour ce site dans les réglages de votre navigateur, puis réessayez.",
+        2: 'Position indisponible. Vérifiez que le GPS est activé sur votre appareil.',
+        3: 'La demande de localisation a expiré. Réessayez.',
+      };
+      setGeolocUi('is-error', messages[err.code] || 'Impossible de récupérer votre position. Réessayez.');
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 300000 }
+  );
+}
+
+geolocBtn.addEventListener('click', captureLocalisation);
+
+['pub-cart-prenom', 'pub-cart-nom', 'pub-cart-tel'].forEach((id) => {
+  document.getElementById(id).addEventListener('input', (e) => {
+    e.target.classList.remove('pub-field-invalid');
+    saveContact();
+  });
+});
+
 // ─── Envoi de la commande ───────────────────────────────
 
 document.getElementById('pub-submit-btn').addEventListener('click', async () => {
   if (state.panier.length === 0) { toast('Votre panier est vide', 'error'); return; }
 
-  const btn = document.getElementById('pub-submit-btn');
-  const clientNom = document.getElementById('pub-cart-nom').value.trim();
+  const prenomEl = document.getElementById('pub-cart-prenom');
+  const nomEl    = document.getElementById('pub-cart-nom');
+  const telEl    = document.getElementById('pub-cart-tel');
+  const prenom = prenomEl.value.trim();
+  const nom    = nomEl.value.trim();
+  const tel    = telEl.value.trim();
 
+  if (!prenom) { prenomEl.classList.add('pub-field-invalid'); prenomEl.focus(); toast('Indiquez votre prénom', 'error'); return; }
+  if (!nom) { nomEl.classList.add('pub-field-invalid'); nomEl.focus(); toast('Indiquez votre nom', 'error'); return; }
+  if (tel.replace(/\D/g, '').length < 8) { telEl.classList.add('pub-field-invalid'); telEl.focus(); toast('Indiquez un numéro de téléphone valide', 'error'); return; }
+  if (!state.localisation) {
+    toast('Partagez votre position pour la livraison', 'error');
+    geolocBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+
+  saveContact();
+  const btn = document.getElementById('pub-submit-btn');
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Envoi…';
 
@@ -265,7 +362,8 @@ document.getElementById('pub-submit-btn').addEventListener('click', async () => 
     method: 'POST',
     body: JSON.stringify({
       items: state.panier.map((p) => ({ menuItemId: p.menuItemId, quantite: p.quantite })),
-      clientNom,
+      prenom, nom, telephone: tel,
+      localisation: state.localisation,
     }),
   });
 
@@ -346,6 +444,17 @@ document.getElementById('pub-new-order-btn').addEventListener('click', () => {
 
 (async function init() {
   state.panier = loadPanier();
+
+  const savedContact = loadContact();
+  if (savedContact) {
+    document.getElementById('pub-cart-prenom').value = savedContact.prenom || '';
+    document.getElementById('pub-cart-nom').value = savedContact.nom || '';
+    document.getElementById('pub-cart-tel').value = savedContact.tel || '';
+    if (savedContact.localisation) {
+      state.localisation = savedContact.localisation;
+      renderGeolocSuccess(state.localisation);
+    }
+  }
 
   const savedOrder = loadOrder();
   if (savedOrder) {
