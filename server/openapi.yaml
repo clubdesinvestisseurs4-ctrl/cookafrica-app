@@ -1,0 +1,1519 @@
+openapi: 3.0.3
+info:
+  title: Cook Africa API
+  description: |
+    API backend de l'application de gestion interne du restaurant Cook Africa,
+    plus le point d'entrée public utilisé par la page client `/commander`.
+
+    ### Authentification
+    La quasi-totalité des routes exigent un JWT Bearer obtenu via `POST /api/auth/login`,
+    envoyé dans l'en-tête `Authorization: Bearer <token>`. Le token expire après 12h.
+
+    Les routes sous `/api/public/*` sont volontairement **non authentifiées** : elles sont
+    appelées depuis le navigateur d'un client final (page de commande en ligne), pas depuis
+    un poste staff. Elles n'exposent que le menu disponible et la création/consultation de
+    commandes ; toute autre donnée reste protégée.
+
+    ### Rôles
+    `admin`, `caissiere`, `serveur`, `cuisiniere`, `barman` — la plupart des routes
+    restreignent l'accès à un sous-ensemble de rôles via un contrôle serveur (403 sinon).
+
+    ### Restriction Wi-Fi
+    Pour tout rôle autre que `admin`, les requêtes authentifiées sont en plus filtrées par
+    IP si la restriction Wi-Fi est activée (`/api/wifi-config`) — 403 `wifi_restricted`
+    si le poste n'est pas sur le réseau autorisé.
+
+    ### Erreurs
+    Toutes les erreurs suivent le même format `{ "error": "message" }`, avec le code HTTP
+    approprié (400 validation, 401 non authentifié, 403 accès refusé, 404 introuvable,
+    409 conflit, 429 limite de requêtes, 500 erreur serveur).
+  version: 1.0.0
+  contact:
+    name: Cook Africa
+externalDocs:
+  description: README du dépôt
+  url: https://github.com/clubdesinvestisseurs4-ctrl/cookafrica-app
+
+servers:
+  - url: https://cookafrica-api-667992371198.us-central1.run.app
+    description: Production (Cloud Run)
+  - url: http://localhost:3001
+    description: Développement local
+
+tags:
+  - name: Auth
+    description: Connexion, sessions, gestion des utilisateurs staff
+  - name: Commandes
+    description: Commandes passées en salle / en ligne par le staff
+  - name: Commande publique
+    description: Endpoints non authentifiés utilisés par la page client /commander
+  - name: Menu
+    description: Plats et boissons du menu
+  - name: Factures
+    description: Facturation et encaissement
+  - name: Stocks
+    description: Stocks d'ingrédients et stocks de plats préparés du jour
+  - name: Statistiques
+    description: Dashboard, rapports, notifications de synthèse
+  - name: Notifications
+    description: Journal des notifications (admin)
+  - name: Wi-Fi
+    description: Restriction d'accès par réseau Wi-Fi (admin)
+  - name: Système
+    description: Health check et flux d'événements temps réel
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  /health:
+    get:
+      operationId: getHealth
+      tags: [Système]
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: Service opérationnel
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  timestamp: { type: string, format: date-time }
+                  service: { type: string, example: Cook Africa API }
+
+  /api/events:
+    get:
+      operationId: getApiEvents
+      tags: [Système]
+      summary: Flux d'événements temps réel (Server-Sent Events)
+      description: |
+        Connexion longue durée (SSE), token JWT transmis en query string (`?token=`) car
+        `EventSource` ne supporte pas les en-têtes. Chaque message ne transporte que le
+        **type** d'événement (`{"type":"commandes"}`, `{"type":"factures"}`,
+        `{"type":"stocks"}`, `{"type":"notifications"}`) — jamais de données : le client
+        doit ensuite rappeler l'API concernée. Heartbeat toutes les 25s.
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Flux `text/event-stream` ouvert
+          content:
+            text/event-stream:
+              schema: { type: string }
+        '401':
+          description: Token manquant ou invalide
+
+  # ── Auth ──────────────────────────────────────────────
+  /api/auth/login:
+    post:
+      operationId: postApiAuthLogin
+      tags: [Auth]
+      summary: Connexion
+      description: Limité à 10 tentatives / 15 min par IP. Bloqué si restriction Wi-Fi active et rôle ≠ admin.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string, example: admin }
+                password: { type: string, format: password }
+      responses:
+        '200':
+          description: Connexion réussie
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: '#/components/schemas/UserPublic' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Identifiants valides mais poste hors réseau Wi-Fi autorisé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string, example: wifi_restricted }
+                  message: { type: string }
+
+  /api/auth/logout:
+    post:
+      operationId: postApiAuthLogout
+      tags: [Auth]
+      summary: Déconnexion (journalisation)
+      responses:
+        '200':
+          description: Déconnexion enregistrée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { message: { type: string } }
+
+  /api/auth/sessions:
+    get:
+      operationId: getApiAuthSessions
+      tags: [Auth]
+      summary: Journal d'audit des connexions (admin)
+      parameters:
+        - name: debut
+          in: query
+          schema: { type: string, format: date }
+        - name: fin
+          in: query
+          schema: { type: string, format: date }
+        - name: username
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Liste des sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Session' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/auth/seed:
+    post:
+      operationId: postApiAuthSeed
+      tags: [Auth]
+      summary: Initialise les 5 comptes staff par défaut (une seule fois)
+      description: |
+        Protégé par un en-tête `X-Seed-Token` devant correspondre à la variable
+        d'environnement `SEED_TOKEN` du serveur — pas par un JWT.
+      security: []
+      parameters:
+        - name: X-Seed-Token
+          in: header
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Utilisateurs créés
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  count: { type: integer, example: 5 }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: Base déjà initialisée
+
+  /api/auth/migrate-roles:
+    post:
+      operationId: postApiAuthMigrateRoles
+      tags: [Auth]
+      summary: Migre les anciens noms de rôles vers les nouveaux (admin)
+      responses:
+        '200':
+          description: Migration effectuée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { message: { type: string } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/auth/utilisateurs:
+    get:
+      operationId: getApiAuthUtilisateurs
+      tags: [Auth]
+      summary: Liste des utilisateurs staff (admin)
+      responses:
+        '200':
+          description: Liste des utilisateurs (sans passwordHash)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/User' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      operationId: postApiAuthUtilisateurs
+      tags: [Auth]
+      summary: Créer un utilisateur staff (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserCreateRequest' }
+      responses:
+        '201':
+          description: Utilisateur créé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: Identifiant déjà utilisé
+
+  /api/auth/utilisateurs/{id}:
+    put:
+      operationId: putApiAuthUtilisateursById
+      tags: [Auth]
+      summary: Modifier un utilisateur staff (admin)
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserUpdateRequest' }
+      responses:
+        '200':
+          description: Utilisateur mis à jour
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { message: { type: string } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      operationId: deleteApiAuthUtilisateursById
+      tags: [Auth]
+      summary: Désactiver un utilisateur staff (admin)
+      description: Un admin ne peut pas désactiver son propre compte.
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Utilisateur désactivé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { message: { type: string } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/auth/me:
+    get:
+      operationId: getApiAuthMe
+      tags: [Auth]
+      summary: Vérifie le token courant et retourne l'utilisateur
+      responses:
+        '200':
+          description: Utilisateur courant
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserPublic' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/auth/check-wifi:
+    get:
+      operationId: getApiAuthCheckWifi
+      tags: [Auth]
+      summary: Vérifie que le poste est sur le réseau Wi-Fi autorisé
+      responses:
+        '200':
+          description: Poste autorisé (sinon 403 déjà renvoyé par le middleware)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { ok: { type: boolean, example: true } }
+
+  # ── Commandes (staff) ────────────────────────────────
+  /api/commandes:
+    get:
+      operationId: getApiCommandes
+      tags: [Commandes]
+      summary: Liste des commandes (staff)
+      parameters:
+        - name: statut
+          in: query
+          schema: { $ref: '#/components/schemas/StatutCommande' }
+        - name: date
+          in: query
+          description: Filtre sur la date (YYYY-MM-DD)
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Liste des commandes (200 plus récentes, mises en cache 15s)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Commande' }
+    post:
+      operationId: postApiCommandes
+      tags: [Commandes]
+      summary: Créer une commande (serveur/caissière/admin)
+      description: |
+        Un serveur crée une commande au statut `en-attente` (doit ensuite l'envoyer via
+        `PUT /{id}/envoyer`). Un admin/caissière crée directement au statut
+        `en-preparation`. Seuls admin/caissière peuvent poser `source: "en-ligne"`
+        (écran dédié "Commandes en Ligne" côté caisse).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommandeCreateRequest' }
+      responses:
+        '201':
+          description: Commande créée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Commande' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/commandes/{id}/envoyer:
+    put:
+      operationId: putApiCommandesByIdEnvoyer
+      tags: [Commandes]
+      summary: Envoyer une commande à la facturation (serveur/admin)
+      description: Passe la commande de `en-attente` à `en-preparation` — elle appartient ensuite à la caissière.
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Commande envoyée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Commande' }
+        '400':
+          description: Déjà envoyée à la facturation
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/commandes/{id}/items:
+    put:
+      operationId: putApiCommandesByIdItems
+      tags: [Commandes]
+      summary: Modifier librement les articles d'une commande
+      description: Interdit si la commande est terminée, si elle a déjà une facture de type "facture", ou si un serveur tente de modifier une commande déjà envoyée en caisse.
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/CommandeItemInput' }
+      responses:
+        '200':
+          description: Commande modifiée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Commande' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/commandes/{id}:
+    put:
+      operationId: putApiCommandesById
+      tags: [Commandes]
+      summary: Mettre à jour le statut, la note ou le n° de table d'une commande
+      description: Seuls `statut`, `note` et `tableNumero` sont modifiables via cette route (whitelist anti mass-assignment) ; `total`/`items`/`createdBy` sont ignorés silencieusement.
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommandeUpdateRequest' }
+      responses:
+        '200':
+          description: Commande mise à jour
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Commande' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteApiCommandesById
+      tags: [Commandes]
+      summary: Annuler une commande (admin)
+      description: Passe la commande au statut `annulee` et supprime la facture liée si elle existe.
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Commande annulée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  factureSupprimee: { type: boolean }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ── Commande publique (client) ───────────────────────
+  /api/public/menu:
+    get:
+      operationId: getApiPublicMenu
+      tags: [Commande publique]
+      summary: Menu public (articles disponibles uniquement)
+      security: []
+      responses:
+        '200':
+          description: Liste du menu disponible, triée par nom
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PublicMenuItem' }
+
+  /api/public/commandes:
+    post:
+      operationId: postApiPublicCommandes
+      tags: [Commande publique]
+      summary: Le client passe sa propre commande depuis son téléphone
+      description: |
+        Aucune authentification. Limité à 10 requêtes / 10 min par IP.
+        **Le prix et le nom de chaque article sont toujours résolus côté serveur à
+        partir du menu réel** — jamais depuis ce que le client envoie — pour empêcher
+        toute falsification de prix. La commande part directement au statut
+        `en-preparation` avec `source: "en-ligne"` et `commandeClient: true`, et
+        apparaît immédiatement dans l'onglet "Commandes en Ligne" côté caisse.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PublicCommandeCreateRequest' }
+      responses:
+        '201':
+          description: Commande créée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicCommandeCreateResponse' }
+        '400':
+          description: Panier vide, article introuvable/indisponible, quantité invalide, ou trop d'articles
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Trop de commandes envoyées depuis cette IP
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/public/commandes/{id}:
+    get:
+      operationId: getApiPublicCommandesById
+      tags: [Commande publique]
+      summary: Suivi de statut d'une commande client
+      description: |
+        L'`id` Firestore renvoyé à la création sert de jeton d'accès (non énumérable).
+        Ne renvoie que les commandes marquées `commandeClient: true` — une commande
+        staff n'est jamais consultable par cette route.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Statut courant de la commande
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicCommandeStatus' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ── Menu ──────────────────────────────────────────────
+  /api/menu:
+    get:
+      operationId: getApiMenu
+      tags: [Menu]
+      summary: Liste complète du menu (staff)
+      responses:
+        '200':
+          description: Menu complet (disponible et indisponible)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/MenuItem' }
+    post:
+      operationId: postApiMenu
+      tags: [Menu]
+      summary: Créer un plat/boisson (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuItemCreateRequest' }
+      responses:
+        '201':
+          description: Article créé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MenuItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/menu/{id}:
+    put:
+      operationId: putApiMenuById
+      tags: [Menu]
+      summary: Modifier un article du menu (admin)
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuItemUpdateRequest' }
+      responses:
+        '200':
+          description: Article modifié
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MenuItem' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      operationId: deleteApiMenuById
+      tags: [Menu]
+      summary: Supprimer un article du menu (admin)
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Article supprimé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { message: { type: string } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/menu/seed:
+    post:
+      operationId: postApiMenuSeed
+      tags: [Menu]
+      summary: Initialise 14 plats/boissons par défaut (admin, une seule fois)
+      responses:
+        '200':
+          description: Menu initialisé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { message: { type: string } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: Menu déjà initialisé
+
+  # ── Factures ──────────────────────────────────────────
+  /api/factures:
+    get:
+      operationId: getApiFactures
+      tags: [Factures]
+      summary: Liste des factures (staff)
+      parameters:
+        - name: debut
+          in: query
+          schema: { type: string, format: date }
+        - name: fin
+          in: query
+          schema: { type: string, format: date }
+        - name: statut
+          in: query
+          schema: { type: string, enum: [payee, partielle] }
+      responses:
+        '200':
+          description: Liste des factures (300 plus récentes, mises en cache 60s)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Facture' }
+    post:
+      operationId: postApiFactures
+      tags: [Factures]
+      summary: Générer une facture depuis une commande (admin/caissière)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FactureCreateRequest' }
+      responses:
+        '201':
+          description: Facture générée (statut initial "partielle", TVA déjà incluse dans les prix du menu)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Facture' }
+        '400':
+          description: Commande vide ou pas encore envoyée à la facturation
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Une facture existe déjà pour cette commande
+
+  /api/factures/{id}:
+    get:
+      operationId: getApiFacturesById
+      tags: [Factures]
+      summary: Détail d'une facture (staff)
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Facture
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Facture' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/factures/repair-numeros:
+    post:
+      operationId: postApiFacturesRepairNumeros
+      tags: [Factures]
+      summary: Répare les numéros de facture invalides en base (admin, maintenance)
+      responses:
+        '200':
+          description: Factures réparées
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  details:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        ancien: { type: string }
+                        nouveau: { type: string }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/factures/{id}/pay:
+    put:
+      operationId: putApiFacturesByIdPay
+      tags: [Factures]
+      summary: Encaisser le paiement d'une facture (admin/caissière)
+      description: |
+        La caissière peut ajuster librement les articles/prix avant paiement.
+        Décrémente le stock des plats du jour et marque la commande liée `servie`.
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FacturePayRequest' }
+      responses:
+        '200':
+          description: Paiement enregistré
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Facture' }
+        '400':
+          description: Facture déjà payée
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/factures/{id}/edit-items:
+    post:
+      operationId: postApiFacturesByIdEditItems
+      tags: [Factures]
+      summary: Modifier librement les articles d'une facture non payée (admin/caissière)
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FactureEditItemsRequest' }
+      responses:
+        '200':
+          description: Facture modifiée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Facture' }
+        '400':
+          description: Facture déjà payée ou liste d'articles vide
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ── Stocks ────────────────────────────────────────────
+  /api/stocks:
+    get:
+      operationId: getApiStocks
+      tags: [Stocks]
+      summary: Liste des stocks d'ingrédients (staff)
+      responses:
+        '200':
+          description: Liste des stocks
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/StockItem' }
+    post:
+      operationId: postApiStocks
+      tags: [Stocks]
+      summary: Ajouter un article de stock (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StockItemCreateRequest' }
+      responses:
+        '201':
+          description: Article créé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StockItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/stocks/{id}:
+    put:
+      operationId: putApiStocksById
+      tags: [Stocks]
+      summary: Modifier un article de stock (admin)
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StockItemUpdateRequest' }
+      responses:
+        '200':
+          description: Article modifié
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StockItem' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/stocks/plats:
+    get:
+      operationId: getApiStocksPlats
+      tags: [Stocks]
+      summary: Stocks de plats préparés pour une date donnée
+      description: |
+        Si aucun document n'existe pour la date demandée, seules les Boissons
+        (non périssables) sont reportées depuis le dernier jour connu ; Plats et
+        Accompagnements repartent à zéro chaque jour.
+      parameters:
+        - name: date
+          in: query
+          description: Défaut = aujourd'hui
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Stocks de plats du jour
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/StockPlat' }
+    post:
+      operationId: postApiStocksPlats
+      tags: [Stocks]
+      summary: Enregistrer les quantités de plats préparés du jour (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StockPlatsSetRequest' }
+      responses:
+        '200':
+          description: Stock enregistré
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  date: { type: string, format: date }
+                  epuises:
+                    type: array
+                    items: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/stocks/plats/alerts:
+    get:
+      operationId: getApiStocksPlatsAlerts
+      tags: [Stocks]
+      summary: Plats épuisés pour une date donnée
+      parameters:
+        - name: date
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Plats à quantiteRestante = 0
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/StockPlat' }
+
+  /api/stocks/alerts:
+    get:
+      operationId: getApiStocksAlerts
+      tags: [Stocks]
+      summary: Ingrédients sous le seuil minimum (mis en cache 60s)
+      responses:
+        '200':
+          description: Liste des alertes stock bas
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/StockItem' }
+
+  /api/stocks/seed:
+    post:
+      operationId: postApiStocksSeed
+      tags: [Stocks]
+      summary: Initialise 14 ingrédients par défaut (admin, une seule fois)
+      responses:
+        '200':
+          description: Stocks initialisés
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { message: { type: string } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: Stocks déjà initialisés
+
+  # ── Statistiques ──────────────────────────────────────
+  /api/stats/dashboard:
+    get:
+      operationId: getApiStatsDashboard
+      tags: [Statistiques]
+      summary: KPIs du jour (mis en cache 60s, invalidé par commandes/factures)
+      responses:
+        '200':
+          description: Statistiques du tableau de bord
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DashboardStats' }
+
+  /api/stats/rapport:
+    get:
+      operationId: getApiStatsRapport
+      tags: [Statistiques]
+      summary: Rapport de ventes sur une période
+      parameters:
+        - name: debut
+          in: query
+          schema: { type: string, format: date }
+        - name: fin
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Rapport
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RapportStats' }
+
+  /api/stats/notifications:
+    get:
+      operationId: getApiStatsNotifications
+      tags: [Statistiques]
+      summary: Notifications de synthèse (stock bas, commandes en cours, factures impayées)
+      description: Mis en cache 30s. Distinct de `/api/notifications` (journal détaillé, admin uniquement).
+      responses:
+        '200':
+          description: Liste de notifications de synthèse
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/NotificationSummary' }
+
+  # ── Notifications ─────────────────────────────────────
+  /api/notifications:
+    get:
+      operationId: getApiNotifications
+      tags: [Notifications]
+      summary: Journal des notifications (admin voit tout, les autres reçoivent [])
+      responses:
+        '200':
+          description: Liste des notifications (60 plus récentes)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Notification' }
+
+  /api/notifications/read:
+    patch:
+      operationId: patchApiNotificationsRead
+      tags: [Notifications]
+      summary: Marquer toutes les notifications comme lues (admin ; silencieux sinon)
+      responses:
+        '200':
+          description: Nombre de notifications mises à jour
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { updated: { type: integer } }
+
+  # ── Wi-Fi ─────────────────────────────────────────────
+  /api/wifi-config:
+    get:
+      operationId: getApiWifiConfig
+      tags: [Wi-Fi]
+      summary: Configuration Wi-Fi courante + IP du poste (admin)
+      responses:
+        '200':
+          description: Configuration
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WifiConfig' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/wifi-config/add:
+    post:
+      operationId: postApiWifiConfigAdd
+      tags: [Wi-Fi]
+      summary: Ajouter une IP (ou l'IP courante) à la liste autorisée (admin)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ip: { type: string, description: 'Optionnel — défaut : IP du poste appelant' }
+      responses:
+        '200':
+          description: Réseau ajouté
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  allowedIps: { type: array, items: { type: string } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/wifi-config/remove:
+    delete:
+      operationId: deleteApiWifiConfigRemove
+      tags: [Wi-Fi]
+      summary: Retirer une IP de la liste autorisée (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ip]
+              properties: { ip: { type: string } }
+      responses:
+        '200':
+          description: IP supprimée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  allowedIps: { type: array, items: { type: string } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/wifi-config/toggle:
+    patch:
+      operationId: patchApiWifiConfigToggle
+      tags: [Wi-Fi]
+      summary: Active ou désactive la restriction Wi-Fi (admin)
+      responses:
+        '200':
+          description: Bascule effectuée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  enabled: { type: boolean }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Jeton obtenu via `POST /api/auth/login`, valable 12h.
+
+  parameters:
+    IdPathParam:
+      name: id
+      in: path
+      required: true
+      description: Identifiant du document Firestore
+      schema: { type: string }
+
+  responses:
+    BadRequest:
+      description: Requête invalide
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Non authentifié (token manquant, invalide ou expiré)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Accès refusé (rôle insuffisant, ou hors réseau Wi-Fi autorisé)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Ressource introuvable
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+
+    Role:
+      type: string
+      enum: [admin, caissiere, serveur, cuisiniere, barman]
+
+    StatutCommande:
+      type: string
+      enum: [en-attente, en-preparation, prete, servie, annulee]
+
+    SourceCommande:
+      type: string
+      enum: [sur-place, en-ligne]
+
+    UserPublic:
+      type: object
+      properties:
+        id: { type: string }
+        username: { type: string }
+        nom: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        username: { type: string }
+        prenom: { type: string }
+        nom: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        actif: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        lastLogin: { type: string, format: date-time, nullable: true }
+
+    UserCreateRequest:
+      type: object
+      required: [nom, username, password, role]
+      properties:
+        prenom: { type: string }
+        nom: { type: string }
+        username: { type: string }
+        password: { type: string, format: password }
+        role: { $ref: '#/components/schemas/Role' }
+
+    UserUpdateRequest:
+      type: object
+      properties:
+        prenom: { type: string }
+        nom: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        password: { type: string, format: password, description: Optionnel — change le mot de passe si fourni }
+        actif: { type: boolean }
+
+    Session:
+      type: object
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        username: { type: string }
+        nom: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        action: { type: string, enum: [login, logout] }
+        ip: { type: string }
+        timestamp: { type: string, format: date-time }
+
+    MenuItem:
+      type: object
+      properties:
+        id: { type: string }
+        nom: { type: string }
+        categorie: { type: string, example: Plats }
+        prix: { type: number, example: 2000 }
+        description: { type: string }
+        disponible: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    MenuItemCreateRequest:
+      type: object
+      required: [nom, prix]
+      properties:
+        nom: { type: string }
+        categorie: { type: string }
+        prix: { type: number }
+        description: { type: string }
+        disponible: { type: boolean, default: true }
+
+    MenuItemUpdateRequest:
+      type: object
+      properties:
+        nom: { type: string }
+        categorie: { type: string }
+        prix: { type: number }
+        description: { type: string }
+        disponible: { type: boolean }
+
+    PublicMenuItem:
+      type: object
+      properties:
+        id: { type: string }
+        nom: { type: string }
+        categorie: { type: string }
+        prix: { type: number }
+        description: { type: string }
+
+    CommandeItem:
+      type: object
+      properties:
+        menuItemId: { type: string }
+        nom: { type: string }
+        prix: { type: number }
+        quantite: { type: integer }
+        sousTotal: { type: number }
+        categorie: { type: string }
+
+    CommandeItemInput:
+      type: object
+      required: [nom, prix, quantite]
+      properties:
+        menuItemId: { type: string }
+        nom: { type: string }
+        prix: { type: number }
+        quantite: { type: integer, minimum: 1 }
+        categorie: { type: string }
+
+    Commande:
+      type: object
+      properties:
+        id: { type: string }
+        numero: { type: string, example: CMD-0001 }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CommandeItem' }
+        total: { type: number }
+        note: { type: string }
+        tableNumero: { type: string }
+        source: { $ref: '#/components/schemas/SourceCommande' }
+        commandeClient:
+          type: boolean
+          description: Présent et vrai si la commande a été passée par le client lui-même via /commander.
+        clientNom: { type: string, description: Renseigné uniquement pour une commande client. }
+        statut: { $ref: '#/components/schemas/StatutCommande' }
+        date: { type: string, format: date }
+        createdBy: { type: string }
+        createdByNom: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        envoyeeAt: { type: string, format: date-time }
+        envoyeeBy: { type: string }
+        envoyeeByNom: { type: string }
+        lastEditedBy: { type: string }
+        lastEditedByNom: { type: string }
+        lastEditedAt: { type: string, format: date-time }
+
+    CommandeCreateRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/CommandeItemInput' }
+        note: { type: string }
+        tableNumero: { type: string }
+        source:
+          type: string
+          enum: [en-ligne]
+          description: Optionnel — seuls admin/caissière peuvent l'utiliser pour marquer la commande "en ligne".
+
+    CommandeUpdateRequest:
+      type: object
+      description: Whitelist stricte — tout autre champ envoyé est ignoré.
+      properties:
+        statut: { $ref: '#/components/schemas/StatutCommande' }
+        note: { type: string }
+        tableNumero: { type: string }
+
+    PublicCommandeItemInput:
+      type: object
+      required: [menuItemId, quantite]
+      properties:
+        menuItemId: { type: string }
+        quantite: { type: integer, minimum: 1, maximum: 20 }
+
+    PublicCommandeCreateRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 30
+          items: { $ref: '#/components/schemas/PublicCommandeItemInput' }
+        clientNom:
+          type: string
+          maxLength: 60
+          description: Optionnel.
+
+    PublicCommandeCreateResponse:
+      type: object
+      properties:
+        id: { type: string }
+        numero: { type: string }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CommandeItem' }
+        total: { type: number }
+        statut: { $ref: '#/components/schemas/StatutCommande' }
+        createdAt: { type: string, format: date-time }
+
+    PublicCommandeStatus:
+      type: object
+      properties:
+        id: { type: string }
+        numero: { type: string }
+        statut: { $ref: '#/components/schemas/StatutCommande' }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CommandeItem' }
+        total: { type: number }
+        createdAt: { type: string, format: date-time }
+
+    Facture:
+      type: object
+      properties:
+        id: { type: string }
+        numero: { type: string, example: FACT-0001 }
+        type: { type: string, enum: [facture] }
+        commandeId: { type: string }
+        commandeNumero: { type: string }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CommandeItem' }
+        tableNumero: { type: string }
+        note: { type: string }
+        total: { type: number }
+        reste: { type: number }
+        modePaiement: { type: string, example: especes }
+        statut: { type: string, enum: [partielle, payee] }
+        serveurNom: { type: string }
+        caissiereName: { type: string }
+        date: { type: string, format: date }
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        lastEditedBy: { type: string }
+        lastEditedByNom: { type: string }
+        lastEditedAt: { type: string, format: date-time }
+
+    FactureCreateRequest:
+      type: object
+      required: [commandeId]
+      properties:
+        commandeId: { type: string }
+        modePaiement: { type: string, default: especes }
+
+    FacturePayRequest:
+      type: object
+      properties:
+        modePaiement: { type: string }
+        items:
+          type: array
+          description: Optionnel — remplace les articles/prix de la facture avant paiement.
+          items: { $ref: '#/components/schemas/CommandeItemInput' }
+
+    FactureEditItemsRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/CommandeItemInput' }
+
+    StockItem:
+      type: object
+      properties:
+        id: { type: string }
+        nom: { type: string }
+        categorie: { type: string }
+        quantite: { type: number }
+        minimum: { type: number }
+        unite: { type: string, example: kg }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    StockItemCreateRequest:
+      type: object
+      required: [nom, quantite, minimum]
+      properties:
+        nom: { type: string }
+        categorie: { type: string }
+        quantite: { type: number }
+        minimum: { type: number }
+        unite: { type: string }
+
+    StockItemUpdateRequest:
+      type: object
+      properties:
+        nom: { type: string }
+        categorie: { type: string }
+        quantite: { type: number }
+        minimum: { type: number }
+        unite: { type: string }
+
+    StockPlat:
+      type: object
+      properties:
+        id: { type: string }
+        menuItemId: { type: string }
+        nom: { type: string }
+        categorie: { type: string }
+        date: { type: string, format: date }
+        quantitePrepare: { type: integer }
+        quantiteRestante: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        fromPreviousDate: { type: boolean }
+
+    StockPlatsSetRequest:
+      type: object
+      required: [plats]
+      properties:
+        date: { type: string, format: date, description: Défaut = aujourd'hui }
+        plats:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [menuItemId, nom, quantitePrepare]
+            properties:
+              menuItemId: { type: string }
+              nom: { type: string }
+              categorie: { type: string }
+              quantitePrepare: { type: integer }
+
+    DashboardStats:
+      type: object
+      properties:
+        commandesJour: { type: integer }
+        commandesActives: { type: integer }
+        revenusJour: { type: number }
+        totalPlats: { type: number }
+        totalBoissons: { type: number }
+        commandesParStatut:
+          type: object
+          properties:
+            en-attente: { type: integer }
+            en-preparation: { type: integer }
+            servie: { type: integer }
+        commandesRecentes:
+          type: array
+          items: { $ref: '#/components/schemas/Commande' }
+
+    RapportStats:
+      type: object
+      properties:
+        total: { type: number }
+        nombre: { type: integer }
+        moyenne: { type: number }
+        parMode:
+          type: object
+          additionalProperties: { type: number }
+        parStatut:
+          type: object
+          properties:
+            payee: { type: integer }
+            partielle: { type: integer }
+        parCategorie:
+          type: object
+          additionalProperties: { type: number }
+        totalPlatsQte: { type: integer }
+        totalBoissonsQte: { type: integer }
+        topPlats:
+          type: array
+          items: { $ref: '#/components/schemas/TopVente' }
+        topBoissons:
+          type: array
+          items: { $ref: '#/components/schemas/TopVente' }
+        factures:
+          type: array
+          items: { $ref: '#/components/schemas/Facture' }
+
+    TopVente:
+      type: object
+      properties:
+        nom: { type: string }
+        quantite: { type: integer }
+        total: { type: number }
+
+    NotificationSummary:
+      type: object
+      properties:
+        type: { type: string, enum: [info, warning, danger] }
+        icon: { type: string }
+        title: { type: string }
+        message: { type: string }
+
+    Notification:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [info, success, warning, danger] }
+        icon: { type: string }
+        titre: { type: string }
+        message: { type: string }
+        createdBy: { type: string }
+        lu: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    WifiConfig:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        allowedIps:
+          type: array
+          items: { type: string }
+        currentIp: { type: string }

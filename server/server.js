@@ -1,10 +1,19 @@
 require('dotenv').config();
+const fs      = require('fs');
+const path    = require('path');
 const express = require('express');
 const cors    = require('cors');
 const rateLimit = require('express-rate-limit');
 const jwt     = require('jsonwebtoken');
+const yaml    = require('js-yaml');
 const eventBus = require('./utils/eventBus');
 const corsOrigins = require('./config/corsOrigins');
+
+// Chargée une fois au démarrage — parsée en JS pour /openapi.json, servie
+// telle quelle pour /openapi.yaml. Documentation publique : aucune donnée
+// sensible n'y figure (schémas et routes uniquement).
+const OPENAPI_YAML = fs.readFileSync(path.join(__dirname, 'openapi.yaml'), 'utf8');
+const OPENAPI_DOC  = yaml.load(OPENAPI_YAML);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -79,6 +88,10 @@ app.use('/api/public',        require('./routes/commande-publique'));
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), service: 'Cook Africa API' });
 });
+
+// Spécification OpenAPI — publique, pour audit / import Postman / génération de client.
+app.get('/openapi.json', (_req, res) => res.json(OPENAPI_DOC));
+app.get('/openapi.yaml', (_req, res) => res.type('text/yaml').send(OPENAPI_YAML));
 
 app.use((_req, res) => res.status(404).json({ error: 'Route introuvable' }));
 
