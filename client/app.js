@@ -385,6 +385,15 @@ function badgeStatus(statut) {
   return `<span class="badge-status ${statut}">${labels[statut] || statut}</span>`;
 }
 
+// Distingue une commande en ligne passée par le client lui-même (commander.html)
+// de celle créée par la caissière/l'admin depuis l'écran "Commandes en Ligne".
+function badgeQui(c) {
+  if (c.source !== 'en-ligne') return '';
+  return c.commandeClient
+    ? '<span style="background:#FFF3E0;color:#E65100;border:1px solid #FFCC80;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600;white-space:nowrap"><i class="fas fa-user"></i> Client</span>'
+    : '<span style="background:#E3F2FD;color:#0d47a1;border:1px solid #90CAF9;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600;white-space:nowrap"><i class="fas fa-cash-register"></i> Caisse</span>';
+}
+
 // ─── Auth ──────────────────────────────────────────────
 
 function showLogoutTransition() {
@@ -743,7 +752,7 @@ async function loadCommandes() {
       && !(c.statut === 'en-preparation' && role === 'serveur');
     return `
     <tr>
-      <td data-label="N°"><strong>${c.numero}</strong>${c.source === 'en-ligne' ? ' <span style="background:#E3F2FD;color:#0d47a1;border:1px solid #90CAF9;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600"><i class="fas fa-globe"></i> En ligne</span>' : ''}</td>
+      <td data-label="N°"><strong>${c.numero}</strong> ${badgeQui(c)}</td>
       <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
       <td data-label="Articles" style="font-size:.82rem">${items}</td>
       <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
@@ -783,10 +792,11 @@ async function viewCommande(id) {
   document.getElementById('modal-detail-titre').textContent = `Commande ${c.numero}`;
   document.getElementById('modal-detail-body').innerHTML = `
     <div style="margin-bottom:12px">
+      ${badgeQui(c) ? `<p style="margin-bottom:8px">${badgeQui(c)}</p>` : ''}
       ${c.tableNumero ? `<p><strong>Table :</strong> ${escapeHtml(c.tableNumero)}</p>` : ''}
       ${c.note ? `<p style="color:var(--gray);font-size:.85rem;font-style:italic"><i class="fas fa-sticky-note"></i> ${escapeHtml(c.note)}</p>` : ''}
       <p><strong>Statut :</strong> ${badgeStatus(c.statut)}</p>
-      <p style="font-size:.8rem;color:var(--gray)"><strong>Créée par :</strong> ${escapeHtml(c.createdBy)} – ${fmtDate(c.createdAt)}</p>
+      <p style="font-size:.8rem;color:var(--gray)"><strong>Créée par :</strong> ${escapeHtml(c.commandeClient ? (c.clientNom || 'Client (en ligne)') : c.createdBy)} – ${fmtDate(c.createdAt)}</p>
     </div>
     <div style="margin-bottom:12px">${items}</div>
     <div style="text-align:right;font-size:1.1rem;font-weight:800;color:var(--primary)">
@@ -1105,7 +1115,7 @@ async function loadCommandesLigne() {
       <tr class="commande-pending">
         <td data-label="N°"><strong>${c.numero}</strong></td>
         <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
-        <td data-label="Table / Client">—</td>
+        <td data-label="Client">—</td>
         <td data-label="Articles" style="font-size:.82rem">${items}</td>
         <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
         <td data-label="Statut"><span class="badge-pending-sync"><i class="fas fa-cloud-upload-alt"></i> Hors ligne — en attente de synchro</span></td>
@@ -1115,15 +1125,11 @@ async function loadCommandesLigne() {
     const alreadyFactured = state.factures.some(f => f.commandeId === c.id);
     const canEdit    = !alreadyFactured && !['annulee', 'servie'].includes(c.statut);
     const canFacture = !alreadyFactured && c.statut === 'en-preparation';
-    const qui = c.commandeClient
-      ? `<span style="background:#FFF3E0;color:#E65100;border:1px solid #FFCC80;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600;white-space:nowrap"><i class="fas fa-user"></i> Client</span>`
-      : `<span style="background:#E3F2FD;color:#0d47a1;border:1px solid #90CAF9;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600;white-space:nowrap"><i class="fas fa-cash-register"></i> Caisse</span>`;
-    const table = c.tableNumero ? `<div style="font-size:.78rem;color:var(--gray);margin-top:3px">Table ${escapeHtml(c.tableNumero)}</div>` : '';
     return `
     <tr>
       <td data-label="N°"><strong>${c.numero}</strong></td>
       <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
-      <td data-label="Table / Client">${qui}${table}</td>
+      <td data-label="Client">${badgeQui(c)}</td>
       <td data-label="Articles" style="font-size:.82rem">${items}</td>
       <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
       <td data-label="Statut">${badgeStatus(c.statut)}</td>

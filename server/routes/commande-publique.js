@@ -49,7 +49,7 @@ router.get('/menu', async (req, res) => {
 // (onglet Commandes en Ligne) exactement comme une commande en ligne créée par le staff.
 router.post('/commandes', orderLimiter, async (req, res) => {
   try {
-    const { items, tableNumero, clientNom, note } = req.body;
+    const { items, clientNom } = req.body;
 
     // Le menu est relu à chaque commande (jamais depuis le cache) pour garantir
     // que le prix facturé correspond toujours au prix réel au moment de l'achat.
@@ -59,23 +59,19 @@ router.post('/commandes', orderLimiter, async (req, res) => {
 
     const numero = await getNextNumero(db);
     const now = new Date();
-    const clientNomSafe   = String(clientNom || '').trim().slice(0, 60);
-    const tableNumeroSafe = String(tableNumero || '').trim().slice(0, 20);
-    const noteSafe        = String(note || '').trim().slice(0, 300);
+    const clientNomSafe = String(clientNom || '').trim().slice(0, 60);
 
     const data = {
       numero,
       items: resolved.items,
       total: resolved.total,
-      note: noteSafe,
-      tableNumero: tableNumeroSafe,
       source: 'en-ligne',
       commandeClient: true,
       clientNom: clientNomSafe,
       statut: 'en-preparation',
       date: now.toISOString().split('T')[0],
       createdBy: 'client-web',
-      createdByNom: clientNomSafe || (tableNumeroSafe ? `Client – Table ${tableNumeroSafe}` : 'Client (en ligne)'),
+      createdByNom: clientNomSafe || 'Client (en ligne)',
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
     };
@@ -89,7 +85,7 @@ router.post('/commandes', orderLimiter, async (req, res) => {
     pushNotification({
       type: 'info', icon: 'user-clock',
       titre: `Nouvelle commande client ${numero}`,
-      message: `${resolved.items.length} article(s) – Total : ${resolved.total.toLocaleString('fr-FR')} FCFA${tableNumeroSafe ? ' – Table ' + tableNumeroSafe : ''}`,
+      message: `${resolved.items.length} article(s) – Total : ${resolved.total.toLocaleString('fr-FR')} FCFA`,
       createdBy: 'client-web',
     });
 

@@ -62,13 +62,10 @@ function show(id) {
     .forEach((s) => { document.getElementById(s).style.display = s === id ? '' : 'none'; });
 }
 
-// ─── Persistance locale (panier + table + commande en cours) ──
+// ─── Persistance locale (panier + commande en cours) ──
 
 function savePanier() { sessionStorage.setItem('ca_pub_panier', JSON.stringify(state.panier)); }
 function loadPanier() { try { return JSON.parse(sessionStorage.getItem('ca_pub_panier')) || []; } catch { return []; } }
-
-function saveTable(val) { sessionStorage.setItem('ca_pub_table', val || ''); }
-function loadTable() { return sessionStorage.getItem('ca_pub_table') || ''; }
 
 function saveOrder(order) {
   sessionStorage.setItem('ca_pub_order', JSON.stringify({ ...order, savedAt: Date.now() }));
@@ -253,21 +250,13 @@ document.getElementById('pub-cart-bar-btn').addEventListener('click', () => {
 });
 document.getElementById('pub-cart-back').addEventListener('click', () => show('pub-screen-menu'));
 
-// ─── Champ table (synchronisé entre les deux écrans) ────
-
-const tableInputs = () => [document.getElementById('pub-table-input'), document.getElementById('pub-cart-table')];
-function syncTableInputs(val) { tableInputs().forEach((el) => { if (el.value !== val) el.value = val; }); }
-tableInputs().forEach((el) => el.addEventListener('input', () => { saveTable(el.value); syncTableInputs(el.value); }));
-
 // ─── Envoi de la commande ───────────────────────────────
 
 document.getElementById('pub-submit-btn').addEventListener('click', async () => {
   if (state.panier.length === 0) { toast('Votre panier est vide', 'error'); return; }
 
   const btn = document.getElementById('pub-submit-btn');
-  const tableNumero = document.getElementById('pub-cart-table').value.trim();
   const clientNom = document.getElementById('pub-cart-nom').value.trim();
-  const note = document.getElementById('pub-cart-note').value.trim();
 
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Envoi…';
@@ -276,7 +265,7 @@ document.getElementById('pub-submit-btn').addEventListener('click', async () => 
     method: 'POST',
     body: JSON.stringify({
       items: state.panier.map((p) => ({ menuItemId: p.menuItemId, quantite: p.quantite })),
-      tableNumero, clientNom, note,
+      clientNom,
     }),
   });
 
@@ -356,12 +345,6 @@ document.getElementById('pub-new-order-btn').addEventListener('click', () => {
 // ─── Démarrage ──────────────────────────────────────────
 
 (async function init() {
-  const params = new URLSearchParams(window.location.search);
-  const tableFromLink = params.get('table');
-  const table = tableFromLink ? tableFromLink.slice(0, 20) : loadTable();
-  if (tableFromLink) saveTable(table);
-  syncTableInputs(table);
-
   state.panier = loadPanier();
 
   const savedOrder = loadOrder();

@@ -59,23 +59,10 @@
 .pub-header-text h1 { font-size: 1.15rem; font-weight: 800; letter-spacing: .5px; }
 .pub-header-text p { font-size: .76rem; opacity: .9; margin-top: 2px; }
 
-/* ── Barre table ──────────────────────────────── */
-.pub-table-bar {
-  display: flex; align-items: center; gap: 10px;
-  margin: 14px 16px 4px;
-  padding: 10px 14px;
-  background: var(--light); border: 1px solid var(--border); border-radius: 12px;
-}
-.pub-table-bar i { color: var(--primary); }
-.pub-table-bar input {
-  border: none; background: transparent; outline: none; flex: 1;
-  font-size: .88rem; color: var(--dark); font-family: inherit;
-}
-
 /* ── Catégories ───────────────────────────────── */
 .pub-cats {
   display: flex; gap: 8px; overflow-x: auto;
-  padding: 14px 16px 6px; position: sticky; top: 82px; z-index: 15;
+  padding: 18px 16px 6px; position: sticky; top: 82px; z-index: 15;
   background: var(--white);
   scrollbar-width: none;
 }
