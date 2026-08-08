@@ -5,6 +5,7 @@ const { pushNotification } = require('../utils/notifications');
 const cache    = require('../utils/cache');
 const eventBus = require('../utils/eventBus');
 const { createFactureFromCommande } = require('../utils/factures');
+const { findDiscountedItems, verifyDiscountPin } = require('../utils/discountPin');
 
 const router = express.Router();
 
@@ -134,11 +135,11 @@ router.post('/', authenticateToken, requireRole('admin', 'caissiere', 'caissier-
 });
 
 // PUT /api/factures/:id/pay — enregistrer le paiement
-// La caissière (ou l'admin) peut ajuster librement le prix de chaque article,
-// à la hausse comme à la baisse, sans autorisation particulière.
+// La caissière (ou l'admin) peut ajuster le prix de chaque article. Baisser un
+// prix sous le tarif catalogue (menu) requiert le code admin (discountPin).
 router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere', 'caissier-en-ligne'), async (req, res) => {
   try {
-    const { modePaiement, items } = req.body;
+    const { modePaiement, items, discountPin } = req.body;
     const docRef = db.collection('factures').doc(req.params.id);
     const doc = await docRef.get();
     if (!doc.exists) return res.status(404).json({ error: 'Facture introuvable' });
@@ -166,6 +167,14 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere', 'cai
         sousTotal: Number(i.prix) * Number(i.quantite),
         categorie: i.categorie || '',
       }));
+
+      const discounted = await findDiscountedItems(db, mappedItems);
+      if (discounted.length > 0 && !(await verifyDiscountPin(discountPin))) {
+        return res.status(403).json({
+          error: 'Code admin requis pour baisser un prix sous le tarif normal',
+          requiresDiscountPin: true,
+        });
+      }
 
       finalItems = mappedItems;
       update.items = mappedItems;
@@ -220,10 +229,11 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere', 'cai
 });
 
 // POST /api/factures/:id/edit-items — caissière (ou admin) : modifie librement les articles
-// d'une facture non encore payée (prix, quantités, ajout/suppression), sans autorisation requise.
+// d'une facture non encore payée (prix, quantités, ajout/suppression). Baisser un prix
+// sous le tarif catalogue requiert le code admin (voir utils/discountPin.js).
 router.post('/:id/edit-items', authenticateToken, requireRole('admin', 'caissiere', 'caissier-en-ligne'), async (req, res) => {
   try {
-    const { items } = req.body;
+    const { items, discountPin } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'La facture doit contenir au moins un article' });
     }
@@ -245,6 +255,15 @@ router.post('/:id/edit-items', authenticateToken, requireRole('admin', 'caissier
       sousTotal: Number(i.prix) * Number(i.quantite),
       categorie: i.categorie || '',
     }));
+
+    const discounted = await findDiscountedItems(db, mappedItems);
+    if (discounted.length > 0 && !(await verifyDiscountPin(discountPin))) {
+      return res.status(403).json({
+        error: 'Code admin requis pour baisser un prix sous le tarif normal',
+        requiresDiscountPin: true,
+      });
+    }
+
     const total = mappedItems.reduce((s, i) => s + i.sousTotal, 0);
     const now = new Date();
 

@@ -543,7 +543,7 @@ function navigateTo(page) {
     stocks:       loadStocks,
     rapports:     () => {},
     sessions:     loadSessions,
-    utilisateurs: () => { loadUtilisateurs(); loadWifiConfig(); },
+    utilisateurs: () => { loadUtilisateurs(); loadWifiConfig(); loadDiscountPinStatus(); },
   };
   if (loaders[page]) loaders[page]();
 }
@@ -1264,7 +1264,8 @@ async function repairNumeros() {
 
 // ─── Modification d'une facture (côté caissière) ───────
 // La caissière (ou l'admin) modifie librement les articles et prix d'une
-// facture non encore payée — à la hausse comme à la baisse, sans autorisation.
+// facture non encore payée. Baisser un prix sous le tarif catalogue demande
+// le code admin (voir findDiscountedItems / askDiscountPin).
 
 window.openEditFacture = async (factureId) => {
   const f = state.factures.find(x => x.id === factureId);
@@ -1322,14 +1323,40 @@ function addToEditFacture(id, nom, prix, categorie) {
   renderEditFactureItems();
 }
 
+// Repère les articles dont le prix saisi est en dessous du tarif catalogue
+// (menu) — ceux-là nécessitent le code admin (voir carte "Code de baisse de
+// prix" dans Utilisateurs).
+function findDiscountedItems(items) {
+  return items.filter(i => {
+    if (!i.menuItemId) return false;
+    const menuItem = state.menu.find(m => m.id === i.menuItemId);
+    return menuItem && Number(i.prix) < Number(menuItem.prix);
+  });
+}
+
+// Retourne le code saisi (chaîne, éventuellement vide), ou null si la
+// caissière annule — dans ce cas l'appelant doit abandonner l'enregistrement.
+function askDiscountPin(discountedItems) {
+  const noms = discountedItems.map(i => i.nom).join(', ');
+  const pin = prompt(`Le prix de "${noms}" est en dessous du tarif normal.\nDemandez le code à l'admin pour valider :`);
+  return pin === null ? null : pin.trim();
+}
+
 async function saveEditFacture() {
   if (state.editFactureItems.length === 0) { toast('La facture doit contenir au moins un article', 'warning'); return; }
   const factureId = document.getElementById('editfact-facture-id').value;
 
+  const discounted = findDiscountedItems(state.editFactureItems);
+  let discountPin;
+  if (discounted.length > 0) {
+    discountPin = askDiscountPin(discounted);
+    if (discountPin === null) return;
+  }
+
   showLoader();
   const res = await api(`/api/factures/${factureId}/edit-items`, {
     method: 'POST',
-    body: JSON.stringify({ items: state.editFactureItems }),
+    body: JSON.stringify({ items: state.editFactureItems, discountPin }),
   });
   hideLoader();
 
@@ -1444,6 +1471,12 @@ async function confirmPayFacture() {
   const body = { modePaiement: mode };
 
   if (state.payFactureItems) {
+    const discounted = findDiscountedItems(state.payFactureItems);
+    if (discounted.length > 0) {
+      const discountPin = askDiscountPin(discounted);
+      if (discountPin === null) return;
+      body.discountPin = discountPin;
+    }
     body.items = state.payFactureItems;
   }
 
@@ -2155,6 +2188,33 @@ window.removeWifiIp = async (ip) => {
   else toast(res?.error || 'Erreur', 'error');
 };
 
+// ─── CODE DE BAISSE DE PRIX ────────────────────────────
+
+async function loadDiscountPinStatus() {
+  const data = await api('/api/discount-pin');
+  const status = document.getElementById('discount-pin-status');
+  if (!data || !status) return;
+  status.textContent = data.configured ? 'Code déjà configuré' : 'Aucun code configuré';
+  status.style.color = data.configured ? 'var(--success)' : 'var(--gray)';
+}
+
+async function saveDiscountPin() {
+  const input = document.getElementById('discount-pin-input');
+  const pin = input?.value.trim();
+  if (!/^\d{4,8}$/.test(pin || '')) {
+    toast('Le code doit contenir entre 4 et 8 chiffres', 'warning');
+    return;
+  }
+  const res = await api('/api/discount-pin', { method: 'PUT', body: JSON.stringify({ pin }) });
+  if (res?.message) {
+    toast(res.message, 'success');
+    if (input) input.value = '';
+    loadDiscountPinStatus();
+  } else {
+    toast(res?.error || 'Erreur', 'error');
+  }
+}
+
 // ─── SESSIONS ──────────────────────────────────────────
 
 async function loadSessions() {
@@ -2465,6 +2525,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-add-wifi-ip')?.addEventListener('click', addCurrentWifiIp);
   document.getElementById('btn-add-wifi-manual-ip')?.addEventListener('click', addManualWifiIp);
   document.getElementById('wifi-manual-ip')?.addEventListener('keydown', e => { if (e.key === 'Enter') addManualWifiIp(); });
+
+  // ── Code de baisse de prix ──
+  document.getElementById('btn-save-discount-pin')?.addEventListener('click', saveDiscountPin);
+  document.getElementById('discount-pin-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') saveDiscountPin(); });
 
   // ── Restauration session ──
   // Vérifie le token côté serveur avant de restaurer la session.

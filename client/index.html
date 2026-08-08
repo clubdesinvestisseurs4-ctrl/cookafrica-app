@@ -517,6 +517,29 @@
             </button>
           </div>
         </div>
+
+        <!-- Carte code de baisse de prix -->
+        <div style="margin-top:20px;background:var(--white);border-radius:12px;border:1.5px solid var(--border);padding:20px 24px;max-width:560px">
+          <h3 style="margin:0 0 8px;font-size:1rem;display:flex;align-items:center;gap:8px">
+            <i class="fas fa-key" style="color:var(--primary)"></i> Code de baisse de prix
+          </h3>
+          <p style="font-size:.82rem;color:var(--gray);margin:0 0 14px">
+            Ce code est demandé à la caissière dès qu'elle baisse le prix d'un article de facture
+            en dessous de son tarif catalogue. Communiquez-le uniquement à l'oral, il n'est jamais
+            réaffiché ici une fois enregistré.
+          </p>
+          <div style="background:var(--light);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:.83rem">
+            État : <strong id="discount-pin-status">—</strong>
+          </div>
+          <div style="display:flex;gap:8px">
+            <input type="password" id="discount-pin-input" inputmode="numeric" maxlength="8"
+              placeholder="Nouveau code (4 à 8 chiffres)"
+              style="flex:1;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem;font-family:monospace">
+            <button class="btn btn-primary" id="btn-save-discount-pin">
+              <i class="fas fa-save"></i> Enregistrer
+            </button>
+          </div>
+        </div>
       </section>
 
     </div><!-- /content-area -->

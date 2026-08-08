@@ -59,6 +59,8 @@ tags:
     description: Journal des notifications (admin)
   - name: Wi-Fi
     description: Restriction d'accès par réseau Wi-Fi (admin)
+  - name: Code baisse de prix
+    description: Code admin requis pour baisser un prix de facture sous le tarif catalogue
   - name: Système
     description: Health check et flux d'événements temps réel
 
@@ -1063,6 +1065,47 @@ paths:
                   enabled: { type: boolean }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  # ── Code baisse de prix ────────────────────────────────
+  /api/discount-pin:
+    get:
+      operationId: getApiDiscountPin
+      tags: [Code baisse de prix]
+      summary: Indique si un code de baisse de prix est configuré (admin)
+      responses:
+        '200':
+          description: État
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configured: { type: boolean }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      operationId: putApiDiscountPin
+      tags: [Code baisse de prix]
+      summary: Définit ou change le code de baisse de prix (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pin]
+              properties:
+                pin: { type: string, description: '4 à 8 chiffres' }
+      responses:
+        '200':
+          description: Code mis à jour
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { message: { type: string } }
+        '400':
+          description: Code invalide
+        '403': { $ref: '#/components/responses/Forbidden' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1387,6 +1430,11 @@ components:
           type: array
           description: Optionnel — remplace les articles/prix de la facture avant paiement.
           items: { $ref: '#/components/schemas/CommandeItemInput' }
+        discountPin:
+          type: string
+          description: |
+            Requis si un article a un prix inférieur au tarif catalogue (menu) —
+            code demandé à l'admin. Voir PUT /api/discount-pin.
 
     FactureEditItemsRequest:
       type: object
@@ -1396,6 +1444,11 @@ components:
           type: array
           minItems: 1
           items: { $ref: '#/components/schemas/CommandeItemInput' }
+        discountPin:
+          type: string
+          description: |
+            Requis si un article a un prix inférieur au tarif catalogue (menu) —
+            code demandé à l'admin. Voir PUT /api/discount-pin.
 
     StockItem:
       type: object
