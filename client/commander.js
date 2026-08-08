@@ -166,6 +166,7 @@ function renderMenu() {
   list.innerHTML = cats.map((cat) => {
     const items = state.menu.filter((m) => (m.categorie || 'Autres') === cat);
     if (items.length === 0) return '';
+    if (cat.toLowerCase().includes('buffet')) items.sort((a, b) => a.prix - b.prix);
     const cards = items.map((m) => {
       const qty = qtyInPanier(m.id);
       return `
