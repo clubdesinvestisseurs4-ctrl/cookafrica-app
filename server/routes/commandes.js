@@ -6,6 +6,7 @@ const cache    = require('../utils/cache');
 const eventBus = require('../utils/eventBus');
 const { buildCommandeUpdate } = require('../utils/commandeUpdate');
 const { getNextNumero, decrementStocksForItems } = require('../utils/commandes');
+const { createFactureFromCommande } = require('../utils/factures');
 
 const router = express.Router();
 
@@ -140,6 +141,19 @@ router.put('/:id/envoyer', authenticateToken, requireRole('admin', 'serveur'), a
       message: `${commande.numero} – prête à être facturée`,
       createdBy: req.user.username,
     });
+
+    // Génère automatiquement la facture (statut 'partielle') : la caissière la
+    // retrouve directement dans l'onglet Facturation, sans avoir à cliquer
+    // "Nouvelle facture". Non bloquant : un souci ici ne doit pas empêcher
+    // l'envoi de la commande — la caissière garde le bouton manuel en secours.
+    try {
+      const result = await createFactureFromCommande(db, commande, req.params.id, {
+        createdBy: req.user.username,
+      });
+      if (result.facture) eventBus.emit('factures');
+    } catch (factureErr) {
+      console.error('Auto-génération facture échouée pour', commande.numero, factureErr);
+    }
 
     res.json({ id: req.params.id, ...commande, ...update });
   } catch (err) {

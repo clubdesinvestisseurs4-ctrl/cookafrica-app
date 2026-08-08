@@ -383,7 +383,10 @@ paths:
       operationId: putApiCommandesByIdEnvoyer
       tags: [Commandes]
       summary: Envoyer une commande à la facturation (serveur/admin)
-      description: Passe la commande de `en-attente` à `en-preparation` — elle appartient ensuite à la caissière.
+      description: |
+        Passe la commande de `en-attente` à `en-preparation` — elle appartient ensuite à la caissière.
+        Génère aussi automatiquement la facture correspondante (statut `partielle`) : elle apparaît
+        immédiatement dans `GET /api/factures` sans appel supplémentaire à `POST /api/factures`.
       parameters:
         - $ref: '#/components/parameters/IdPathParam'
       responses:

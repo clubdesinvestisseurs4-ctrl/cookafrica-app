@@ -4,26 +4,12 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 const { pushNotification } = require('../utils/notifications');
 const cache    = require('../utils/cache');
 const eventBus = require('../utils/eventBus');
+const { createFactureFromCommande } = require('../utils/factures');
 
 const router = express.Router();
 
 function invalidate() {
   cache.del('factures:list', 'commandes:list', 'stats:dashboard', 'stats:notifications');
-}
-
-async function getNextNumeroFacture() {
-  // Scan les 200 derniers documents et trouve le numéro FACT le plus élevé.
-  // Évite le bug où un bon cuisine/bar (CUI-CMD-0001, BAR-CMD-0001) est le
-  // document le plus récent, ce qui faisait parseInt("CMD", 10) → NaN → "FACT-0NaN".
-  const snap = await db.collection('factures').orderBy('createdAt', 'desc').limit(200).get();
-  let maxNum = 0;
-  snap.docs.forEach(doc => {
-    const { numero } = doc.data();
-    if (!numero || !numero.startsWith('FACT-')) return;
-    const n = parseInt(numero.slice(5), 10); // slice(5) = après "FACT-"
-    if (!isNaN(n) && n > maxNum) maxNum = n;
-  });
-  return `FACT-${String(maxNum + 1).padStart(4, '0')}`;
 }
 
 // GET /api/factures
@@ -118,53 +104,30 @@ router.post('/', authenticateToken, requireRole('admin', 'caissiere', 'caissier-
     if (!cmdDoc.exists) return res.status(404).json({ error: 'Commande introuvable' });
 
     const commande = cmdDoc.data();
-
-    const existing = await db.collection('factures').where('commandeId', '==', commandeId).limit(1).get();
-    if (!existing.empty) return res.status(409).json({ error: 'Une facture existe déjà pour cette commande' });
-
     if (commande.statut !== 'en-preparation') {
       return res.status(400).json({ error: 'La commande doit d\'abord être envoyée à la facturation' });
     }
 
-    const allItems = commande.items || [];
-    if (allItems.length === 0) return res.status(400).json({ error: 'La commande est vide' });
-
-    const total = allItems.reduce((sum, i) => sum + i.sousTotal, 0);
-    const numero = await getNextNumeroFacture();
-    const now = new Date();
-
-    const data = {
-      numero,
-      type: 'facture',
-      commandeId,
-      commandeNumero: commande.numero,
-      items: allItems,
-      tableNumero: commande.tableNumero || '',
-      note: commande.note || '',
-      total,
-      reste: total,
-      modePaiement: modePaiement || 'especes',
-      statut: 'partielle',
-      serveurNom: commande.createdByNom || commande.createdBy || '',
-      caissiereName: req.user.nom || req.user.username || '',
-      date: now.toISOString().split('T')[0],
+    const result = await createFactureFromCommande(db, commande, commandeId, {
+      modePaiement,
       createdBy: req.user.username,
-      createdAt: now.toISOString(),
-    };
+      caissiereName: req.user.nom || req.user.username || '',
+    });
+    if (result.error) return res.status(409).json({ error: result.error });
+    const { facture } = result;
 
-    const ref = await db.collection('factures').add(data);
     invalidate();
     eventBus.emit('factures');
     eventBus.emit('commandes');
 
     pushNotification({
       type: 'success', icon: 'receipt',
-      titre: `Facture ${numero} générée`,
-      message: `${commande.numero} – Total: ${total.toLocaleString('fr-FR')} FCFA`,
+      titre: `Facture ${facture.numero} générée`,
+      message: `${commande.numero} – Total: ${facture.total.toLocaleString('fr-FR')} FCFA`,
       createdBy: req.user.username,
     });
 
-    res.status(201).json({ id: ref.id, ...data });
+    res.status(201).json(facture);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
