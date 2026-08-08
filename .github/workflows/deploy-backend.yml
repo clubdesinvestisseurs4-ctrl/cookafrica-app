@@ -54,3 +54,4 @@ jobs:
           region: us-central1
           project_id: ${{ secrets.GCP_PROJECT_ID }}
           source: ./server
+          flags: --max-instances=1
