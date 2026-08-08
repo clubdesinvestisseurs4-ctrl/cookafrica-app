@@ -150,7 +150,10 @@ router.put('/:id/envoyer', authenticateToken, requireRole('admin', 'serveur'), a
       const result = await createFactureFromCommande(db, commande, req.params.id, {
         createdBy: req.user.username,
       });
-      if (result.facture) eventBus.emit('factures');
+      if (result.facture) {
+        invalidate();
+        eventBus.emit('factures');
+      }
     } catch (factureErr) {
       console.error('Auto-génération facture échouée pour', commande.numero, factureErr);
     }
