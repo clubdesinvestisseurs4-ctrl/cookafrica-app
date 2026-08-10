@@ -689,6 +689,26 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Facture' }
         '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteApiFacturesById
+      tags: [Factures]
+      summary: Supprime définitivement une facture (admin)
+      description: |
+        Ne supprime pas la commande liée — elle redevient facturable.
+        Contrairement à DELETE /api/commandes/{id}, qui elle supprime la
+        facture liée en cascade.
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Facture supprimée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { message: { type: string } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/factures/repair-numeros:
     post:

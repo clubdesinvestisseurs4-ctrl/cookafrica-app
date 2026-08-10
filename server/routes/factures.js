@@ -294,4 +294,33 @@ router.post('/:id/edit-items', authenticateToken, requireRole('admin', 'caissier
   }
 });
 
+// DELETE /api/factures/:id — suppression définitive (admin uniquement).
+// Ne touche pas à la commande liée : elle redevient facturable (voir canFacture
+// côté client), contrairement à DELETE /api/commandes/:id qui, elle, supprime
+// la facture liée en cascade.
+router.delete('/:id', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    const docRef = db.collection('factures').doc(req.params.id);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ error: 'Facture introuvable' });
+
+    const facture = doc.data();
+    await docRef.delete();
+    invalidate();
+    eventBus.emit('factures');
+    eventBus.emit('commandes');
+
+    pushNotification({
+      type: 'danger', icon: 'trash',
+      titre: 'Facture supprimée',
+      message: `${facture.numero} – supprimée par ${req.user.username}`,
+      createdBy: req.user.username,
+    });
+
+    res.json({ message: 'Facture supprimée' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

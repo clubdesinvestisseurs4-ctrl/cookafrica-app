@@ -1228,6 +1228,8 @@ async function loadFactures() {
     repairBtn.style.display = hasBroken ? 'inline-flex' : 'none';
   }
 
+  const isAdmin = state.user?.role === 'admin';
+
   tbody.innerHTML = factures.map(f => {
     const nbArticles = (f.items || []).length;
     const canPay = f.statut === 'partielle';
@@ -1246,10 +1248,27 @@ async function loadFactures() {
         <button class="btn btn-secondary btn-sm" onclick="aperçuFacture('${f.id}')"><i class="fas fa-print"></i></button>
         ${canPay ? `<button class="btn btn-success btn-sm" onclick="openPayFacture('${f.id}','${fmt(f.reste)}')"><i class="fas fa-check"></i> Payer</button>` : ''}
         ${canPay ? `<button class="btn btn-secondary btn-sm" onclick="openEditFacture('${f.id}')" title="Modifier la facture"><i class="fas fa-edit"></i></button>` : ''}
+        ${isAdmin ? `<button class="btn btn-danger btn-sm" onclick="supprimerFacture('${f.id}','${f.numero}',${f.statut === 'payee'})" title="Supprimer définitivement"><i class="fas fa-trash"></i></button>` : ''}
       </td>
     </tr>`;
   }).join('');
 }
+
+async function supprimerFacture(id, numero, estPayee) {
+  const msg = estPayee
+    ? `⚠️ La facture ${numero} est déjà payée. La supprimer effacera cette vente de l'historique. Continuer ?`
+    : `Supprimer définitivement la facture ${numero} ?`;
+  if (!confirm(msg)) return;
+
+  const res = await api(`/api/factures/${id}`, { method: 'DELETE' });
+  if (res?.message) {
+    toast('Facture supprimée', 'warning');
+    loadFactures();
+  } else {
+    toast(res?.error || 'Erreur', 'error');
+  }
+}
+window.supprimerFacture = supprimerFacture;
 
 async function repairNumeros() {
   if (!confirm('Réparer les numéros de facture invalides (FACT-0NaN) en base ? Cette action est irréversible.')) return;
