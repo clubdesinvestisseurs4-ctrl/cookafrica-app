@@ -143,6 +143,9 @@
       <a class="nav-item" data-page="menu" id="nav-menu">
         <i class="fas fa-book-open"></i><span>Menu</span>
       </a>
+      <a class="nav-item" data-page="reservations" id="nav-reservations">
+        <i class="fas fa-calendar-check"></i><span>Réservations</span>
+      </a>
       <a class="nav-item" data-page="utilisateurs" id="nav-utilisateurs">
         <i class="fas fa-users-cog"></i><span>Utilisateurs</span>
       </a>
@@ -335,6 +338,24 @@
           </select>
         </div>
         <div class="menu-grid" id="menu-grid"></div>
+      </section>
+
+      <!-- ── RÉSERVATIONS ─────────────────────────── -->
+      <section id="page-reservations" class="page">
+        <div class="page-actions">
+          <button class="btn btn-primary" id="btn-new-reservation">
+            <i class="fas fa-plus"></i> Nouvelle réservation
+          </button>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead><tr>
+              <th>Événement</th><th>Client</th><th>Salle</th><th>Jour J</th>
+              <th>Montant global</th><th>Avance</th><th>Reste</th><th>Statut</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="reservations-tbody"></tbody>
+          </table>
+        </div>
       </section>
 
       <!-- ── STOCKS ────────────────────────────── -->
@@ -782,6 +803,82 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" data-modal="plat">Annuler</button>
       <button class="btn btn-primary" id="btn-save-plat"><i class="fas fa-save"></i> Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Réservation -->
+<div class="modal-overlay hidden" id="modal-reservation">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2 id="modal-reservation-title">Nouvelle réservation</h2>
+      <button class="modal-close" data-modal="reservation">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="form-reservation">
+        <input type="hidden" id="resa-id">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Nom de l'événement *</label>
+            <input type="text" id="resa-nom-evenement" required placeholder="Ex: Mariage Koffi &amp; Aya">
+          </div>
+          <div class="form-group">
+            <label>Nom de la salle</label>
+            <input type="text" id="resa-salle" placeholder="Ex: Salle Prestige">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Nom *</label>
+            <input type="text" id="resa-nom" required>
+          </div>
+          <div class="form-group">
+            <label>Prénom</label>
+            <input type="text" id="resa-prenom">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Contact</label>
+            <input type="text" id="resa-contact" placeholder="Numéro de téléphone">
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="resa-email">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Date de la réservation</label>
+            <input type="date" id="resa-date-reservation">
+          </div>
+          <div class="form-group">
+            <label>Date du jour J *</label>
+            <input type="date" id="resa-date-evenement" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Menu</label>
+          <input type="text" id="resa-menu" placeholder="Ex: Menu Prestige 3 services">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Montant global (FCFA) *</label>
+            <input type="number" id="resa-montant" min="0" required>
+          </div>
+          <div class="form-group">
+            <label>Avance (FCFA)</label>
+            <input type="number" id="resa-avance" min="0" value="0">
+          </div>
+        </div>
+        <p style="font-size:.9rem;color:var(--gray)">
+          Reste à payer : <strong id="resa-reste-preview">0 FCFA</strong>
+        </p>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-modal="reservation">Annuler</button>
+      <button class="btn btn-primary" id="btn-save-reservation"><i class="fas fa-save"></i> Enregistrer</button>
     </div>
   </div>
 </div>

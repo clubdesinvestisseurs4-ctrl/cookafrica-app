@@ -34,6 +34,7 @@ const state = {
   commandes: [],
   factures:  [],
   stocks:    [],
+  reservations: [],
   utilisateurs: [],
   panier:    [],
   panierSource: 'sur-place',
@@ -74,6 +75,7 @@ const PAGE_ROLES = {
   facturation:    ['admin', 'caissiere'],
   menu:           ['admin'],
   stocks:         [], // masqué pour l'instant (fonctionnalité conservée, pas utilisée) — voir index.html
+  reservations:   ['admin'],
   rapports:       ['admin'],
   sessions:       ['admin'],
   utilisateurs:   ['admin'],
@@ -86,6 +88,7 @@ const PAGE_TITLES = {
   facturation:    'Facturation',
   menu:           'Carte du Menu',
   stocks:         'Gestion des Stocks',
+  reservations:   'Réservations',
   rapports:       'Rapports & Statistiques',
   sessions:       'Journal des Sessions',
   utilisateurs:   'Gestion des Utilisateurs',
@@ -541,6 +544,7 @@ function navigateTo(page) {
     facturation:  () => { loadFactures(); checkFacturationReady(true); },
     menu:         loadMenu,
     stocks:       loadStocks,
+    reservations: loadReservations,
     rapports:     () => {},
     sessions:     loadSessions,
     utilisateurs: () => { loadUtilisateurs(); loadWifiConfig(); loadDiscountPinStatus(); },
@@ -574,6 +578,7 @@ function handleSSEEvent(type) {
       facturation: loadFactures,
       dashboard:   loadDashboard,
       stocks:      loadStocks,
+      reservations: loadReservations,
     };
     reloaders[page]?.();
     return;
@@ -591,6 +596,9 @@ function handleSSEEvent(type) {
   }
   if (type === 'stocks') {
     if (page === 'stocks') loadStocks();
+  }
+  if (type === 'reservations') {
+    if (page === 'reservations') loadReservations();
   }
   if (type === 'notifications' && state.user?.role === 'admin') {
     loadNotifBadge();
@@ -1754,6 +1762,158 @@ async function seedMenu() {
   else toast(res?.error || 'Erreur', 'error');
 }
 
+// ─── RÉSERVATIONS ──────────────────────────────────────
+
+async function loadReservations() {
+  showLoader();
+  const reservations = await api('/api/reservations');
+  hideLoader();
+  if (!reservations) return;
+  state.reservations = reservations;
+  renderReservations(reservations);
+}
+
+function badgeReservationStatut(statut) {
+  return statut === 'facturee'
+    ? '<span class="badge-status payee">✅ Facturée</span>'
+    : '<span class="badge-status en-attente">📝 En attente</span>';
+}
+
+function renderReservations(reservations) {
+  const tbody = document.getElementById('reservations-tbody');
+  if (reservations.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--gray)">Aucune réservation</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = reservations.map(r => {
+    const nomClient = `${r.prenom || ''} ${r.nom}`.trim();
+    const canFacturer = r.statut !== 'facturee';
+    return `
+    <tr>
+      <td data-label="Événement"><strong>${escapeHtml(r.nomEvenement)}</strong>${r.menu ? `<div style="font-size:.78rem;color:var(--gray);margin-top:2px">${escapeHtml(r.menu)}</div>` : ''}</td>
+      <td data-label="Client">${escapeHtml(nomClient)}${r.contact ? `<div style="font-size:.78rem;color:var(--gray)">${escapeHtml(r.contact)}</div>` : ''}</td>
+      <td data-label="Salle">${escapeHtml(r.salle) || '—'}</td>
+      <td data-label="Jour J" style="font-size:.85rem">${fmtDateOnly(r.dateEvenement)}</td>
+      <td data-label="Montant global"><strong>${fmt(r.montantGlobal)} FCFA</strong></td>
+      <td data-label="Avance">${fmt(r.avance)} FCFA</td>
+      <td data-label="Reste" style="color:${r.reste > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:700">${fmt(r.reste)} FCFA</td>
+      <td data-label="Statut">${badgeReservationStatut(r.statut)}</td>
+      <td data-label="Actions">
+        ${r.statut !== 'facturee' ? `<button class="btn btn-secondary btn-sm" onclick="editReservation('${r.id}')" title="Modifier"><i class="fas fa-edit"></i></button>` : ''}
+        ${canFacturer ? `<button class="btn btn-accent btn-sm" onclick="facturerReservation('${r.id}')" title="Générer la facture du jour J"><i class="fas fa-receipt"></i> Facturer</button>` : ''}
+        <button class="btn btn-danger btn-sm" onclick="deleteReservation('${r.id}')" title="Supprimer"><i class="fas fa-trash"></i></button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openNewReservation() {
+  document.getElementById('modal-reservation-title').textContent = 'Nouvelle réservation';
+  document.getElementById('form-reservation').reset();
+  document.getElementById('resa-id').value = '';
+  document.getElementById('resa-date-reservation').value = today();
+  updateResaRestePreview();
+  openModal('reservation');
+}
+
+window.editReservation = (id) => {
+  const r = state.reservations.find(x => x.id === id);
+  if (!r) return;
+  document.getElementById('modal-reservation-title').textContent = 'Modifier la réservation';
+  document.getElementById('resa-id').value = r.id;
+  document.getElementById('resa-nom-evenement').value = r.nomEvenement;
+  document.getElementById('resa-salle').value = r.salle || '';
+  document.getElementById('resa-nom').value = r.nom;
+  document.getElementById('resa-prenom').value = r.prenom || '';
+  document.getElementById('resa-contact').value = r.contact || '';
+  document.getElementById('resa-email').value = r.email || '';
+  document.getElementById('resa-date-reservation').value = r.dateReservation || '';
+  document.getElementById('resa-date-evenement').value = r.dateEvenement;
+  document.getElementById('resa-menu').value = r.menu || '';
+  document.getElementById('resa-montant').value = r.montantGlobal;
+  document.getElementById('resa-avance').value = r.avance;
+  updateResaRestePreview();
+  openModal('reservation');
+};
+
+function updateResaRestePreview() {
+  const montant = Number(document.getElementById('resa-montant').value) || 0;
+  const avance  = Number(document.getElementById('resa-avance').value) || 0;
+  const reste   = Math.max(0, montant - avance);
+  document.getElementById('resa-reste-preview').textContent = `${fmt(reste)} FCFA`;
+}
+
+async function saveReservation() {
+  const id = document.getElementById('resa-id').value;
+  const body = {
+    nomEvenement:     document.getElementById('resa-nom-evenement').value.trim(),
+    salle:            document.getElementById('resa-salle').value.trim(),
+    nom:              document.getElementById('resa-nom').value.trim(),
+    prenom:           document.getElementById('resa-prenom').value.trim(),
+    contact:          document.getElementById('resa-contact').value.trim(),
+    email:            document.getElementById('resa-email').value.trim(),
+    dateReservation:  document.getElementById('resa-date-reservation').value,
+    dateEvenement:    document.getElementById('resa-date-evenement').value,
+    menu:             document.getElementById('resa-menu').value.trim(),
+    montantGlobal:    Number(document.getElementById('resa-montant').value),
+    avance:           Number(document.getElementById('resa-avance').value) || 0,
+  };
+
+  if (!body.nomEvenement || !body.nom || !body.dateEvenement || !body.montantGlobal) {
+    toast("Nom de l'événement, nom du client, date du jour J et montant sont requis", 'warning');
+    return;
+  }
+
+  showLoader();
+  const res = id
+    ? await api(`/api/reservations/${id}`, { method: 'PUT',  body: JSON.stringify(body) })
+    : await api('/api/reservations',        { method: 'POST', body: JSON.stringify(body) });
+  hideLoader();
+
+  if (res?.id) {
+    toast(id ? 'Réservation mise à jour' : 'Réservation créée', 'success');
+    closeModal('reservation');
+    loadReservations();
+  } else {
+    toast(res?.error || 'Erreur', 'error');
+  }
+}
+
+window.deleteReservation = async (id) => {
+  const r = state.reservations.find(x => x.id === id);
+  if (!r) return;
+  if (!confirm(`Supprimer la réservation "${r.nomEvenement}" ?`)) return;
+
+  showLoader();
+  const res = await api(`/api/reservations/${id}`, { method: 'DELETE' });
+  hideLoader();
+
+  if (res?.message) {
+    toast(res.message, 'success');
+    loadReservations();
+  } else {
+    toast(res?.error || 'Erreur', 'error');
+  }
+};
+
+window.facturerReservation = async (id) => {
+  const r = state.reservations.find(x => x.id === id);
+  if (!r) return;
+  if (!confirm(`Générer la facture du jour J (${fmtDateOnly(r.dateEvenement)}) pour "${r.nomEvenement}" ?`)) return;
+
+  showLoader();
+  const res = await api(`/api/reservations/${id}/facturer`, { method: 'POST', body: '{}' });
+  hideLoader();
+
+  if (res?.facture?.id) {
+    toast(`Facture ${res.facture.numero} générée`, 'success');
+    loadReservations();
+  } else {
+    toast(res?.error || 'Erreur', 'error');
+  }
+};
+
 // ─── STOCKS ────────────────────────────────────────────
 
 function initStockSubtabs() {
@@ -2539,6 +2699,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-save-plat').addEventListener('click', savePlat);
   document.getElementById('btn-seed-menu').addEventListener('click', seedMenu);
   document.getElementById('filter-menu-cat').addEventListener('change', () => renderMenu(state.menu));
+
+  // ── Réservations ──
+  document.getElementById('btn-new-reservation').addEventListener('click', openNewReservation);
+  document.getElementById('btn-save-reservation').addEventListener('click', saveReservation);
+  document.getElementById('resa-montant').addEventListener('input', updateResaRestePreview);
+  document.getElementById('resa-avance').addEventListener('input', updateResaRestePreview);
 
   // ── Stocks ──
   document.getElementById('btn-save-plats-jour').addEventListener('click', saveStocksPlats);

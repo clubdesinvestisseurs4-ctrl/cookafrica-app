@@ -85,6 +85,7 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/wifi-config',   require('./routes/wifi-config'));
 app.use('/api/discount-pin',  require('./routes/discount-pin'));
 app.use('/api/integration',   require('./routes/integration'));
+app.use('/api/reservations',  require('./routes/reservations'));
 app.use('/api/public',        require('./routes/commande-publique'));
 
 app.get('/health', (_req, res) => {

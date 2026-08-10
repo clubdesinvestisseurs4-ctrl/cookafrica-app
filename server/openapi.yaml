@@ -63,6 +63,8 @@ tags:
     description: Code admin requis pour baisser un prix de facture sous le tarif catalogue
   - name: Intégrations
     description: Routes service-à-service (clé partagée, pas de JWT) consommées par d'autres applications internes
+  - name: Réservations
+    description: Réservations de salle pour événements (admin) — génère la facture du jour J
   - name: Système
     description: Health check et flux d'événements temps réel
 
@@ -784,6 +786,103 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  # ── Réservations ──────────────────────────────────────
+  /api/reservations:
+    get:
+      operationId: getApiReservations
+      tags: [Réservations]
+      summary: Liste des réservations, triées par date d'événement (admin)
+      responses:
+        '200':
+          description: Liste des réservations
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Reservation' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      operationId: postApiReservations
+      tags: [Réservations]
+      summary: Crée une réservation (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReservationInput' }
+      responses:
+        '201':
+          description: Réservation créée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reservation' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/reservations/{id}:
+    put:
+      operationId: putApiReservationsById
+      tags: [Réservations]
+      summary: Modifie une réservation non encore facturée (admin)
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReservationInput' }
+      responses:
+        '200':
+          description: Réservation mise à jour
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Reservation' }
+        '400':
+          description: Champs requis manquants, ou réservation déjà facturée
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteApiReservationsById
+      tags: [Réservations]
+      summary: Supprime une réservation (admin)
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Réservation supprimée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { message: { type: string } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/reservations/{id}/facturer:
+    post:
+      operationId: postApiReservationsByIdFacturer
+      tags: [Réservations]
+      summary: Génère la facture de la réservation, datée du jour J (admin)
+      description: |
+        Peut être appelé à tout moment (avant, pendant ou après l'événement) — la facture créée
+        porte toujours `date` = `dateEvenement` de la réservation, jamais la date de l'appel.
+        Statut `payee` si l'avance couvre déjà le montant global, `partielle` sinon.
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '201':
+          description: Facture générée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  facture: { $ref: '#/components/schemas/Facture' }
+        '400':
+          description: Réservation déjà facturée
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   # ── Stocks ────────────────────────────────────────────
   /api/stocks:
     get:
@@ -1494,6 +1593,44 @@ components:
       properties:
         commandeId: { type: string }
         modePaiement: { type: string, default: especes }
+
+    Reservation:
+      type: object
+      properties:
+        id: { type: string }
+        nomEvenement: { type: string, example: Mariage Koffi & Aya }
+        menu: { type: string, description: 'Texte libre, ex: "Menu Prestige 3 services"' }
+        salle: { type: string }
+        nom: { type: string }
+        prenom: { type: string }
+        contact: { type: string }
+        email: { type: string }
+        dateReservation: { type: string, format: date, description: Date de prise de la réservation }
+        dateEvenement: { type: string, format: date, description: 'Jour J — date utilisée pour la facture générée' }
+        montantGlobal: { type: number }
+        avance: { type: number }
+        reste: { type: number, description: montantGlobal − avance }
+        statut: { type: string, enum: ['en-attente', facturee] }
+        factureId: { type: string, nullable: true }
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ReservationInput:
+      type: object
+      required: [nomEvenement, nom, dateEvenement, montantGlobal]
+      properties:
+        nomEvenement: { type: string }
+        menu: { type: string }
+        salle: { type: string }
+        nom: { type: string }
+        prenom: { type: string }
+        contact: { type: string }
+        email: { type: string }
+        dateReservation: { type: string, format: date }
+        dateEvenement: { type: string, format: date }
+        montantGlobal: { type: number, minimum: 0.01 }
+        avance: { type: number, minimum: 0, description: Doit être ≤ montantGlobal }
 
     FacturePayRequest:
       type: object
