@@ -2354,6 +2354,21 @@ function closeModal(name) {
   document.getElementById(`modal-${name}`)?.classList.add('hidden');
 }
 
+// ─── Rafraîchissement forcé (clic sur le logo) ─────────
+// Équivalent d'un Ctrl+Shift+R : vide le cache du service worker (l'appli
+// est en mode réseau-d'abord, donc ça ne change rien en ligne, mais évite
+// tout contenu obsolète si le prochain chargement se fait hors-ligne) puis
+// recharge la page en cassant le cache HTTP du shell.
+document.getElementById('sidebar-logo')?.addEventListener('click', async () => {
+  try {
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+  } catch { /* best-effort */ }
+  window.location.href = window.location.pathname + '?refresh=' + Date.now();
+});
+
 // ─── Service Worker ────────────────────────────────────
 
 if ('serviceWorker' in navigator) {
