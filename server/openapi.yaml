@@ -61,6 +61,8 @@ tags:
     description: Restriction d'accès par réseau Wi-Fi (admin)
   - name: Code baisse de prix
     description: Code admin requis pour baisser un prix de facture sous le tarif catalogue
+  - name: Intégrations
+    description: Routes service-à-service (clé partagée, pas de JWT) consommées par d'autres applications internes
   - name: Système
     description: Health check et flux d'événements temps réel
 
@@ -1126,6 +1128,49 @@ paths:
           description: Code invalide
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  # ── Intégrations ─────────────────────────────────────
+  /api/integration/ca:
+    get:
+      operationId: getApiIntegrationCa
+      tags: [Intégrations]
+      summary: Chiffre d'affaires réel encaissé sur une période (service-à-service)
+      description: |
+        Consommé par ERP-Compta (module "Audit Flash") pour comparer le CA réel aux versements et
+        charges déjà saisis en comptabilité. Seules les factures au statut `payee` comptent (base
+        encaissement) — une facture `partielle` ne représente pas encore de l'argent reçu.
+        Lecture seule : ne modifie aucune donnée.
+      security:
+        - serviceKey: []
+      parameters:
+        - name: debut
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: fin
+          in: query
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Chiffre d'affaires de la période
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  debut: { type: string, format: date }
+                  fin: { type: string, format: date }
+                  total: { type: number }
+                  nombre: { type: integer }
+                  parMode:
+                    type: object
+                    additionalProperties: { type: number }
+                    example: { especes: 2685000, carte: 298500 }
+        '400':
+          description: debut ou fin manquant
+        '401':
+          description: Clé de service manquante ou invalide
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1133,6 +1178,14 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: Jeton obtenu via `POST /api/auth/login`, valable 12h.
+    serviceKey:
+      type: apiKey
+      in: header
+      name: X-Service-Key
+      description: |
+        Clé partagée serveur-à-serveur pour les routes `/api/integration/*`, consommées par
+        d'autres applications internes (ex: ERP-Compta) — pas de JWT utilisateur. Comparaison à
+        temps constant côté serveur (voir `middleware/serviceAuth.js`).
 
   parameters:
     IdPathParam:
