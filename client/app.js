@@ -73,7 +73,7 @@ const PAGE_ROLES = {
   'commandes-en-ligne': ['admin', 'caissiere', 'caissier-en-ligne'],
   facturation:    ['admin', 'caissiere'],
   menu:           ['admin'],
-  stocks:         ['admin'],
+  stocks:         [], // masqué pour l'instant (fonctionnalité conservée, pas utilisée) — voir index.html
   rapports:       ['admin'],
   sessions:       ['admin'],
   utilisateurs:   ['admin'],
