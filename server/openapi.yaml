@@ -1598,6 +1598,7 @@ components:
       type: object
       properties:
         id: { type: string }
+        numero: { type: string, example: RESA-0001 }
         nomEvenement: { type: string, example: Mariage Koffi & Aya }
         menu: { type: string, description: 'Texte libre, ex: "Menu Prestige 3 services"' }
         salle: { type: string }

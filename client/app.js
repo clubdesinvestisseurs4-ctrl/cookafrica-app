@@ -35,6 +35,7 @@ const state = {
   factures:  [],
   stocks:    [],
   reservations: [],
+  printTitle: 'Facture Cook Africa',
   utilisateurs: [],
   panier:    [],
   panierSource: 'sur-place',
@@ -1530,6 +1531,9 @@ window.aperçuFacture = async (id) => {
     f = res;
   }
 
+  document.getElementById('apercu-modal-title').textContent = 'Aperçu – Facture';
+  state.printTitle = 'Facture Cook Africa';
+
   const logoUrl = window.location.origin + '/logo-cookafrica.png';
 
   // Grouper les articles par catégorie pour un affichage clair
@@ -1608,7 +1612,7 @@ function printFacture() {
   const content = document.getElementById('facture-print-area').innerHTML;
   const logoUrl = window.location.origin + '/logo-cookafrica.png';
   const w = window.open('', '_blank');
-  w.document.write(`<!DOCTYPE html><html><head><title>Facture Cook Africa</title>
+  w.document.write(`<!DOCTYPE html><html><head><title>${escapeHtml(state.printTitle || 'Facture Cook Africa')}</title>
     <style>
       body { font-family: Arial, sans-serif; max-width: 480px; margin: 20px auto; font-size: 13px; }
       p { margin: 3px 0; }
@@ -1800,6 +1804,7 @@ function renderReservations(reservations) {
       <td data-label="Reste" style="color:${r.reste > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:700">${fmt(r.reste)} FCFA</td>
       <td data-label="Statut">${badgeReservationStatut(r.statut)}</td>
       <td data-label="Actions">
+        <button class="btn btn-secondary btn-sm" onclick="apercuReservation('${r.id}')" title="Imprimer le reçu de réservation"><i class="fas fa-print"></i></button>
         ${r.statut !== 'facturee' ? `<button class="btn btn-secondary btn-sm" onclick="editReservation('${r.id}')" title="Modifier"><i class="fas fa-edit"></i></button>` : ''}
         ${canFacturer ? `<button class="btn btn-accent btn-sm" onclick="facturerReservation('${r.id}')" title="Générer la facture du jour J"><i class="fas fa-receipt"></i> Facturer</button>` : ''}
         <button class="btn btn-danger btn-sm" onclick="deleteReservation('${r.id}')" title="Supprimer"><i class="fas fa-trash"></i></button>
@@ -1874,7 +1879,8 @@ async function saveReservation() {
   if (res?.id) {
     toast(id ? 'Réservation mise à jour' : 'Réservation créée', 'success');
     closeModal('reservation');
-    loadReservations();
+    await loadReservations();
+    if (!id) apercuReservation(res.id); // nouvelle réservation → propose aussitôt le reçu à imprimer
   } else {
     toast(res?.error || 'Erreur', 'error');
   }
@@ -1908,10 +1914,68 @@ window.facturerReservation = async (id) => {
 
   if (res?.facture?.id) {
     toast(`Facture ${res.facture.numero} générée`, 'success');
-    loadReservations();
+    await loadReservations();
+    state.factures.push(res.facture);
+    aperçuFacture(res.facture.id);
   } else {
     toast(res?.error || 'Erreur', 'error');
   }
+};
+
+// Reçu de réservation (aperçu + impression) — distinct de la facture officielle : imprimable
+// dès la prise de réservation, mais son montant ne compte pas encore dans le CA (voir
+// facturerReservation, qui génère la vraie facture datée du jour J).
+window.apercuReservation = (id) => {
+  const r = state.reservations.find(x => x.id === id);
+  if (!r) return;
+
+  document.getElementById('apercu-modal-title').textContent = 'Aperçu – Reçu de réservation';
+  state.printTitle = 'Reçu de réservation - Cook Africa';
+
+  const logoUrl = window.location.origin + '/logo-cookafrica.png';
+  const nomClient = `${r.prenom || ''} ${r.nom}`.trim();
+
+  document.getElementById('facture-print-area').innerHTML = `
+    <div class="facture-print">
+      <div class="facture-print-header">
+        <img src="${logoUrl}" alt="Cook Africa" style="height:72px;margin-bottom:6px;display:block;margin-left:auto;margin-right:auto"
+             onerror="this.style.display='none'">
+        <p style="margin-top:4px;font-size:.9rem"><strong>REÇU DE RÉSERVATION${r.numero ? ' N° ' + r.numero : ''}</strong></p>
+        <p style="font-size:.78rem;color:var(--gray)">Émis le : ${fmtDateOnly(r.dateReservation)}</p>
+        <p style="font-size:.78rem"><strong>Événement :</strong> ${escapeHtml(r.nomEvenement)}</p>
+        ${r.salle ? `<p style="font-size:.78rem"><strong>Salle :</strong> ${escapeHtml(r.salle)}</p>` : ''}
+        <p style="font-size:.78rem">Client : <strong>${escapeHtml(nomClient)}</strong></p>
+        ${r.contact ? `<p style="font-size:.78rem">${escapeHtml(r.contact)}</p>` : ''}
+        ${r.email ? `<p style="font-size:.78rem">${escapeHtml(r.email)}</p>` : ''}
+      </div>
+      <table class="facture-items">
+        <thead><tr><th>Description</th><th style="text-align:right">Montant</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>${r.menu ? escapeHtml(r.menu) : 'Prestation événementielle'}</td>
+            <td style="text-align:right"><strong>${fmt(r.montantGlobal)}</strong></td>
+          </tr>
+        </tbody>
+      </table>
+      <table class="facture-totaux">
+        <tr><td>Montant global</td><td>${fmt(r.montantGlobal)} FCFA</td></tr>
+        <tr><td>Avance versée</td><td>${fmt(r.avance)} FCFA</td></tr>
+        <tr class="facture-total-final">
+          <td><strong>RESTE À PAYER LE JOUR J</strong></td>
+          <td><strong>${fmt(r.reste)} FCFA</strong></td>
+        </tr>
+      </table>
+      <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border);font-size:.78rem;color:var(--gray)">
+        <p style="text-align:center"><strong>Jour J de l'événement : ${fmtDateOnly(r.dateEvenement)}</strong></p>
+        <p style="margin-top:6px;text-align:center;font-style:italic">
+          Ce reçu atteste de la réservation et de l'avance versée.<br>
+          La facture officielle sera émise le jour de l'événement.
+        </p>
+        <p style="font-size:.7rem;text-align:center;margin-top:8px">Cook Africa – Le restaurant qui rassemble</p>
+      </div>
+    </div>`;
+
+  openModal('apercu-facture');
 };
 
 // ─── STOCKS ────────────────────────────────────────────

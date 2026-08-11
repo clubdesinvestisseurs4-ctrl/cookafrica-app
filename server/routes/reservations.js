@@ -16,6 +16,21 @@ function round2(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
+// Numérotation séquentielle des réservations (RESA-0001…), pour le reçu imprimé au moment
+// de la réservation — indépendante de la numérotation des factures (FACT-xxxx), qui elle
+// n'est attribuée que lors de la génération de la facture du jour J.
+async function getNextNumeroReservation(db) {
+  const snap = await db.collection('reservations').orderBy('createdAt', 'desc').limit(200).get();
+  let maxNum = 0;
+  snap.docs.forEach(doc => {
+    const { numero } = doc.data();
+    if (!numero || !numero.startsWith('RESA-')) return;
+    const n = parseInt(numero.slice(5), 10);
+    if (!isNaN(n) && n > maxNum) maxNum = n;
+  });
+  return `RESA-${String(maxNum + 1).padStart(4, '0')}`;
+}
+
 // GET /api/reservations
 router.get('/', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
@@ -48,8 +63,10 @@ router.post('/', authenticateToken, requireRole('admin'), async (req, res) => {
     if (montant <= 0) return res.status(400).json({ error: 'Le montant global doit être positif' });
     if (acompte < 0 || acompte > montant) return res.status(400).json({ error: "L'avance doit être comprise entre 0 et le montant global" });
 
+    const numero = await getNextNumeroReservation(db);
     const now = new Date();
     const data = {
+      numero,
       menu: menu || '',
       salle: salle || '',
       dateReservation: dateReservation || now.toISOString().split('T')[0],
