@@ -1619,16 +1619,27 @@ function printFacture() {
   const w = window.open('', '_blank');
   w.document.write(`<!DOCTYPE html><html><head><title>${escapeHtml(state.printTitle || 'Facture Cook Africa')}</title>
     <style>
-      body { font-family: Arial, sans-serif; max-width: 480px; margin: 20px auto; font-size: 13px; }
-      p { margin: 3px 0; }
-      .facture-print-header { text-align: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px dashed #ccc; }
-      .facture-items { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-      .facture-items th { background: #8B1A1A; color: white; padding: 6px; text-align: left; }
-      .facture-items td { padding: 6px; border-bottom: 1px solid #eee; }
-      .facture-totaux { margin-left: auto; width: 220px; }
-      .facture-totaux td { padding: 4px; }
+      /* Format pensé pour une imprimante thermique 80mm (ex: Xprinter XP-Q260H) — pas de
+         couleurs de fond (invisibles si "imprimer les couleurs d'arrière-plan" est désactivé,
+         ce qui est le cas par défaut dans la plupart des navigateurs) : uniquement du noir sur
+         blanc, avec bordures/gras pour structurer, comme un vrai ticket de caisse. */
+      @page { size: 80mm auto; margin: 0; }
+      * { box-sizing: border-box; }
+      body {
+        font-family: 'Courier New', Consolas, monospace;
+        width: 72mm; margin: 0 auto; padding: 2mm 4mm;
+        font-size: 11px; color: #000;
+      }
+      p { margin: 2px 0; }
+      .facture-print-header { text-align: center; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px dashed #000; }
+      .facture-print-header img { max-width: 46mm; height: auto !important; }
+      .facture-items { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 11px; }
+      .facture-items th { border-bottom: 1px solid #000; padding: 3px 2px; text-align: left; font-weight: 700; }
+      .facture-items td { padding: 3px 2px; border-bottom: 1px dashed #999; }
+      .facture-totaux { width: 100%; margin-top: 4px; }
+      .facture-totaux td { padding: 2px; }
       .facture-totaux td:last-child { text-align: right; font-weight: bold; }
-      .facture-total-final td { font-size: 1.05rem; border-top: 2px solid #333; padding-top: 6px; }
+      .facture-total-final td { font-size: 13px; border-top: 1px solid #000; padding-top: 4px; }
       @media print { button { display: none; } }
     </style>
   </head><body>${content}</body></html>`);
