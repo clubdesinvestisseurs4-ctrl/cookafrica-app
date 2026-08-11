@@ -1807,6 +1807,7 @@ function renderReservations(reservations) {
         <button class="btn btn-secondary btn-sm" onclick="apercuReservation('${r.id}')" title="Imprimer le reçu de réservation"><i class="fas fa-print"></i></button>
         ${r.statut !== 'facturee' ? `<button class="btn btn-secondary btn-sm" onclick="editReservation('${r.id}')" title="Modifier"><i class="fas fa-edit"></i></button>` : ''}
         ${canFacturer ? `<button class="btn btn-accent btn-sm" onclick="facturerReservation('${r.id}')" title="Générer la facture du jour J"><i class="fas fa-receipt"></i> Facturer</button>` : ''}
+        ${r.statut === 'facturee' ? `<button class="btn btn-success btn-sm" onclick="payerReservationFacture('${r.id}')" title="Encaisser le reste à payer"><i class="fas fa-check"></i> Payer</button>` : ''}
         <button class="btn btn-danger btn-sm" onclick="deleteReservation('${r.id}')" title="Supprimer"><i class="fas fa-trash"></i></button>
       </td>
     </tr>`;
@@ -1920,6 +1921,27 @@ window.facturerReservation = async (id) => {
   } else {
     toast(res?.error || 'Erreur', 'error');
   }
+};
+
+// Encaisse le reste à payer d'une réservation déjà facturée — va chercher la facture à jour
+// (le "reste" affiché dans le tableau des réservations est un instantané pris à la
+// facturation, la source vivante du paiement est désormais la facture elle-même, comme pour
+// toute facture issue d'une commande) puis réutilise le même modal de paiement que Facturation.
+window.payerReservationFacture = async (id) => {
+  const r = state.reservations.find(x => x.id === id);
+  if (!r?.factureId) return;
+
+  showLoader();
+  const facture = await api(`/api/factures/${r.factureId}`);
+  hideLoader();
+  if (!facture) return;
+
+  if (facture.statut === 'payee') {
+    toast('Cette facture est déjà entièrement payée', 'info');
+    return;
+  }
+  state.factures = state.factures.filter(f => f.id !== facture.id).concat(facture);
+  openPayFacture(facture.id, fmt(facture.reste));
 };
 
 // Reçu de réservation (aperçu + impression) — distinct de la facture officielle : imprimable
