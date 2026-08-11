@@ -157,6 +157,7 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere', 'cai
     };
 
     let finalItems = facture.items || [];
+    let discountValidUntil = null;
 
     if (Array.isArray(items) && items.length > 0) {
       const mappedItems = items.map(i => ({
@@ -169,11 +170,15 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere', 'cai
       }));
 
       const discounted = await findDiscountedItems(db, mappedItems);
-      if (discounted.length > 0 && !(await verifyDiscountPin(discountPin))) {
-        return res.status(403).json({
-          error: 'Code admin requis pour baisser un prix sous le tarif normal',
-          requiresDiscountPin: true,
-        });
+      if (discounted.length > 0) {
+        const { valid, expiresAt } = await verifyDiscountPin(discountPin);
+        if (!valid) {
+          return res.status(403).json({
+            error: 'Code admin requis pour baisser un prix sous le tarif normal',
+            requiresDiscountPin: true,
+          });
+        }
+        discountValidUntil = expiresAt;
       }
 
       finalItems = mappedItems;
@@ -222,7 +227,10 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere', 'cai
       createdBy: req.user.username,
     });
 
-    res.json({ id: req.params.id, ...facture, ...update, items: finalItems, total: finalTotal });
+    res.json({
+      id: req.params.id, ...facture, ...update, items: finalItems, total: finalTotal,
+      ...(discountValidUntil ? { discountValidUntil } : {}),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -257,11 +265,16 @@ router.post('/:id/edit-items', authenticateToken, requireRole('admin', 'caissier
     }));
 
     const discounted = await findDiscountedItems(db, mappedItems);
-    if (discounted.length > 0 && !(await verifyDiscountPin(discountPin))) {
-      return res.status(403).json({
-        error: 'Code admin requis pour baisser un prix sous le tarif normal',
-        requiresDiscountPin: true,
-      });
+    let discountValidUntil = null;
+    if (discounted.length > 0) {
+      const { valid, expiresAt } = await verifyDiscountPin(discountPin);
+      if (!valid) {
+        return res.status(403).json({
+          error: 'Code admin requis pour baisser un prix sous le tarif normal',
+          requiresDiscountPin: true,
+        });
+      }
+      discountValidUntil = expiresAt;
     }
 
     const total = mappedItems.reduce((s, i) => s + i.sousTotal, 0);
@@ -288,7 +301,10 @@ router.post('/:id/edit-items', authenticateToken, requireRole('admin', 'caissier
       createdBy: req.user.username,
     });
 
-    res.json({ id: req.params.id, ...facture, ...update });
+    res.json({
+      id: req.params.id, ...facture, ...update,
+      ...(discountValidUntil ? { discountValidUntil } : {}),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

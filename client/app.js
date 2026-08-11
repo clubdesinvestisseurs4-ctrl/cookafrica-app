@@ -53,6 +53,9 @@ const state = {
   editCommandeItems:   [],
   payFactureItems:     null,
   modalResolvers:      {},
+  // Code OTP de baisse de prix validé avec succès : mémorisé le temps de sa fenêtre
+  // de validité pour éviter de le resaisir à chaque article baissé (voir askDiscountPin).
+  discountOtp:         null,
 };
 
 // Sélecteurs "rechercher un article" (panier, modification commande, modification
@@ -549,7 +552,7 @@ function navigateTo(page) {
     reservations: loadReservations,
     rapports:     () => {},
     sessions:     loadSessions,
-    utilisateurs: () => { loadUtilisateurs(); loadWifiConfig(); loadDiscountPinStatus(); },
+    utilisateurs: () => { loadUtilisateurs(); loadWifiConfig(); loadDiscountOtpStatus(); },
   };
   if (loaders[page]) loaders[page]();
 }
@@ -1363,16 +1366,31 @@ function findDiscountedItems(items) {
   });
 }
 
-// Retourne le code saisi (chaîne, éventuellement vide), ou null si la
-// caissière annule — dans ce cas l'appelant doit abandonner l'enregistrement.
+// Retourne le code à envoyer au serveur, ou null si la caissière annule —
+// dans ce cas l'appelant doit abandonner l'enregistrement. Si un code déjà
+// saisi est encore dans sa fenêtre de validité (state.discountOtp), il est
+// réutilisé silencieusement sans nouvelle saisie.
 async function askDiscountPin(discountedItems) {
+  if (state.discountOtp && new Date(state.discountOtp.expiresAt).getTime() > Date.now()) {
+    return state.discountOtp.code;
+  }
   const noms = discountedItems.map(i => i.nom).join(', ');
-  return promptDialog(`Le prix de "${noms}" est en dessous du tarif normal.`, {
+  return promptDialog(`Le prix de "${noms}" est en dessous du tarif normal. Demandez le code à l'administrateur.`, {
     title: 'Code admin requis',
-    placeholder: 'Code à 4-8 chiffres',
+    placeholder: 'Code temporaire (6 chiffres)',
     inputType: 'password',
     confirmLabel: 'Valider',
   });
+}
+
+// Mémorise (ou efface) la fenêtre de validité du code après une réponse serveur —
+// à appeler après tout appel API ayant pu envoyer un discountPin.
+function trackDiscountOtp(code, res) {
+  if (res?.discountValidUntil) {
+    state.discountOtp = { code, expiresAt: res.discountValidUntil };
+  } else if (res?.requiresDiscountPin) {
+    state.discountOtp = null; // code invalide ou expiré → resaisie obligatoire la prochaine fois
+  }
 }
 
 async function saveEditFacture() {
@@ -1393,6 +1411,7 @@ async function saveEditFacture() {
   });
   hideLoader();
 
+  if (discounted.length > 0) trackDiscountOtp(discountPin, res);
   if (!res?.id) { toast(res?.error || 'Erreur lors de la modification', 'error'); return; }
   toast('Facture modifiée', 'success');
   closeModal('edit-facture');
@@ -1503,8 +1522,9 @@ async function confirmPayFacture() {
   const mode = document.getElementById('pay-facture-mode').value;
   const body = { modePaiement: mode };
 
+  let discounted = [];
   if (state.payFactureItems) {
-    const discounted = findDiscountedItems(state.payFactureItems);
+    discounted = findDiscountedItems(state.payFactureItems);
     if (discounted.length > 0) {
       const discountPin = await askDiscountPin(discounted);
       if (discountPin === null) return;
@@ -1519,6 +1539,7 @@ async function confirmPayFacture() {
     body: JSON.stringify(body),
   });
   hideLoader();
+  if (discounted.length > 0) trackDiscountOtp(body.discountPin, res);
   if (res?.statut === 'payee') {
     toast('Paiement enregistré !', 'success');
     closeModal('pay-facture');
@@ -2469,31 +2490,70 @@ window.removeWifiIp = async (ip) => {
   else toast(res?.error || 'Erreur', 'error');
 };
 
-// ─── CODE DE BAISSE DE PRIX ────────────────────────────
+// ─── CODE DE BAISSE DE PRIX (OTP temporaire) ───────────
+// L'admin génère un code à la demande, valable "windowMinutes" (réglable ici) ;
+// pendant cette fenêtre le même code autorise plusieurs baisses de prix côté
+// caissière (voir askDiscountPin / trackDiscountOtp). Il n'est jamais réaffiché
+// après coup — seulement au moment de sa génération.
 
-async function loadDiscountPinStatus() {
+let _discountOtpCountdown = null;
+
+async function loadDiscountOtpStatus() {
   const data = await api('/api/discount-pin');
-  const status = document.getElementById('discount-pin-status');
-  if (!data || !status) return;
-  status.textContent = data.configured ? 'Code déjà configuré' : 'Aucun code configuré';
-  status.style.color = data.configured ? 'var(--success)' : 'var(--gray)';
+  const windowInput = document.getElementById('discount-otp-window');
+  if (data && windowInput) windowInput.value = data.windowMinutes;
+  renderDiscountOtpStatus(data?.active ? data.expiresAt : null);
 }
 
-async function saveDiscountPin() {
-  const input = document.getElementById('discount-pin-input');
-  const pin = input?.value.trim();
-  if (!/^\d{4,8}$/.test(pin || '')) {
-    toast('Le code doit contenir entre 4 et 8 chiffres', 'warning');
+function renderDiscountOtpStatus(expiresAt, revealedCode) {
+  const el = document.getElementById('discount-otp-status');
+  if (!el) return;
+  clearInterval(_discountOtpCountdown);
+
+  if (!expiresAt || new Date(expiresAt).getTime() <= Date.now()) {
+    el.innerHTML = 'Aucun code actif';
+    el.style.color = 'var(--gray)';
     return;
   }
-  const res = await api('/api/discount-pin', { method: 'PUT', body: JSON.stringify({ pin }) });
-  if (res?.message) {
-    toast(res.message, 'success');
-    if (input) input.value = '';
-    loadDiscountPinStatus();
-  } else {
-    toast(res?.error || 'Erreur', 'error');
+
+  const codeLine = revealedCode
+    ? `<div style="font-size:1.4rem;font-weight:700;letter-spacing:3px;margin-bottom:4px">${revealedCode}</div>`
+    : '';
+
+  const tick = () => {
+    const remainingMs = new Date(expiresAt).getTime() - Date.now();
+    if (remainingMs <= 0) {
+      clearInterval(_discountOtpCountdown);
+      el.innerHTML = 'Code expiré';
+      el.style.color = 'var(--gray)';
+      return;
+    }
+    const m = Math.floor(remainingMs / 60000);
+    const s = Math.floor((remainingMs % 60000) / 1000);
+    el.innerHTML = `${codeLine}Expire dans ${m}:${String(s).padStart(2, '0')}`;
+    el.style.color = 'var(--success)';
+  };
+  tick();
+  _discountOtpCountdown = setInterval(tick, 1000);
+}
+
+async function generateDiscountOtp() {
+  const res = await api('/api/discount-pin/generate', { method: 'POST' });
+  if (!res?.code) { toast(res?.error || 'Erreur', 'error'); return; }
+  renderDiscountOtpStatus(res.expiresAt, res.code);
+  toast('Code généré — communiquez-le à la caissière', 'success');
+}
+
+async function saveDiscountOtpWindow() {
+  const input = document.getElementById('discount-otp-window');
+  const minutes = parseInt(input?.value, 10);
+  if (!Number.isInteger(minutes) || minutes < 1 || minutes > 60) {
+    toast('La durée doit être un nombre entier entre 1 et 60 minutes', 'warning');
+    return;
   }
+  const res = await api('/api/discount-pin/config', { method: 'PUT', body: JSON.stringify({ windowMinutes: minutes }) });
+  if (res?.message) toast(res.message, 'success');
+  else toast(res?.error || 'Erreur', 'error');
 }
 
 // ─── SESSIONS ──────────────────────────────────────────
@@ -2904,9 +2964,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-add-wifi-manual-ip')?.addEventListener('click', addManualWifiIp);
   document.getElementById('wifi-manual-ip')?.addEventListener('keydown', e => { if (e.key === 'Enter') addManualWifiIp(); });
 
-  // ── Code de baisse de prix ──
-  document.getElementById('btn-save-discount-pin')?.addEventListener('click', saveDiscountPin);
-  document.getElementById('discount-pin-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') saveDiscountPin(); });
+  // ── Code de baisse de prix (OTP) ──
+  document.getElementById('btn-generate-discount-otp')?.addEventListener('click', generateDiscountOtp);
+  document.getElementById('btn-save-discount-otp-window')?.addEventListener('click', saveDiscountOtpWindow);
 
   // ── Restauration session ──
   // Vérifie le token côté serveur avant de restaurer la session.

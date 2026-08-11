@@ -539,27 +539,34 @@
           </div>
         </div>
 
-        <!-- Carte code de baisse de prix -->
+        <!-- Carte code de baisse de prix (OTP temporaire) -->
         <div style="margin-top:20px;background:var(--white);border-radius:12px;border:1.5px solid var(--border);padding:20px 24px;max-width:560px">
           <h3 style="margin:0 0 8px;font-size:1rem;display:flex;align-items:center;gap:8px">
             <i class="fas fa-key" style="color:var(--primary)"></i> Code de baisse de prix
           </h3>
           <p style="font-size:.82rem;color:var(--gray);margin:0 0 14px">
-            Ce code est demandé à la caissière dès qu'elle baisse le prix d'un article de facture
-            en dessous de son tarif catalogue. Communiquez-le uniquement à l'oral, il n'est jamais
-            réaffiché ici une fois enregistré.
+            Générez un code temporaire quand une caissière doit baisser le prix d'un article sous
+            son tarif catalogue, et communiquez-le-lui à l'oral. Il reste valable — pour plusieurs
+            baisses de prix — pendant la durée ci-dessous, puis expire automatiquement.
           </p>
-          <div style="background:var(--light);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:.83rem">
-            État : <strong id="discount-pin-status">—</strong>
-          </div>
-          <div style="display:flex;gap:8px">
-            <input type="password" id="discount-pin-input" inputmode="numeric" maxlength="8"
-              placeholder="Nouveau code (4 à 8 chiffres)"
-              style="flex:1;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem;font-family:monospace">
-            <button class="btn btn-primary" id="btn-save-discount-pin">
+
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+            <label for="discount-otp-window" style="font-size:.83rem;color:var(--gray);white-space:nowrap">Durée de la fenêtre</label>
+            <input type="number" id="discount-otp-window" min="1" max="60" value="5"
+              style="width:70px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem">
+            <span style="font-size:.83rem;color:var(--gray)">min</span>
+            <button class="btn btn-secondary btn-sm" id="btn-save-discount-otp-window">
               <i class="fas fa-save"></i> Enregistrer
             </button>
           </div>
+
+          <div style="background:var(--light);border-radius:8px;padding:14px;margin-bottom:14px;font-size:.83rem" id="discount-otp-status">
+            Aucun code actif
+          </div>
+
+          <button class="btn btn-primary" id="btn-generate-discount-otp">
+            <i class="fas fa-bolt"></i> Générer un code
+          </button>
         </div>
       </section>
 
