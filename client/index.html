@@ -969,6 +969,61 @@
   </div>
 </div>
 
+<!-- Modal Confirmation générique (remplace confirm()) -->
+<div class="modal-overlay hidden" id="modal-confirm">
+  <div class="modal-box modal-box-sm">
+    <div class="modal-header">
+      <h2 id="confirm-title">Confirmation</h2>
+      <button class="modal-close" data-modal="confirm">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="confirm-message" class="dialog-message"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="confirm-btn-cancel">Annuler</button>
+      <button class="btn btn-primary" id="confirm-btn-ok">Confirmer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Saisie générique (remplace prompt()) -->
+<div class="modal-overlay hidden" id="modal-prompt">
+  <div class="modal-box modal-box-sm">
+    <div class="modal-header">
+      <h2 id="prompt-title">Saisie</h2>
+      <button class="modal-close" data-modal="prompt">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="prompt-message" class="dialog-message"></p>
+      <input type="text" id="prompt-input" class="dialog-input">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="prompt-btn-cancel">Annuler</button>
+      <button class="btn btn-primary" id="prompt-btn-ok">Valider</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Copier un lien (remplace le prompt() de secours pour la copie) -->
+<div class="modal-overlay hidden" id="modal-copy-link">
+  <div class="modal-box modal-box-sm">
+    <div class="modal-header">
+      <h2>Partager le lien</h2>
+      <button class="modal-close" data-modal="copy-link">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="copy-link-message" class="dialog-message"></p>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="copy-link-input" class="dialog-input" readonly style="flex:1;font-family:monospace;font-size:.85rem">
+        <button class="btn btn-primary" id="copy-link-btn-copy"><i class="fas fa-copy"></i> Copier</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-modal="copy-link">Fermer</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Utilisateur -->
 <div class="modal-overlay hidden" id="modal-utilisateur">
   <div class="modal-box" style="max-width:500px">

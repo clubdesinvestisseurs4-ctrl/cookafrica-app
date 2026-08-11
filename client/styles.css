@@ -396,13 +396,25 @@ body {
      centrée sur tout l'écran paraît poussée vers la gauche par rapport à la
      zone de contenu réellement visible. */
   padding-left: calc(var(--sidebar-w) + 20px);
+  /* opacity/visibility plutôt que display:none : permet la transition d'ouverture
+     ci-dessous (display ne peut pas s'animer). pointer-events:none évite que la
+     modale invisible n'intercepte les clics pendant qu'elle disparaît. */
+  opacity: 1; visibility: visible;
+  transition: opacity .18s ease;
 }
-.modal-overlay.hidden { display: none; }
+.modal-overlay.hidden {
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity .18s ease, visibility 0s .18s;
+}
 .modal-box {
   background: var(--white); border-radius: 14px;
   width: 100%; max-width: 600px; max-height: 90vh;
   overflow-y: auto; box-shadow: var(--shadow-md);
+  transform: scale(1) translateY(0);
+  transition: transform .18s cubic-bezier(.34,1.4,.64,1);
 }
+.modal-overlay.hidden .modal-box { transform: scale(.94) translateY(10px); }
+.modal-box-sm { max-width: 420px; }
 .modal-header {
   display: flex; justify-content: space-between; align-items: center;
   padding: 18px 24px; border-bottom: 1px solid var(--border);
@@ -418,6 +430,15 @@ body {
   display: flex; justify-content: flex-end; gap: 10px;
   padding: 14px 24px; border-top: 1px solid var(--border);
 }
+
+/* ── Dialogues génériques (confirm/prompt) ────────── */
+.dialog-message { font-size: .95rem; line-height: 1.5; color: var(--dark); }
+.dialog-input {
+  width: 100%; margin-top: 10px; padding: 10px 12px;
+  border: 1.5px solid var(--border); border-radius: 8px;
+  font-size: .95rem; font-family: inherit;
+}
+.dialog-input:focus { outline: none; border-color: var(--primary); }
 
 /* ── Stocks ────────────────────────────────────── */
 .stock-subtabs {

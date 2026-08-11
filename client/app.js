@@ -52,6 +52,7 @@ const state = {
   editFactureItems:    [],
   editCommandeItems:   [],
   payFactureItems:     null,
+  modalResolvers:      {},
 };
 
 // Sélecteurs "rechercher un article" (panier, modification commande, modification
@@ -835,7 +836,7 @@ async function viewCommande(id) {
 }
 
 async function annulerCommande(id, numero) {
-  if (!confirm(`Annuler la commande ${numero} ?`)) return;
+  if (!(await confirmDialog(`Annuler la commande ${numero} ?`, { danger: true }))) return;
   const res = await api(`/api/commandes/${id}`, { method: 'DELETE' });
   if (res?.message) {
     toast(res.factureSupprimee ? 'Commande annulée — sa facture a été supprimée' : 'Commande annulée', 'warning');
@@ -844,7 +845,7 @@ async function annulerCommande(id, numero) {
 }
 
 window.envoyerFacturation = async (id, numero) => {
-  if (!confirm(`Envoyer la commande ${numero} à la facturation ? Vous ne pourrez plus la modifier ensuite.`)) return;
+  if (!(await confirmDialog(`Envoyer la commande ${numero} à la facturation ? Vous ne pourrez plus la modifier ensuite.`))) return;
   showLoader();
   const res = await api(`/api/commandes/${id}/envoyer`, { method: 'PUT', body: '{}' });
   hideLoader();
@@ -1267,7 +1268,7 @@ async function supprimerFacture(id, numero, estPayee) {
   const msg = estPayee
     ? `⚠️ La facture ${numero} est déjà payée. La supprimer effacera cette vente de l'historique. Continuer ?`
     : `Supprimer définitivement la facture ${numero} ?`;
-  if (!confirm(msg)) return;
+  if (!(await confirmDialog(msg, { danger: true }))) return;
 
   const res = await api(`/api/factures/${id}`, { method: 'DELETE' });
   if (res?.message) {
@@ -1280,7 +1281,7 @@ async function supprimerFacture(id, numero, estPayee) {
 window.supprimerFacture = supprimerFacture;
 
 async function repairNumeros() {
-  if (!confirm('Réparer les numéros de facture invalides (FACT-0NaN) en base ? Cette action est irréversible.')) return;
+  if (!(await confirmDialog('Réparer les numéros de facture invalides (FACT-0NaN) en base ? Cette action est irréversible.'))) return;
   showLoader();
   const res = await api('/api/factures/repair-numeros', { method: 'POST', body: '{}' });
   hideLoader();
@@ -1364,10 +1365,14 @@ function findDiscountedItems(items) {
 
 // Retourne le code saisi (chaîne, éventuellement vide), ou null si la
 // caissière annule — dans ce cas l'appelant doit abandonner l'enregistrement.
-function askDiscountPin(discountedItems) {
+async function askDiscountPin(discountedItems) {
   const noms = discountedItems.map(i => i.nom).join(', ');
-  const pin = prompt(`Le prix de "${noms}" est en dessous du tarif normal.\nDemandez le code à l'admin pour valider :`);
-  return pin === null ? null : pin.trim();
+  return promptDialog(`Le prix de "${noms}" est en dessous du tarif normal.`, {
+    title: 'Code admin requis',
+    placeholder: 'Code à 4-8 chiffres',
+    inputType: 'password',
+    confirmLabel: 'Valider',
+  });
 }
 
 async function saveEditFacture() {
@@ -1377,7 +1382,7 @@ async function saveEditFacture() {
   const discounted = findDiscountedItems(state.editFactureItems);
   let discountPin;
   if (discounted.length > 0) {
-    discountPin = askDiscountPin(discounted);
+    discountPin = await askDiscountPin(discounted);
     if (discountPin === null) return;
   }
 
@@ -1501,7 +1506,7 @@ async function confirmPayFacture() {
   if (state.payFactureItems) {
     const discounted = findDiscountedItems(state.payFactureItems);
     if (discounted.length > 0) {
-      const discountPin = askDiscountPin(discounted);
+      const discountPin = await askDiscountPin(discounted);
       if (discountPin === null) return;
       body.discountPin = discountPin;
     }
@@ -1742,7 +1747,7 @@ async function savePlat() {
 window.deletePlat = async (id) => {
   const m = state.menu.find(x => x.id === id);
   if (!m) return;
-  if (!confirm(`Supprimer "${m.nom}" du menu ?`)) return;
+  if (!(await confirmDialog(`Supprimer "${m.nom}" du menu ?`, { danger: true }))) return;
 
   showLoader();
   const res = await api(`/api/menu/${id}`, { method: 'DELETE' });
@@ -1758,7 +1763,7 @@ window.deletePlat = async (id) => {
 };
 
 async function seedMenu() {
-  if (!confirm('Initialiser le menu avec les plats par défaut ?')) return;
+  if (!(await confirmDialog('Initialiser le menu avec les plats par défaut ?'))) return;
   showLoader();
   const res = await api('/api/menu/seed', { method: 'POST', body: '{}' });
   hideLoader();
@@ -1890,7 +1895,7 @@ async function saveReservation() {
 window.deleteReservation = async (id) => {
   const r = state.reservations.find(x => x.id === id);
   if (!r) return;
-  if (!confirm(`Supprimer la réservation "${r.nomEvenement}" ?`)) return;
+  if (!(await confirmDialog(`Supprimer la réservation "${r.nomEvenement}" ?`, { danger: true }))) return;
 
   showLoader();
   const res = await api(`/api/reservations/${id}`, { method: 'DELETE' });
@@ -1907,7 +1912,7 @@ window.deleteReservation = async (id) => {
 window.facturerReservation = async (id) => {
   const r = state.reservations.find(x => x.id === id);
   if (!r) return;
-  if (!confirm(`Générer la facture du jour J (${fmtDateOnly(r.dateEvenement)}) pour "${r.nomEvenement}" ?`)) return;
+  if (!(await confirmDialog(`Générer la facture du jour J (${fmtDateOnly(r.dateEvenement)}) pour "${r.nomEvenement}" ?`))) return;
 
   showLoader();
   const res = await api(`/api/reservations/${id}/facturer`, { method: 'POST', body: '{}' });
@@ -2169,7 +2174,7 @@ async function saveStock() {
 }
 
 async function seedStocks() {
-  if (!confirm('Initialiser les stocks avec les ingrédients par défaut ?')) return;
+  if (!(await confirmDialog('Initialiser les stocks avec les ingrédients par défaut ?'))) return;
   showLoader();
   const res = await api('/api/stocks/seed', { method: 'POST', body: '{}' });
   hideLoader();
@@ -2370,7 +2375,7 @@ window.toggleUtilisateur = async (id, currentActif) => {
   const newActif = !currentActif;
   const u = state.utilisateurs.find(x => x.id === id);
   const label = newActif ? 'réactiver' : 'désactiver';
-  if (!confirm(`${label.charAt(0).toUpperCase() + label.slice(1)} ${u?.nom || ''} ?`)) return;
+  if (!(await confirmDialog(`${label.charAt(0).toUpperCase() + label.slice(1)} ${u?.nom || ''} ?`))) return;
   showLoader();
   const res = await api(`/api/auth/utilisateurs/${id}`, {
     method: 'PUT',
@@ -2447,7 +2452,7 @@ async function addManualWifiIp() {
 }
 
 window.removeWifiIp = async (ip) => {
-  if (!confirm(`Supprimer ${ip} de la liste ?`)) return;
+  if (!(await confirmDialog(`Supprimer ${ip} de la liste ?`, { danger: true }))) return;
   const res = await api('/api/wifi-config/remove', { method: 'DELETE', body: JSON.stringify({ ip }) });
   if (res?.message) { toast('Adresse supprimée', 'warning'); loadWifiConfig(); }
   else toast(res?.error || 'Erreur', 'error');
@@ -2598,6 +2603,75 @@ function openModal(name) {
 }
 function closeModal(name) {
   document.getElementById(`modal-${name}`)?.classList.add('hidden');
+  // Un dialogue générique (confirmDialog/promptDialog) en attente sur cette modale est résolu
+  // en "annulé" ici — s'il a déjà été résolu via son bouton de validation, cet appel ne fait
+  // rien (une Promise ne se résout qu'une fois).
+  const resolver = state.modalResolvers[name];
+  if (resolver) { delete state.modalResolvers[name]; resolver(); }
+}
+
+// ─── Dialogues génériques (remplacent confirm()/prompt() natifs) ──────
+// Cohérents avec la charte graphique, centrés, avec la même transition d'ouverture que
+// les autres modales — contrairement aux boîtes natives du navigateur, qui ne peuvent pas
+// être stylées et cassent la fluidité de l'interface.
+
+function confirmDialog(message, opts = {}) {
+  const { title = 'Confirmation', confirmLabel = 'Confirmer', cancelLabel = 'Annuler', danger = false } = opts;
+  return new Promise(resolve => {
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-message').textContent = message;
+    const okBtn = document.getElementById('confirm-btn-ok');
+    okBtn.textContent = confirmLabel;
+    okBtn.className = `btn ${danger ? 'btn-danger' : 'btn-primary'}`;
+    document.getElementById('confirm-btn-cancel').textContent = cancelLabel;
+
+    state.modalResolvers.confirm = () => resolve(false);
+    okBtn.onclick = () => { resolve(true); closeModal('confirm'); };
+    document.getElementById('confirm-btn-cancel').onclick = () => closeModal('confirm');
+
+    openModal('confirm');
+    setTimeout(() => okBtn.focus(), 50);
+  });
+}
+
+function promptDialog(message, opts = {}) {
+  const { title = 'Saisie', placeholder = '', defaultValue = '', inputType = 'text', confirmLabel = 'Valider' } = opts;
+  return new Promise(resolve => {
+    document.getElementById('prompt-title').textContent = title;
+    document.getElementById('prompt-message').textContent = message;
+    const input = document.getElementById('prompt-input');
+    input.type = inputType;
+    input.placeholder = placeholder;
+    input.value = defaultValue;
+    const okBtn = document.getElementById('prompt-btn-ok');
+    okBtn.textContent = confirmLabel;
+
+    const submit = () => { resolve(input.value.trim()); closeModal('prompt'); };
+    state.modalResolvers.prompt = () => resolve(null);
+    okBtn.onclick = submit;
+    document.getElementById('prompt-btn-cancel').onclick = () => closeModal('prompt');
+    input.onkeydown = e => { if (e.key === 'Enter') submit(); };
+
+    openModal('prompt');
+    setTimeout(() => input.focus(), 50);
+  });
+}
+
+function showCopyLinkDialog(message, link) {
+  document.getElementById('copy-link-message').textContent = message;
+  const input = document.getElementById('copy-link-input');
+  input.value = link;
+  document.getElementById('copy-link-btn-copy').onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      toast('Lien copié !', 'success');
+    } catch {
+      input.select();
+      toast('Sélectionnez le champ et copiez avec Ctrl+C', 'warning');
+    }
+  };
+  openModal('copy-link');
+  setTimeout(() => input.select(), 50);
 }
 
 // ─── Rafraîchissement forcé (clic sur le logo) ─────────
@@ -2690,8 +2764,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // Logout
-  document.getElementById('logout-btn').addEventListener('click', () => {
-    if (confirm('Se déconnecter ?')) logout(true);
+  document.getElementById('logout-btn').addEventListener('click', async () => {
+    if (await confirmDialog('Se déconnecter ?')) logout(true);
   });
 
   // Navigation
@@ -2729,6 +2803,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
+  // Close modal avec Échap — la modale visible la plus récente uniquement
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    const open = document.querySelector('.modal-overlay:not(.hidden)');
+    if (open) closeModal(open.id.replace('modal-', ''));
+  });
+
   // Notifications
   document.getElementById('notif-btn').addEventListener('click', () => {
     const panel = document.getElementById('notif-panel');
@@ -2749,7 +2830,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       await navigator.clipboard.writeText(lien);
       toast('Lien client copié — partagez-le au client', 'success');
     } catch {
-      prompt('Copiez ce lien à partager au client :', lien);
+      showCopyLinkDialog('Copiez ce lien à partager au client :', lien);
     }
   });
 
