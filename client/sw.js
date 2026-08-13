@@ -1,7 +1,8 @@
 // Version du SW — incrémenter à chaque déploiement pour forcer la mise à jour
-// (v3.1.0 : purge les caches d'icônes potentiellement corrompus par l'ancienne
-// stratégie réseau-d'abord, voir le nouveau traitement dédié aux icônes ci-dessous)
-const SW_VERSION = 'cookafrica-v3.1.0';
+// (v3.2.0 : icônes compressées ~4x — icon-512.png passait de 481 Ko à 123 Ko —
+// les gros fichiers non compressés expiraient/échouaient trop souvent au
+// téléchargement pendant l'installation du SW sur les connexions mobiles lentes)
+const SW_VERSION = 'cookafrica-v3.2.0';
 const SHELL_CACHE = `cookafrica-shell-${SW_VERSION}`;
 
 // App shell : ce qui ne change pas à chaque commande, précaché pour un premier
