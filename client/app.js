@@ -1666,12 +1666,17 @@ function printFacture() {
          boîte de dialogue (à refaire à chaque fois sinon) : chaque copie est une page
          distincte, que l'imprimante thermique coupe automatiquement entre les deux si
          la coupe auto est activée. */
-      .print-copy { page-break-after: always; break-after: page; }
+      .print-copy { page-break-after: always; break-after: page; position: relative; }
       .print-copy:last-of-type { page-break-after: auto; break-after: auto; }
+      .print-copy-label {
+        position: absolute; top: 2mm; right: 4mm;
+        font-size: 9px; font-weight: 700; letter-spacing: .5px;
+        border: 1px solid #000; border-radius: 3px; padding: 1px 6px;
+      }
     </style>
   </head><body>
-    <div class="print-copy">${content}</div>
-    <div class="print-copy">${content}</div>
+    <div class="print-copy"><div class="print-copy-label">CLIENT</div>${content}</div>
+    <div class="print-copy"><div class="print-copy-label">CAISSE</div>${content}</div>
   </body></html>`);
   w.document.close();
 
