@@ -1662,8 +1662,17 @@ function printFacture() {
       .facture-totaux td:last-child { text-align: right; font-weight: bold; }
       .facture-total-final td { font-size: 13px; border-top: 1px solid #000; padding-top: 4px; }
       @media print { button { display: none; } }
+      /* Imprime 2 exemplaires en un seul clic, sans passer par le champ "copies" de la
+         boîte de dialogue (à refaire à chaque fois sinon) : chaque copie est une page
+         distincte, que l'imprimante thermique coupe automatiquement entre les deux si
+         la coupe auto est activée. */
+      .print-copy { page-break-after: always; break-after: page; }
+      .print-copy:last-of-type { page-break-after: auto; break-after: auto; }
     </style>
-  </head><body>${content}</body></html>`);
+  </head><body>
+    <div class="print-copy">${content}</div>
+    <div class="print-copy">${content}</div>
+  </body></html>`);
   w.document.close();
 
   // Le logo est chargé de façon asynchrone dans cette fenêtre toute neuve : lancer
