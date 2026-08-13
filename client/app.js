@@ -1622,7 +1622,7 @@ window.aperçuFacture = async (id) => {
         </tr>
         ${f.reste > 0
           ? `<tr><td style="color:var(--danger)"><strong>RESTE À PAYER</strong></td><td style="color:var(--danger)"><strong>${fmt(f.reste)} FCFA</strong></td></tr>`
-          : `<tr><td style="color:var(--success)"><strong>PAYÉE ✓</strong></td><td></td></tr>`}
+          : ''}
       </table>
       <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border);font-size:.78rem;color:var(--gray)">
         <p>Mode de paiement : <strong>${f.modePaiement || '—'}</strong></p>
@@ -1649,7 +1649,7 @@ function printFacture() {
       body {
         font-family: 'Courier New', Consolas, monospace;
         width: 72mm; margin: 0 auto; padding: 2mm 4mm;
-        font-size: 11px; color: #000;
+        font-size: 11px; color: #000; font-weight: 700;
       }
       p { margin: 2px 0; }
       .facture-print-header { text-align: center; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px dashed #000; }
@@ -1665,7 +1665,27 @@ function printFacture() {
     </style>
   </head><body>${content}</body></html>`);
   w.document.close();
-  w.print();
+
+  // Le logo est chargé de façon asynchrone dans cette fenêtre toute neuve : lancer
+  // w.print() immédiatement après document.close() imprime souvent avant que
+  // l'image soit arrivée, laissant un espace vide à la place du logo. On attend
+  // que toutes les images soient chargées (ou en échec) avant d'imprimer, avec un
+  // filet de sécurité si le réseau traîne, pour ne jamais bloquer l'impression.
+  let printed = false;
+  const doPrint = () => { if (printed) return; printed = true; w.print(); };
+
+  const images = Array.from(w.document.images);
+  if (images.length === 0) {
+    doPrint();
+  } else {
+    let remaining = images.length;
+    const onImageSettled = () => { if (--remaining <= 0) doPrint(); };
+    images.forEach(img => {
+      if (img.complete) onImageSettled();
+      else { img.addEventListener('load', onImageSettled); img.addEventListener('error', onImageSettled); }
+    });
+    setTimeout(doPrint, 2500);
+  }
 }
 
 // ─── MENU ──────────────────────────────────────────────
