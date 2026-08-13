@@ -1699,11 +1699,15 @@ async function loadMenu() {
 
 function renderMenu(menu) {
   const catFilter = document.getElementById('filter-menu-cat')?.value || '';
-  const filtered  = catFilter ? menu.filter(m => m.categorie === catFilter) : menu;
+  const q = (document.getElementById('filter-menu-recherche')?.value || '').trim().toLowerCase();
+
+  let filtered = catFilter ? menu.filter(m => m.categorie === catFilter) : menu;
+  if (q) filtered = filtered.filter(m => m.nom.toLowerCase().includes(q));
+
   const grid = document.getElementById('menu-grid');
 
   if (filtered.length === 0) {
-    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><i class="fas fa-book-open"></i><p>Aucun plat dans le menu</p></div>';
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><i class="fas fa-book-open"></i><p>${q ? 'Aucun résultat pour cette recherche' : 'Aucun plat dans le menu'}</p></div>`;
     return;
   }
 
@@ -2940,6 +2944,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-save-plat').addEventListener('click', savePlat);
   document.getElementById('btn-seed-menu').addEventListener('click', seedMenu);
   document.getElementById('filter-menu-cat').addEventListener('change', () => renderMenu(state.menu));
+  document.getElementById('filter-menu-recherche').addEventListener('input', () => renderMenu(state.menu));
 
   // ── Réservations ──
   document.getElementById('btn-new-reservation').addEventListener('click', openNewReservation);

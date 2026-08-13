@@ -362,6 +362,17 @@ body {
   display: flex; flex-wrap: wrap; gap: 10px;
   margin-bottom: 16px; align-items: center;
 }
+.menu-search-wrap { position: relative; flex: 1; min-width: 200px; }
+.menu-search-wrap i {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  color: var(--gray); font-size: .8rem; pointer-events: none;
+}
+.menu-search-wrap input {
+  width: 100%; padding: 8px 12px 8px 32px;
+  border: 1.5px solid var(--border); border-radius: 8px; font-size: .85rem;
+  outline: none; background: var(--white); color: var(--dark);
+}
+.menu-search-wrap input:focus { border-color: var(--primary); }
 .filters {
   display: flex; flex-wrap: wrap; gap: 10px;
   margin-bottom: 16px; align-items: center;
