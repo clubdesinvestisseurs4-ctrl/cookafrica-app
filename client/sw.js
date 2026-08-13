@@ -1,8 +1,10 @@
 // Version du SW — incrémenter à chaque déploiement pour forcer la mise à jour
-// (v3.2.0 : icônes compressées ~4x — icon-512.png passait de 481 Ko à 123 Ko —
-// les gros fichiers non compressés expiraient/échouaient trop souvent au
-// téléchargement pendant l'installation du SW sur les connexions mobiles lentes)
-const SW_VERSION = 'cookafrica-v3.2.0';
+// (v3.3.0 : Font Awesome auto-hébergé au lieu de cdnjs.cloudflare.com — c'était
+// la vraie cause des icônes manquantes sur mobile : tous les icônes de l'appli
+// (boutons, menus…) sont des glyphes de cette police, chargée depuis un CDN tiers
+// qui pouvait être lent/inaccessible sur certains réseaux mobiles alors que
+// l'ordinateur, sur une connexion plus stable, ne montrait jamais le problème)
+const SW_VERSION = 'cookafrica-v3.3.0';
 const SHELL_CACHE = `cookafrica-shell-${SW_VERSION}`;
 
 // App shell : ce qui ne change pas à chaque commande, précaché pour un premier
@@ -18,16 +20,19 @@ const SHELL_ASSETS = [
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   '/icons/icon-512-maskable.png',
-  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css',
+  '/vendor/fontawesome/css/all.min.css',
+  '/vendor/fontawesome/webfonts/fa-solid-900.woff2',
 ];
 
-// Icônes/logo : quasi jamais modifiés, donc mieux vaut les servir depuis le cache
-// instantanément (fiable, jamais bloqué par un réseau lent/instable) et les
-// rafraîchir en arrière-plan, plutôt que de dépendre du réseau à chaque affichage
-// (l'ancienne stratégie réseau-d'abord — voir plus bas — cassait l'icône dès que
-// le réseau était lent ou indisponible au mauvais moment).
-function estIcone(url) {
-  return url.pathname.startsWith('/icons/') || url.pathname === '/logo-cookafrica.png';
+// Icônes/logo/police d'icônes : quasi jamais modifiés, donc mieux vaut les servir
+// depuis le cache instantanément (fiable, jamais bloqué par un réseau lent/instable)
+// et les rafraîchir en arrière-plan, plutôt que de dépendre du réseau à chaque
+// affichage (l'ancienne stratégie réseau-d'abord — voir plus bas — cassait l'icône
+// dès que le réseau était lent ou indisponible au mauvais moment).
+function estAssetStatique(url) {
+  return url.pathname.startsWith('/icons/')
+    || url.pathname === '/logo-cookafrica.png'
+    || url.pathname.startsWith('/vendor/');
 }
 
 async function staleWhileRevalidate(request) {
@@ -82,7 +87,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  if (estIcone(url)) {
+  if (estAssetStatique(url)) {
     event.respondWith(staleWhileRevalidate(event.request));
     return;
   }

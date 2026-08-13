@@ -75,6 +75,12 @@
       ]
     },
     {
+      "source": "/vendor/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=604800, stale-while-revalidate=86400" }
+      ]
+    },
+    {
       "source": "/(.*)",
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" },
@@ -82,7 +88,7 @@
         { "key": "X-XSS-Protection",       "value": "1; mode=block" },
         { "key": "Referrer-Policy",        "value": "strict-origin-when-cross-origin" },
         { "key": "Permissions-Policy",     "value": "camera=(), microphone=(), geolocation=(self), payment=(), usb=()" },
-        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com; img-src 'self'; connect-src 'self' https://cookafrica-api-667992371198.us-central1.run.app; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" }
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; connect-src 'self' https://cookafrica-api-667992371198.us-central1.run.app; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" }
       ]
     }
   ]

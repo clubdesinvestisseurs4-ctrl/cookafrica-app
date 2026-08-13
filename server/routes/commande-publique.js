@@ -34,7 +34,10 @@ router.get('/menu', async (req, res) => {
     if (!menu) {
       const docs = await fetchMenuDisponible();
       menu = docs
-        .map(m => ({ id: m.id, nom: m.nom, categorie: m.categorie || '', prix: m.prix, description: m.description || '' }))
+        .map(m => ({
+          id: m.id, nom: m.nom, categorie: m.categorie || '', prix: m.prix, description: m.description || '',
+          joursDisponibles: m.joursDisponibles || [],
+        }))
         .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
       cache.set('public:menu', menu, 30_000);
     }
