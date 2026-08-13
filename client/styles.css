@@ -118,6 +118,13 @@ body {
 .login-logo h1 { font-size: 1.5rem; font-weight: 800; color: var(--primary); letter-spacing: 1px; }
 .login-logo p  { color: var(--gray); font-size: .85rem; margin-top: 4px; }
 
+.plat-jours-checkboxes { display: flex; flex-wrap: wrap; gap: 10px; }
+.plat-jours-checkboxes label {
+  display: flex; align-items: center; gap: 5px;
+  font-weight: 500; font-size: .85rem; color: var(--dark); margin: 0;
+}
+.plat-jours-checkboxes input { width: auto; }
+
 .form-group { margin-bottom: 18px; }
 .form-group label { display: block; font-weight: 600; margin-bottom: 6px; font-size: .85rem; color: var(--dark); }
 .form-group input,

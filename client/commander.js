@@ -19,10 +19,31 @@ const state = {
   menu: [],
   panier: [],
   activeCat: 'Toutes',
+  recherche: '',
   localisation: null, // { lat, lng } capturée via navigator.geolocation
   pollTimer: null,
   pollStartedAt: 0,
 };
+
+// Jours de la semaine dans l'ordre de Date#getDay() (0 = dimanche)
+const JOURS_SEMAINE = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+const todayKey = () => JOURS_SEMAINE[new Date().getDay()];
+const todayLabel = () => todayKey().charAt(0).toUpperCase() + todayKey().slice(1);
+
+// Un plat sans joursDisponibles (ou vide) est visible tous les jours — c'est le cas de
+// tous les plats existants tant que l'admin n'a rien restreint (Boissons/Desserts en pratique).
+function menuDuJour() {
+  const today = todayKey();
+  return state.menu.filter((m) => !m.joursDisponibles?.length || m.joursDisponibles.includes(today));
+}
+
+// Recherche libre demandée par le client : cherche dans TOUT le catalogue, sans tenir
+// compte du jour, pour retrouver un plat qui n'est pas dans le menu du jour.
+function rechercheDansMenu() {
+  const q = state.recherche.trim().toLowerCase();
+  if (!q) return menuDuJour();
+  return state.menu.filter((m) => m.nom.toLowerCase().includes(q));
+}
 
 // ─── Utilitaires ────────────────────────────────────────
 
@@ -119,6 +140,12 @@ async function initMenuFlow() {
 
 document.getElementById('pub-retry-btn').addEventListener('click', initMenuFlow);
 
+document.getElementById('pub-search').addEventListener('input', (e) => {
+  state.recherche = e.target.value;
+  renderCategories();
+  renderMenu();
+});
+
 // ─── Catégories + menu ──────────────────────────────────
 
 function categoryPriority(cat) {
@@ -127,8 +154,14 @@ function categoryPriority(cat) {
   return idx === -1 ? CATEGORY_PRIORITY_KEYWORDS.length : idx;
 }
 
+// Liste actuellement pertinente : résultats de recherche si le client cherche quelque
+// chose, sinon le menu du jour (repli "tous les jours" pour les plats non restreints).
+function listeActive() {
+  return state.recherche.trim() ? rechercheDansMenu() : menuDuJour();
+}
+
 function orderedCategories() {
-  const present = [...new Set(state.menu.map((m) => m.categorie || 'Autres'))];
+  const present = [...new Set(listeActive().map((m) => m.categorie || 'Autres'))];
   return present.sort((a, b) => {
     const pa = categoryPriority(a), pb = categoryPriority(b);
     return pa !== pb ? pa - pb : a.localeCompare(b, 'fr');
@@ -154,7 +187,17 @@ function qtyInPanier(id) {
   return state.panier.find((p) => p.menuItemId === id)?.quantite || 0;
 }
 
+function renderMenuStatus() {
+  const statusEl = document.getElementById('pub-menu-status');
+  if (!statusEl) return;
+  statusEl.textContent = state.recherche.trim()
+    ? `Résultats pour "${state.recherche.trim()}"`
+    : `Menu du ${todayLabel()} — recherchez un autre plat si besoin`;
+}
+
 function renderMenu() {
+  renderMenuStatus();
+  const active = listeActive();
   const cats = state.activeCat === 'Toutes' ? orderedCategories() : [state.activeCat];
   const list = document.getElementById('pub-menu-list');
 
@@ -162,9 +205,13 @@ function renderMenu() {
     list.innerHTML = '<p class="pub-empty"><i class="fas fa-utensils"></i><br>Aucun plat disponible pour le moment.</p>';
     return;
   }
+  if (active.length === 0) {
+    list.innerHTML = '<p class="pub-empty"><i class="fas fa-search"></i><br>Aucun plat trouvé.</p>';
+    return;
+  }
 
   list.innerHTML = cats.map((cat) => {
-    const items = state.menu.filter((m) => (m.categorie || 'Autres') === cat);
+    const items = active.filter((m) => (m.categorie || 'Autres') === cat);
     if (items.length === 0) return '';
     if (cat.toLowerCase().includes('buffet')) items.sort((a, b) => a.prix - b.prix);
     const cards = items.map((m) => {

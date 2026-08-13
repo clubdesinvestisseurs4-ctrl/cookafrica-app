@@ -17,7 +17,7 @@ router.get('/', authenticateToken, async (req, res) => {
 // POST /api/menu
 router.post('/', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
-    const { nom, categorie, prix, description, disponible } = req.body;
+    const { nom, categorie, prix, description, disponible, joursDisponibles } = req.body;
     if (!nom || prix === undefined) {
       return res.status(400).json({ error: 'Nom et prix sont requis' });
     }
@@ -27,6 +27,9 @@ router.post('/', authenticateToken, requireRole('admin'), async (req, res) => {
       prix: Number(prix),
       description: description || '',
       disponible: disponible !== false,
+      // Jours de la semaine où ce plat apparaît dans le "menu du jour" côté client
+      // (ex: ['lundi','mercredi']). Absent ou vide = visible tous les jours.
+      joursDisponibles: Array.isArray(joursDisponibles) ? joursDisponibles : [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

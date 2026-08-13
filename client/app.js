@@ -1740,6 +1740,8 @@ window.editPlat = (id) => {
   document.getElementById('plat-prix').value        = m.prix;
   document.getElementById('plat-disponible').value  = String(m.disponible);
   document.getElementById('plat-description').value = m.description || '';
+  const jours = m.joursDisponibles || [];
+  document.querySelectorAll('.plat-jour').forEach(cb => { cb.checked = jours.includes(cb.value); });
   openModal('plat');
 };
 
@@ -1758,6 +1760,7 @@ async function savePlat() {
     prix:        Number(document.getElementById('plat-prix').value),
     disponible:  document.getElementById('plat-disponible').value === 'true',
     description: document.getElementById('plat-description').value.trim(),
+    joursDisponibles: [...document.querySelectorAll('.plat-jour:checked')].map(cb => cb.value),
   };
   if (!body.nom || !body.prix) { toast('Nom et prix requis', 'warning'); return; }
 

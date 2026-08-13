@@ -59,6 +59,24 @@
 .pub-header-text h1 { font-size: 1.15rem; font-weight: 800; letter-spacing: .5px; }
 .pub-header-text p { font-size: .76rem; opacity: .9; margin-top: 2px; }
 
+/* ── Recherche + statut menu du jour ─────────────── */
+.pub-search-wrap {
+  position: relative; margin: 16px 16px 0;
+}
+.pub-search-wrap i {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  color: var(--gray); font-size: .85rem;
+}
+.pub-search-input {
+  width: 100%; padding: 10px 14px 10px 36px;
+  border: 1.5px solid var(--border); border-radius: 999px;
+  font-size: .88rem; outline: none; background: var(--white); color: var(--dark);
+}
+.pub-search-input:focus { border-color: var(--primary); }
+.pub-menu-status {
+  font-size: .78rem; color: var(--gray); margin: 10px 16px 0;
+}
+
 /* ── Catégories ───────────────────────────────── */
 .pub-cats {
   display: flex; gap: 8px; overflow-x: auto;

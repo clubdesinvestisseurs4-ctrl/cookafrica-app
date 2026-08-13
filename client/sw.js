@@ -1,5 +1,7 @@
 // Version du SW — incrémenter à chaque déploiement pour forcer la mise à jour
-const SW_VERSION = 'cookafrica-v3.0.0';
+// (v3.1.0 : purge les caches d'icônes potentiellement corrompus par l'ancienne
+// stratégie réseau-d'abord, voir le nouveau traitement dédié aux icônes ci-dessous)
+const SW_VERSION = 'cookafrica-v3.1.0';
 const SHELL_CACHE = `cookafrica-shell-${SW_VERSION}`;
 
 // App shell : ce qui ne change pas à chaque commande, précaché pour un premier
@@ -14,8 +16,32 @@ const SHELL_ASSETS = [
   '/icons/icon-72.png',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
+  '/icons/icon-512-maskable.png',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css',
 ];
+
+// Icônes/logo : quasi jamais modifiés, donc mieux vaut les servir depuis le cache
+// instantanément (fiable, jamais bloqué par un réseau lent/instable) et les
+// rafraîchir en arrière-plan, plutôt que de dépendre du réseau à chaque affichage
+// (l'ancienne stratégie réseau-d'abord — voir plus bas — cassait l'icône dès que
+// le réseau était lent ou indisponible au mauvais moment).
+function estIcone(url) {
+  return url.pathname.startsWith('/icons/') || url.pathname === '/logo-cookafrica.png';
+}
+
+async function staleWhileRevalidate(request) {
+  const cache = await caches.open(SHELL_CACHE);
+  const cached = await cache.match(request);
+  const networkFetch = fetch(request)
+    .then(response => {
+      if (response.ok) cache.put(request, response.clone());
+      return response;
+    })
+    .catch(() => null);
+
+  if (cached) return cached; // servi immédiatement, le réseau rafraîchit en tâche de fond
+  return (await networkFetch) || new Response('', { status: 503 });
+}
 
 // ── Install : précache le shell (best-effort, une ressource en échec ne
 // doit pas bloquer l'installation) puis activation immédiate ──
@@ -55,7 +81,12 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Shell (HTML, JS, CSS, icônes…) → réseau d'abord (toujours la version
+  if (estIcone(url)) {
+    event.respondWith(staleWhileRevalidate(event.request));
+    return;
+  }
+
+  // Shell (HTML, JS, CSS…) → réseau d'abord (toujours la version
   // fraîche si connecté), avec mise à jour du cache en tâche de fond, et
   // fallback sur le cache si le réseau est indisponible.
   event.respondWith(
