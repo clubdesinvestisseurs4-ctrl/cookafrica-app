@@ -15,10 +15,15 @@ const ORDER_TTL_MS = 6 * 60 * 60 * 1000; // une commande suivie reste affichée 
 const POLL_MS = 8000;
 const POLL_MAX_MS = 45 * 60 * 1000; // arrête le suivi automatique après 45 min d'inactivité
 
+// Onglet épinglé : le filtrage par jour (joursDisponibles) ne s'applique QUE dans cet
+// onglet. "Toutes" et les onglets de catégorie (Sauce, Buffet, Boissons…) affichent tout
+// le catalogue, sans tenir compte du jour.
+const PLAT_DU_JOUR = 'Plat du jour';
+
 const state = {
   menu: [],
   panier: [],
-  activeCat: 'Toutes',
+  activeCat: PLAT_DU_JOUR,
   recherche: '',
   localisation: null, // { lat, lng } capturée via navigator.geolocation
   pollTimer: null,
@@ -30,18 +35,23 @@ const JOURS_SEMAINE = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendr
 const todayKey = () => JOURS_SEMAINE[new Date().getDay()];
 const todayLabel = () => todayKey().charAt(0).toUpperCase() + todayKey().slice(1);
 
-// Un plat sans joursDisponibles (ou vide) est visible tous les jours — c'est le cas de
-// tous les plats existants tant que l'admin n'a rien restreint (Boissons/Desserts en pratique).
+// Un plat sans joursDisponibles (ou vide) est visible tous les jours dans l'onglet "Plat du
+// jour" — c'est le cas de tous les plats existants tant que l'admin n'a rien restreint. Les
+// accompagnements y figurent toujours, quel que soit leur jour configuré : ce sont les à-côtés
+// du plat vedette du jour (riz, alloco…), pas des plats à restreindre par jour eux-mêmes.
 function menuDuJour() {
   const today = todayKey();
-  return state.menu.filter((m) => !m.joursDisponibles?.length || m.joursDisponibles.includes(today));
+  return state.menu.filter((m) => {
+    if ((m.categorie || '').toLowerCase().includes('accompagnement')) return true;
+    return !m.joursDisponibles?.length || m.joursDisponibles.includes(today);
+  });
 }
 
 // Recherche libre demandée par le client : cherche dans TOUT le catalogue, sans tenir
-// compte du jour, pour retrouver un plat qui n'est pas dans le menu du jour.
+// compte du jour ni de l'onglet actif, pour retrouver n'importe quel plat.
 function rechercheDansMenu() {
   const q = state.recherche.trim().toLowerCase();
-  if (!q) return menuDuJour();
+  if (!q) return state.menu;
   return state.menu.filter((m) => m.nom.toLowerCase().includes(q));
 }
 
@@ -155,23 +165,34 @@ function categoryPriority(cat) {
 }
 
 // Liste actuellement pertinente : résultats de recherche si le client cherche quelque
-// chose, sinon le menu du jour (repli "tous les jours" pour les plats non restreints).
+// chose ; sinon le menu filtré par jour UNIQUEMENT dans l'onglet "Plat du jour" ; le
+// catalogue complet (toutes catégories, tous les jours) dans "Toutes" et chaque onglet
+// de catégorie — voir PLAT_DU_JOUR.
 function listeActive() {
-  return state.recherche.trim() ? rechercheDansMenu() : menuDuJour();
+  if (state.recherche.trim()) return rechercheDansMenu();
+  if (state.activeCat === PLAT_DU_JOUR) return menuDuJour();
+  return state.menu;
 }
 
-function orderedCategories() {
-  const present = [...new Set(listeActive().map((m) => m.categorie || 'Autres'))];
+// Catégories présentes dans une liste d'articles donnée, triées par priorité d'affichage.
+function sortedCategories(items) {
+  const present = [...new Set(items.map((m) => m.categorie || 'Autres'))];
   return present.sort((a, b) => {
     const pa = categoryPriority(a), pb = categoryPriority(b);
     return pa !== pb ? pa - pb : a.localeCompare(b, 'fr');
   });
 }
 
+// Catégories présentes dans TOUT le catalogue (pas seulement la vue active) : les onglets
+// restent stables, même pour une catégorie vide dans "Plat du jour" aujourd'hui.
+function orderedCategories() {
+  return sortedCategories(state.menu);
+}
+
 function renderCategories() {
   const cats = orderedCategories();
   const nav = document.getElementById('pub-cats');
-  nav.innerHTML = ['Toutes', ...cats].map((c) => `
+  nav.innerHTML = [PLAT_DU_JOUR, 'Toutes', ...cats].map((c) => `
     <button class="pub-cat-pill${state.activeCat === c ? ' is-active' : ''}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>
   `).join('');
   nav.querySelectorAll('.pub-cat-pill').forEach((btn) => {
@@ -190,15 +211,21 @@ function qtyInPanier(id) {
 function renderMenuStatus() {
   const statusEl = document.getElementById('pub-menu-status');
   if (!statusEl) return;
-  statusEl.textContent = state.recherche.trim()
-    ? `Résultats pour "${state.recherche.trim()}"`
-    : `Menu du ${todayLabel()} — recherchez un autre plat si besoin`;
+  if (state.recherche.trim()) {
+    statusEl.textContent = `Résultats pour "${state.recherche.trim()}"`;
+  } else if (state.activeCat === PLAT_DU_JOUR) {
+    statusEl.textContent = `Sélection du ${todayLabel()} — recherchez un autre plat si besoin`;
+  } else {
+    statusEl.textContent = '';
+  }
 }
 
 function renderMenu() {
   renderMenuStatus();
   const active = listeActive();
-  const cats = state.activeCat === 'Toutes' ? orderedCategories() : [state.activeCat];
+  const cats = (state.activeCat === 'Toutes' || state.activeCat === PLAT_DU_JOUR)
+    ? sortedCategories(active)
+    : [state.activeCat];
   const list = document.getElementById('pub-menu-list');
 
   if (state.menu.length === 0) {
