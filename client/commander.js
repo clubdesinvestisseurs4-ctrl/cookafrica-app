@@ -35,6 +35,10 @@ const JOURS_SEMAINE = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendr
 const todayKey = () => JOURS_SEMAINE[new Date().getDay()];
 const todayLabel = () => todayKey().charAt(0).toUpperCase() + todayKey().slice(1);
 
+// L'onglet "Plat du jour" se limite aux plats/sauces et accompagnements — le Buffet et les
+// Boissons (ainsi que Desserts/Entrées) ne s'y affichent jamais, quel que soit le jour.
+const PLAT_DU_JOUR_CATEGORIES = ['plats', 'sauce', 'accompagnement'];
+
 // Un plat sans joursDisponibles (ou vide) est visible tous les jours dans l'onglet "Plat du
 // jour" — c'est le cas de tous les plats existants tant que l'admin n'a rien restreint. Les
 // accompagnements y figurent toujours, quel que soit leur jour configuré : ce sont les à-côtés
@@ -42,7 +46,9 @@ const todayLabel = () => todayKey().charAt(0).toUpperCase() + todayKey().slice(1
 function menuDuJour() {
   const today = todayKey();
   return state.menu.filter((m) => {
-    if ((m.categorie || '').toLowerCase().includes('accompagnement')) return true;
+    const cat = (m.categorie || '').toLowerCase();
+    if (!PLAT_DU_JOUR_CATEGORIES.some((c) => cat.includes(c))) return false;
+    if (cat.includes('accompagnement')) return true;
     return !m.joursDisponibles?.length || m.joursDisponibles.includes(today);
   });
 }
