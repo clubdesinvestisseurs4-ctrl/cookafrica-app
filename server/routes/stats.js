@@ -76,9 +76,23 @@ router.get('/rapport', authenticateToken, async (req, res) => {
     let query = db.collection('factures');
     if (debut) query = query.where('date', '>=', debut);
     if (fin)   query = query.where('date', '<=', fin);
-    const snap = await query.get();
+
+    // Commandes en ligne sur la période : un seul filtre Firestore sur 'date' (même champ
+    // que ci-dessus, donc pas d'index composite requis), le tri par source/statut se fait
+    // ensuite en mémoire — mêmes précautions que /api/commandes.
+    let commandesQuery = db.collection('commandes');
+    if (debut) commandesQuery = commandesQuery.where('date', '>=', debut);
+    if (fin)   commandesQuery = commandesQuery.where('date', '<=', fin);
+
+    const [snap, commandesSnap] = await Promise.all([query.get(), commandesQuery.get()]);
 
     const factures = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    // Commandes en ligne, badgées "Client" (commandeClient) ou "Caisse" (saisie par la
+    // caissière) confondues — annulées exclues, ce compteur ne reflète que le volume traité.
+    const commandesEnLigne = commandesSnap.docs
+      .map(d => d.data())
+      .filter(c => c.source === 'en-ligne' && c.statut !== 'annulee').length;
 
     const total = factures.reduce((s, f) => s + (f.total || 0), 0);
     const parMode = {};
@@ -89,10 +103,12 @@ router.get('/rapport', authenticateToken, async (req, res) => {
       if (parStatut[f.statut] !== undefined) parStatut[f.statut]++;
     });
 
-    // Ventilation plats/boissons : quantités totales vendues + classement des
-    // articles les plus vendus (nom précis, pas juste la catégorie), avec le
-    // chiffre d'affaires que chacun rapporte.
+    // Ventilation par catégorie : chiffre d'affaires ET quantités vendues, pour TOUTES les
+    // catégories du menu (pas seulement plats/boissons) — permet de filtrer le nombre
+    // d'unités vendues d'une catégorie précise (Boissons, Accompagnement, Buffet…) sur la
+    // période. Conserve aussi le classement plats/boissons existant pour compat.
     const parCategorie = {};
+    const qteParCategorie = {};
     const platsVentes = {};
     const boissonsVentes = {};
     let totalPlatsQte = 0, totalBoissonsQte = 0;
@@ -101,6 +117,7 @@ router.get('/rapport', authenticateToken, async (req, res) => {
       (f.items || []).forEach(item => {
         const cat = item.categorie || 'Autre';
         parCategorie[cat] = (parCategorie[cat] || 0) + (item.sousTotal || 0);
+        qteParCategorie[cat] = (qteParCategorie[cat] || 0) + (item.quantite || 0);
 
         const isBoisson = cat === 'Boissons';
         const ventes = isBoisson ? boissonsVentes : platsVentes;
@@ -125,6 +142,8 @@ router.get('/rapport', authenticateToken, async (req, res) => {
       parMode,
       parStatut,
       parCategorie,
+      qteParCategorie,
+      commandesEnLigne,
       totalPlatsQte,
       totalBoissonsQte,
       topPlats: topVentes(platsVentes),

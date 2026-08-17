@@ -60,7 +60,7 @@ const state = {
 
 // Sélecteurs "rechercher un article" (panier, modification commande, modification
 // facture) — initialisés une fois au démarrage, voir setupMenuSearchPicker().
-let panierPicker, editcmdPicker, editfactPicker;
+let panierPicker, editcmdPicker, editfactPicker, resaMenuPicker;
 
 // ─── Labels des rôles ─────────────────────────────────
 const ROLE_LABELS = {
@@ -829,7 +829,7 @@ async function viewCommande(id) {
       ${c.tableNumero ? `<p><strong>Table :</strong> ${escapeHtml(c.tableNumero)}</p>` : ''}
       ${c.note ? `<p style="color:var(--gray);font-size:.85rem;font-style:italic"><i class="fas fa-sticky-note"></i> ${escapeHtml(c.note)}</p>` : ''}
       <p><strong>Statut :</strong> ${badgeStatus(c.statut)}</p>
-      <p style="font-size:.8rem;color:var(--gray)"><strong>Créée par :</strong> ${escapeHtml(c.commandeClient ? (c.clientNom || 'Client (en ligne)') : c.createdBy)} – ${fmtDate(c.createdAt)}</p>
+      <p style="font-size:.8rem;color:var(--gray)"><strong>Créée par :</strong> ${escapeHtml(c.commandeClient ? (c.clientNom || 'Client (en ligne)') : (c.createdByNom || c.createdBy))} – ${fmtDate(c.createdAt)}</p>
     </div>
     <div style="margin-bottom:12px">${items}</div>
     <div style="text-align:right;font-size:1.1rem;font-weight:800;color:var(--primary)">
@@ -1127,17 +1127,35 @@ async function saveCommande() {
 // ─── COMMANDES EN LIGNE (caissière) ────────────────────
 
 async function loadCommandesLigne() {
-  const [commandesRes, factures] = await Promise.all([api('/api/commandes'), api('/api/factures')]);
+  const startEl = document.getElementById('filter-cmdligne-start');
+  const endEl   = document.getElementById('filter-cmdligne-end');
+
+  // Par défaut la vue se réinitialise chaque jour sur "aujourd'hui" (comme Facturation) —
+  // la caissière peut élargir la période, ça filtre aussitôt (voir écouteurs 'change').
+  if (startEl && !startEl.value) startEl.value = today();
+  if (endEl   && !endEl.value)   endEl.value   = today();
+
+  const debut = startEl?.value || '';
+  const fin   = endEl?.value   || '';
+
+  let url = '/api/commandes?source=en-ligne';
+  if (debut) url += `&debut=${debut}`;
+  if (fin)   url += `&fin=${fin}`;
+
+  const [commandesRes, factures] = await Promise.all([api(url), api('/api/factures')]);
   const pendingEnLigne = getPendingCommandes().filter(c => c.source === 'en-ligne');
   if (!commandesRes && pendingEnLigne.length === 0) return;
   const commandes = [...pendingEnLigne, ...(commandesRes || [])];
   state.commandes = commandes; // openEditCommande() lit depuis state.commandes
   if (factures) state.factures = factures;
 
-  const enLigne = commandes.filter(c => c._pending || (c.source === 'en-ligne' && !['annulee', 'servie'].includes(c.statut)));
+  // Reste affichée même une fois facturée/payée (statut 'servie') ou annulée — le serveur a
+  // déjà filtré sur source=en-ligne et sur la période choisie, donc tout ce qui revient ici
+  // est pertinent : c'est un historique journalier, pas juste une file d'attente.
+  const enLigne = commandes;
   const tbody = document.getElementById('commandes-ligne-tbody');
   if (enLigne.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="empty-state" style="padding:32px"><i class="fas fa-globe"></i><p>Aucune commande en ligne en cours</p></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state" style="padding:32px"><i class="fas fa-globe"></i><p>Aucune commande en ligne pour cette période</p></td></tr>';
     return;
   }
 
@@ -1902,16 +1920,29 @@ function renderReservations(reservations) {
   }).join('');
 }
 
-function openNewReservation() {
+async function openNewReservation() {
   document.getElementById('modal-reservation-title').textContent = 'Nouvelle réservation';
   document.getElementById('form-reservation').reset();
   document.getElementById('resa-id').value = '';
   document.getElementById('resa-date-reservation').value = today();
+  if (state.menu.length === 0) {
+    const menu = await api('/api/menu');
+    if (menu) state.menu = menu;
+  }
+  resaMenuPicker.reset();
   updateResaRestePreview();
   openModal('reservation');
 }
 
-window.editReservation = (id) => {
+// Ajoute un plat du catalogue (menu enregistré en base) au champ "Menu" de la réservation,
+// au lieu de tout saisir à la main — le champ reste un texte libre modifiable ensuite.
+function addToResaMenu(id, nom) {
+  const el = document.getElementById('resa-menu');
+  const current = el.value.trim();
+  el.value = current ? `${current}, ${nom}` : nom;
+}
+
+window.editReservation = async (id) => {
   const r = state.reservations.find(x => x.id === id);
   if (!r) return;
   document.getElementById('modal-reservation-title').textContent = 'Modifier la réservation';
@@ -1927,6 +1958,11 @@ window.editReservation = (id) => {
   document.getElementById('resa-menu').value = r.menu || '';
   document.getElementById('resa-montant').value = r.montantGlobal;
   document.getElementById('resa-avance').value = r.avance;
+  if (state.menu.length === 0) {
+    const menu = await api('/api/menu');
+    if (menu) state.menu = menu;
+  }
+  resaMenuPicker.reset();
   updateResaRestePreview();
   openModal('reservation');
 };
@@ -2281,6 +2317,26 @@ async function loadRapport() {
 
   document.getElementById('rapp-nombre').textContent = data.nombre ?? '—';
   document.getElementById('rapp-ca').textContent     = fmt(data.total) + ' FCFA';
+  document.getElementById('rapp-commandes-ligne').textContent = data.commandesEnLigne ?? '—';
+
+  // Quantité vendue par catégorie : sélecteur peuplé depuis les catégories réellement
+  // vendues sur la période (Boissons, Accompagnement, Plats, Buffet, Sauce…), rien n'est
+  // codé en dur — on garde la catégorie choisie d'une génération à l'autre si possible.
+  const qteParCat = data.qteParCategorie || {};
+  const catSelect = document.getElementById('rapp-cat-select');
+  const catQteEl  = document.getElementById('rapp-cat-qte');
+  const cats = Object.keys(qteParCat).sort((a, b) => a.localeCompare(b, 'fr'));
+  const previousChoice = catSelect.value;
+
+  if (cats.length === 0) {
+    catSelect.innerHTML = '<option value="">Aucune donnée</option>';
+    catQteEl.textContent = '—';
+  } else {
+    catSelect.innerHTML = cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+    catSelect.value = cats.includes(previousChoice) ? previousChoice : cats[0];
+    catQteEl.textContent = qteParCat[catSelect.value] ?? 0;
+    catSelect.onchange = () => { catQteEl.textContent = qteParCat[catSelect.value] ?? 0; };
+  }
 
   // Par statut
   document.getElementById('rapp-par-statut').innerHTML = `
@@ -2946,6 +3002,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Commandes ──
   document.getElementById('btn-new-commande').addEventListener('click', () => openNewCommande('sur-place'));
   document.getElementById('btn-new-commande-ligne')?.addEventListener('click', () => openNewCommande('en-ligne'));
+  document.getElementById('btn-filter-cmdligne')?.addEventListener('click', loadCommandesLigne);
+  // Filtrage immédiat au changement de période, sans avoir à cliquer sur "Filtrer"
+  document.getElementById('filter-cmdligne-start')?.addEventListener('change', loadCommandesLigne);
+  document.getElementById('filter-cmdligne-end')?.addEventListener('change', loadCommandesLigne);
   document.getElementById('btn-copy-lien-client')?.addEventListener('click', async () => {
     const lien = `${window.location.origin}/commander`;
     try {
@@ -2982,6 +3042,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-play-facturation').addEventListener('click', () => { enableSound('facturation', false); checkFacturationReady(true); });
   document.getElementById('btn-editfact-save').addEventListener('click', saveEditFacture);
   editfactPicker = setupMenuSearchPicker('editfact-search-wrapper', 'editfact-menu-search', 'editfact-menu-clear', 'editfact-menu-dropdown', addToEditFacture);
+  resaMenuPicker  = setupMenuSearchPicker('resa-menu-search-wrapper', 'resa-menu-search', 'resa-menu-clear', 'resa-menu-dropdown', addToResaMenu);
 
   // ── Menu ──
   document.getElementById('btn-new-plat').addEventListener('click', openNewPlat);

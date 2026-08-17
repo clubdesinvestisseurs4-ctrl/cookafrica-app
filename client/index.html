@@ -309,12 +309,15 @@
       <!-- ── COMMANDES EN LIGNE ───────────────────── -->
       <section id="page-commandes-en-ligne" class="page">
         <div class="page-actions">
+          <input type="date" id="filter-cmdligne-start">
+          <input type="date" id="filter-cmdligne-end">
+          <button class="btn btn-secondary" id="btn-filter-cmdligne"><i class="fas fa-filter"></i> Filtrer</button>
           <button class="btn btn-primary" id="btn-new-commande-ligne"><i class="fas fa-plus"></i> Nouvelle commande en ligne</button>
           <button class="btn btn-secondary" id="btn-copy-lien-client" title="Copier le lien à partager au client">
             <i class="fas fa-link"></i> Copier le lien client
           </button>
           <span style="font-size:.8rem;color:var(--gray);margin-left:8px">
-            <i class="fas fa-info-circle"></i> Le client peut commander lui-même via ce lien — sa commande arrive ici. Modifiez si besoin puis cliquez sur « Facturer ».
+            <i class="fas fa-info-circle"></i> Le client peut commander lui-même via ce lien — sa commande arrive ici, et y reste visible (payée ou non) pour la période filtrée.
           </span>
         </div>
         <div class="table-wrapper">
@@ -410,6 +413,8 @@
             <h3><i class="fas fa-receipt"></i> Ventes</h3>
             <div class="kpi-value-big" id="rapp-nombre">—</div>
             <div class="kpi-label-sm">Factures émises</div>
+            <div class="kpi-value-big" id="rapp-commandes-ligne" style="margin-top:10px">—</div>
+            <div class="kpi-label-sm">Commandes en ligne (Client + Caisse)</div>
             <ul class="kpi-list" id="rapp-par-statut" style="margin-top:12px"></ul>
           </div>
           <div class="rapport-card">
@@ -428,6 +433,12 @@
           <div class="rapport-card">
             <h3><i class="fas fa-tags"></i> Ventes par catégorie</h3>
             <ul class="kpi-list" id="rapp-par-categorie"></ul>
+          </div>
+          <div class="rapport-card">
+            <h3><i class="fas fa-filter"></i> Quantité vendue par catégorie</h3>
+            <select id="rapp-cat-select" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem;margin-bottom:10px"></select>
+            <div class="kpi-value-big" id="rapp-cat-qte">—</div>
+            <div class="kpi-label-sm">Unités vendues sur la période</div>
           </div>
           <div class="rapport-card">
             <h3><i class="fas fa-star"></i> Top Plats</h3>
@@ -881,7 +892,17 @@
         </div>
         <div class="form-group">
           <label>Menu</label>
-          <input type="text" id="resa-menu" placeholder="Ex: Menu Prestige 3 services">
+          <div class="menu-search-wrapper" id="resa-menu-search-wrapper">
+            <div class="menu-search-input-row">
+              <i class="fas fa-search menu-search-icon"></i>
+              <input type="text" id="resa-menu-search" placeholder="Rechercher un plat du catalogue à ajouter…" autocomplete="off">
+              <button type="button" class="menu-search-clear" id="resa-menu-clear" style="display:none" tabindex="-1">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+            <div class="menu-search-dropdown" id="resa-menu-dropdown" style="display:none"></div>
+          </div>
+          <input type="text" id="resa-menu" placeholder="Ex: Menu Prestige 3 services — ou composez-le via la recherche ci-dessus" style="margin-top:8px">
         </div>
         <div class="form-row">
           <div class="form-group">

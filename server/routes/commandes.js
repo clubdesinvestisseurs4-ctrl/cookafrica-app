@@ -18,8 +18,13 @@ function invalidate() {
 // GET /api/commandes
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const { statut, date } = req.query;
+    const { statut, date, debut, fin, source } = req.query;
 
+    // Vue sur une plage de dates (ex. onglet Commandes en ligne, filtre par défaut sur
+    // "aujourd'hui") : le cache des 200 dernières commandes suffit pour ce cas d'usage
+    // courant (fenêtre récente), mais peut tronquer une plage large/ancienne — pour des
+    // statistiques exhaustives sur une longue période, voir /api/stats/rapport qui
+    // interroge Firestore directement, sans ce plafond.
     let all = cache.get('commandes:list');
     if (!all) {
       const snap = await db.collection('commandes').orderBy('createdAt', 'desc').limit(200).get();
@@ -30,6 +35,9 @@ router.get('/', authenticateToken, async (req, res) => {
     let result = all;
     if (statut) result = result.filter(c => c.statut === statut);
     if (date)   result = result.filter(c => c.date === date);
+    if (debut)  result = result.filter(c => c.date >= debut);
+    if (fin)    result = result.filter(c => c.date <= fin);
+    if (source) result = result.filter(c => c.source === source);
 
     res.json(result);
   } catch (err) {
