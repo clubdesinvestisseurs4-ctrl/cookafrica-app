@@ -56,6 +56,10 @@ const state = {
   // Code OTP de baisse de prix validé avec succès : mémorisé le temps de sa fenêtre
   // de validité pour éviter de le resaisir à chaque article baissé (voir askDiscountPin).
   discountOtp:         null,
+  // Plats du catalogue ajoutés avec quantité au champ "Menu" d'une réservation — voir
+  // addToResaMenu/renderResaMenuItems.
+  resaMenuItems:        [],
+  resaMenuBaseText:     '',
 };
 
 // Sélecteurs "rechercher un article" (panier, modification commande, modification
@@ -1930,16 +1934,51 @@ async function openNewReservation() {
     if (menu) state.menu = menu;
   }
   resaMenuPicker.reset();
+  state.resaMenuItems = [];
+  state.resaMenuBaseText = '';
+  renderResaMenuItems();
   updateResaRestePreview();
   openModal('reservation');
 }
 
 // Ajoute un plat du catalogue (menu enregistré en base) au champ "Menu" de la réservation,
-// au lieu de tout saisir à la main — le champ reste un texte libre modifiable ensuite.
+// avec une quantité (incrémentée si le plat est déjà dans la liste), au lieu de tout saisir
+// à la main. Le texte libre déjà présent (saisie manuelle ou réservation existante en
+// édition) est conservé comme préfixe — voir renderResaMenuItems().
 function addToResaMenu(id, nom) {
-  const el = document.getElementById('resa-menu');
-  const current = el.value.trim();
-  el.value = current ? `${current}, ${nom}` : nom;
+  const existing = state.resaMenuItems.find(i => i.menuItemId === id);
+  if (existing) existing.quantite++;
+  else state.resaMenuItems.push({ menuItemId: id, nom, quantite: 1 });
+  renderResaMenuItems();
+}
+
+window.updateResaMenuItemQty = (i, qty) => {
+  const q = Math.max(1, parseInt(qty, 10) || 1);
+  state.resaMenuItems[i].quantite = q;
+  renderResaMenuItems();
+};
+
+window.removeResaMenuItem = (i) => {
+  state.resaMenuItems.splice(i, 1);
+  renderResaMenuItems();
+};
+
+function renderResaMenuItems() {
+  const container = document.getElementById('resa-menu-items');
+  container.innerHTML = state.resaMenuItems.map((item, i) => `
+    <div class="panier-item">
+      <input class="panier-qty" type="number" min="1" max="99" value="${item.quantite}"
+        onchange="updateResaMenuItemQty(${i}, this.value)">
+      <span class="panier-item-nom">${escapeHtml(item.nom)}</span>
+      <button class="panier-item-remove" onclick="removeResaMenuItem(${i})">
+        <i class="fas fa-trash"></i>
+      </button>
+    </div>`).join('');
+
+  const chipsText = state.resaMenuItems.map(i => `${i.quantite}x ${i.nom}`).join(', ');
+  document.getElementById('resa-menu').value = state.resaMenuBaseText
+    ? (chipsText ? `${state.resaMenuBaseText}, ${chipsText}` : state.resaMenuBaseText)
+    : chipsText;
 }
 
 window.editReservation = async (id) => {
@@ -1963,6 +2002,11 @@ window.editReservation = async (id) => {
     if (menu) state.menu = menu;
   }
   resaMenuPicker.reset();
+  // Le texte déjà présent (saisi à la main ou lors d'une précédente édition) est préservé
+  // comme préfixe tant qu'aucun plat n'est ajouté via la recherche — voir renderResaMenuItems().
+  state.resaMenuItems = [];
+  state.resaMenuBaseText = r.menu || '';
+  document.getElementById('resa-menu-items').innerHTML = '';
   updateResaRestePreview();
   openModal('reservation');
 };
@@ -2115,6 +2159,7 @@ window.apercuReservation = (id) => {
         <p style="text-align:center"><strong>Jour J de l'événement : ${fmtDateOnly(r.dateEvenement)}</strong></p>
         <p style="margin-top:6px;text-align:center;font-style:italic">
           Ce reçu atteste de la réservation et de l'avance versée.<br>
+          <strong>L'acompte versé n'est pas remboursable.</strong><br>
           La facture officielle sera émise le jour de l'événement.
         </p>
         <p style="font-size:.7rem;text-align:center;margin-top:8px">Cook Africa – Le restaurant qui rassemble</p>
