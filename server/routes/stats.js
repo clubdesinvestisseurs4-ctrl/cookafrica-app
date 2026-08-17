@@ -84,7 +84,9 @@ router.get('/rapport', authenticateToken, async (req, res) => {
     if (debut) commandesQuery = commandesQuery.where('date', '>=', debut);
     if (fin)   commandesQuery = commandesQuery.where('date', '<=', fin);
 
-    const [snap, commandesSnap] = await Promise.all([query.get(), commandesQuery.get()]);
+    const [snap, commandesSnap, menuSnap] = await Promise.all([
+      query.get(), commandesQuery.get(), db.collection('menu').get(),
+    ]);
 
     const factures = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
@@ -111,11 +113,20 @@ router.get('/rapport', authenticateToken, async (req, res) => {
     const qteParCategorie = {};
     const platsVentes = {};
     const boissonsVentes = {};
-    // Ventes détaillées par article, TOUTES catégories confondues (pas juste plats/boissons) —
-    // clé composite nom+catégorie pour ne pas confondre deux articles homonymes de rayons
-    // différents. Sert à afficher la liste complète des plats vendus, pas juste un top 5.
-    const ventesParArticle = {};
     let totalPlatsQte = 0, totalBoissonsQte = 0;
+
+    // Ventes détaillées PAR ARTICLE DU MENU : on part du catalogue actuel (pas seulement des
+    // articles qui apparaissent dans une facture), pour que CHAQUE plat/boisson du menu figure
+    // dans le rapport avec sa quantité vendue sur la période — 0 si rien n'a été vendu, pas
+    // juste absent de la liste. Le rattachement se fait par menuItemId (fiable même si le plat
+    // a été renommé depuis) ; un bucket "hors-catalogue" recueille les ventes orphelines (menu
+    // item supprimé depuis, ou article ajouté sans lien catalogue) pour ne perdre aucune vente.
+    const ventesParMenuItem = {};
+    menuSnap.docs.forEach(d => {
+      const m = d.data();
+      ventesParMenuItem[d.id] = { nom: m.nom, categorie: m.categorie || 'Autre', quantite: 0, total: 0 };
+    });
+    const ventesHorsCatalogue = {};
 
     factures.forEach(f => {
       (f.items || []).forEach(item => {
@@ -129,10 +140,11 @@ router.get('/rapport', authenticateToken, async (req, res) => {
         ventes[item.nom].quantite += item.quantite || 0;
         ventes[item.nom].total   += item.sousTotal || 0;
 
-        const key = `${cat}||${item.nom}`;
-        if (!ventesParArticle[key]) ventesParArticle[key] = { nom: item.nom, categorie: cat, quantite: 0, total: 0 };
-        ventesParArticle[key].quantite += item.quantite || 0;
-        ventesParArticle[key].total    += item.sousTotal || 0;
+        const cible = item.menuItemId && ventesParMenuItem[item.menuItemId]
+          ? ventesParMenuItem[item.menuItemId]
+          : (ventesHorsCatalogue[`${cat}||${item.nom}`] ||= { nom: item.nom, categorie: cat, quantite: 0, total: 0 });
+        cible.quantite += item.quantite || 0;
+        cible.total    += item.sousTotal || 0;
 
         if (isBoisson) totalBoissonsQte += item.quantite || 0;
         else            totalPlatsQte    += item.quantite || 0;
@@ -144,8 +156,8 @@ router.get('/rapport', authenticateToken, async (req, res) => {
       .sort((a, b) => b.quantite - a.quantite)
       .slice(0, 5);
 
-    const ventesDetail = Object.values(ventesParArticle)
-      .sort((a, b) => b.quantite - a.quantite);
+    const ventesDetail = [...Object.values(ventesParMenuItem), ...Object.values(ventesHorsCatalogue)]
+      .sort((a, b) => b.quantite - a.quantite || a.nom.localeCompare(b.nom, 'fr'));
 
     res.json({
       total,
