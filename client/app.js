@@ -2371,6 +2371,20 @@ async function loadRapport() {
       `<li><span>${cat}</span><strong>${fmt(total)} FCFA</strong></li>`
     ).join('') || '<li><span>Aucune donnée</span></li>';
 
+  // Détail complet des ventes par article, toutes catégories — pas seulement un top 5.
+  const ventesTbody = document.getElementById('rapport-ventes-tbody');
+  if (!data.ventesDetail || data.ventesDetail.length === 0) {
+    ventesTbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--gray)">Aucune vente pour cette période</td></tr>';
+  } else {
+    ventesTbody.innerHTML = data.ventesDetail.map(v => `
+      <tr>
+        <td data-label="Article"><strong>${escapeHtml(v.nom)}</strong></td>
+        <td data-label="Catégorie" style="font-size:.82rem;color:var(--gray)">${escapeHtml(v.categorie)}</td>
+        <td data-label="Quantité vendue">${v.quantite}</td>
+        <td data-label="CA généré"><strong>${fmt(v.total)} FCFA</strong></td>
+      </tr>`).join('');
+  }
+
   // Tableau détail
   const tbody = document.getElementById('rapport-factures-tbody');
   if (!data.factures || data.factures.length === 0) {

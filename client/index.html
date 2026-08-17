@@ -413,9 +413,12 @@
             <h3><i class="fas fa-receipt"></i> Ventes</h3>
             <div class="kpi-value-big" id="rapp-nombre">—</div>
             <div class="kpi-label-sm">Factures émises</div>
-            <div class="kpi-value-big" id="rapp-commandes-ligne" style="margin-top:10px">—</div>
-            <div class="kpi-label-sm">Commandes en ligne (Client + Caisse)</div>
             <ul class="kpi-list" id="rapp-par-statut" style="margin-top:12px"></ul>
+          </div>
+          <div class="rapport-card">
+            <h3><i class="fas fa-globe"></i> Commandes en ligne</h3>
+            <div class="kpi-value-big" id="rapp-commandes-ligne">—</div>
+            <div class="kpi-label-sm">Client + Caisse confondus, hors annulées</div>
           </div>
           <div class="rapport-card">
             <h3><i class="fas fa-money-bill-wave"></i> Chiffre d'affaires</h3>
@@ -448,6 +451,19 @@
             <h3><i class="fas fa-wine-glass-alt"></i> Top Boissons</h3>
             <ul class="kpi-list" id="rapp-top-boissons"></ul>
           </div>
+        </div>
+        <div class="table-wrapper" style="margin-top:24px">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)">
+            <h3 style="font-size:.95rem;font-weight:700;color:var(--dark)"><i class="fas fa-utensils"></i> Détail des plats vendus (toutes catégories, période complète)</h3>
+          </div>
+          <table class="data-table">
+            <thead><tr>
+              <th>Article</th><th>Catégorie</th><th>Quantité vendue</th><th>CA généré (FCFA)</th>
+            </tr></thead>
+            <tbody id="rapport-ventes-tbody">
+              <tr><td colspan="4" style="text-align:center;color:var(--gray);padding:24px">Cliquez sur "Générer" pour afficher les données</td></tr>
+            </tbody>
+          </table>
         </div>
         <div class="table-wrapper" style="margin-top:24px">
           <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)">

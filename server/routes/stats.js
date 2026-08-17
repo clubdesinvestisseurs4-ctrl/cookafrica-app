@@ -111,6 +111,10 @@ router.get('/rapport', authenticateToken, async (req, res) => {
     const qteParCategorie = {};
     const platsVentes = {};
     const boissonsVentes = {};
+    // Ventes détaillées par article, TOUTES catégories confondues (pas juste plats/boissons) —
+    // clé composite nom+catégorie pour ne pas confondre deux articles homonymes de rayons
+    // différents. Sert à afficher la liste complète des plats vendus, pas juste un top 5.
+    const ventesParArticle = {};
     let totalPlatsQte = 0, totalBoissonsQte = 0;
 
     factures.forEach(f => {
@@ -125,6 +129,11 @@ router.get('/rapport', authenticateToken, async (req, res) => {
         ventes[item.nom].quantite += item.quantite || 0;
         ventes[item.nom].total   += item.sousTotal || 0;
 
+        const key = `${cat}||${item.nom}`;
+        if (!ventesParArticle[key]) ventesParArticle[key] = { nom: item.nom, categorie: cat, quantite: 0, total: 0 };
+        ventesParArticle[key].quantite += item.quantite || 0;
+        ventesParArticle[key].total    += item.sousTotal || 0;
+
         if (isBoisson) totalBoissonsQte += item.quantite || 0;
         else            totalPlatsQte    += item.quantite || 0;
       });
@@ -134,6 +143,9 @@ router.get('/rapport', authenticateToken, async (req, res) => {
       .map(([nom, v]) => ({ nom, ...v }))
       .sort((a, b) => b.quantite - a.quantite)
       .slice(0, 5);
+
+    const ventesDetail = Object.values(ventesParArticle)
+      .sort((a, b) => b.quantite - a.quantite);
 
     res.json({
       total,
@@ -148,6 +160,7 @@ router.get('/rapport', authenticateToken, async (req, res) => {
       totalBoissonsQte,
       topPlats: topVentes(platsVentes),
       topBoissons: topVentes(boissonsVentes),
+      ventesDetail,
       factures: factures.sort((a, b) => (b.date > a.date ? 1 : -1)),
     });
   } catch (err) {
