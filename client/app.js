@@ -1662,27 +1662,30 @@ function printFacture() {
   const w = window.open('', '_blank');
   w.document.write(`<!DOCTYPE html><html><head><title>${escapeHtml(state.printTitle || 'Facture Cook Africa')}</title>
     <style>
-      /* Format pensé pour une imprimante thermique 80mm (ex: Xprinter XP-Q260H) — pas de
-         couleurs de fond (invisibles si "imprimer les couleurs d'arrière-plan" est désactivé,
-         ce qui est le cas par défaut dans la plupart des navigateurs) : uniquement du noir sur
-         blanc, avec bordures/gras pour structurer, comme un vrai ticket de caisse. */
-      @page { size: 80mm auto; margin: 0; }
+      /* Format pensé pour une imprimante thermique 58mm — pas de couleurs de fond
+         (invisibles si "imprimer les couleurs d'arrière-plan" est désactivé, ce qui est le
+         cas par défaut dans la plupart des navigateurs) : uniquement du noir sur blanc, avec
+         bordures/gras pour structurer, comme un vrai ticket de caisse. Largeur imprimable
+         réduite à 50mm (papier 58mm avec ~4mm de marge de chaque côté, comme pour le format
+         80mm précédent) — tout le contenu texte/tableau est resserré en conséquence pour ne
+         plus être coupé sur les bords. */
+      @page { size: 58mm auto; margin: 0; }
       * { box-sizing: border-box; }
       body {
         font-family: 'Courier New', Consolas, monospace;
-        width: 72mm; margin: 0 auto; padding: 2mm 4mm;
-        font-size: 11px; color: #000; font-weight: 700;
+        width: 50mm; margin: 0 auto; padding: 1.5mm 3mm;
+        font-size: 9px; color: #000; font-weight: 700;
       }
       p { margin: 2px 0; }
       .facture-print-header { text-align: center; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px dashed #000; }
-      .facture-print-header img { max-width: 46mm; height: auto !important; }
-      .facture-items { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 11px; }
-      .facture-items th { border-bottom: 1px solid #000; padding: 3px 2px; text-align: left; font-weight: 700; }
-      .facture-items td { padding: 3px 2px; border-bottom: 1px dashed #999; }
+      .facture-print-header img { max-width: 32mm; height: auto !important; }
+      .facture-items { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 9px; }
+      .facture-items th { border-bottom: 1px solid #000; padding: 2px 1px; text-align: left; font-weight: 700; }
+      .facture-items td { padding: 2px 1px; border-bottom: 1px dashed #999; }
       .facture-totaux { width: 100%; margin-top: 4px; }
       .facture-totaux td { padding: 2px; }
       .facture-totaux td:last-child { text-align: right; font-weight: bold; }
-      .facture-total-final td { font-size: 13px; border-top: 1px solid #000; padding-top: 4px; }
+      .facture-total-final td { font-size: 11px; border-top: 1px solid #000; padding-top: 4px; }
       @media print { button { display: none; } }
       /* Imprime 2 exemplaires en un seul clic, sans passer par le champ "copies" de la
          boîte de dialogue (à refaire à chaque fois sinon) : chaque copie est une page
@@ -1696,8 +1699,8 @@ function printFacture() {
       .print-copy-label-row { text-align: right; margin-bottom: 4mm; }
       .print-copy-label {
         display: inline-block;
-        font-size: 9px; font-weight: 700; letter-spacing: .5px;
-        border: 1px solid #000; border-radius: 3px; padding: 1px 6px;
+        font-size: 8px; font-weight: 700; letter-spacing: .5px;
+        border: 1px solid #000; border-radius: 3px; padding: 1px 4px;
       }
     </style>
   </head><body>
