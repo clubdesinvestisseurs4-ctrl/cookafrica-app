@@ -52,13 +52,13 @@ async function findDiscountedItems(db, items) {
   const withMenuId = (items || []).filter(i => i.menuItemId);
   if (withMenuId.length === 0) return [];
 
-  const { admin } = require('../firebase-admin');
+  const { FieldPath } = require('../firebase-admin');
   const ids = [...new Set(withMenuId.map(i => i.menuItemId))];
   const menuMap = {};
   for (let i = 0; i < ids.length; i += 30) {
     const chunk = ids.slice(i, i + 30);
     const snap = await db.collection('menu')
-      .where(admin.firestore.FieldPath.documentId(), 'in', chunk)
+      .where(FieldPath.documentId(), 'in', chunk)
       .get();
     snap.docs.forEach(d => { menuMap[d.id] = d.data(); });
   }
