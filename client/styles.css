@@ -26,6 +26,25 @@
   --shadow-md:     0 4px 20px rgba(0,0,0,.15);
 }
 
+/* Site Dubaï — palette bleu nuit du Golfe + or, pour qu'on sente tout de suite qu'on
+   n'est pas sur le même établissement (voir document.documentElement.dataset.site,
+   posé par client/app.js selon SITE.siteId). Le reste de l'app utilise déjà ces
+   variables partout — seuls les écrans de démarrage/connexion/bienvenue ci-dessous
+   ont leur dégradé codé en dur et ont besoin d'une règle dédiée. */
+[data-site="dubai"] {
+  --primary:       #0B3D5C;
+  --primary-dark:  #062A40;
+  --primary-light: #1C6EA4;
+  --secondary:     #C9A227;
+}
+[data-site="dubai"] #splash-screen,
+[data-site="dubai"] #welcome-transition {
+  background: linear-gradient(150deg, #0B3D5C 0%, #062A40 45%, #12100a 100%);
+}
+[data-site="dubai"] #login-screen {
+  background: linear-gradient(135deg, #0B3D5C 0%, #062A40 50%, #12100a 100%);
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {

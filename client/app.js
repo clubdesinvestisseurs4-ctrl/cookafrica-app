@@ -30,6 +30,10 @@ const SITE_CONFIG = {
 };
 const SITE = SITE_CONFIG[window.location.hostname] || SITE_DEFAULT;
 const API = SITE.apiUrl;
+// Active le thème visuel du site (voir styles.css, [data-site="dubai"]) — posé au
+// plus tôt pour que le tout premier rendu (splash screen) soit déjà dans la bonne
+// couleur, pas seulement après un rafraîchissement.
+document.documentElement.dataset.site = SITE.siteId;
 
 // Cloud Run peut redémarrer à froid après une période d'inactivité → ping /health avec backoff exponentiel
 // Max 6 tentatives : ~4s, 6s, 9s, 14s, 20s = 6 requêtes sur ~55s
@@ -328,6 +332,10 @@ function showWelcomeTransition(user) {
     const el = document.getElementById('welcome-transition');
     document.getElementById('wt-name').textContent = user.nom;
     document.getElementById('wt-role').textContent = ROLE_LABELS[user.role] || user.role;
+    // Icône différente selon le site — un repère visuel de plus, en plus du thème de
+    // couleur (voir styles.css [data-site="dubai"]), pour bien sentir qu'on arrive
+    // sur un autre établissement.
+    document.getElementById('wt-bell-icon').className = SITE.siteId === 'dubai' ? 'fas fa-city' : 'fas fa-utensils';
     el.style.display = 'flex'; // écrase le style inline display:none
     el.classList.remove('wt-hide');
     el.classList.add('wt-show');

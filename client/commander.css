@@ -230,6 +230,23 @@
 .pub-confirm-numero { margin-top: 6px; font-size: 1.4rem; font-weight: 800; color: var(--primary); letter-spacing: 1px; }
 .pub-confirm-sub { font-size: .82rem; color: var(--gray); margin-top: 4px; }
 
+/* Wave — couleur de marque distincte (pas la palette Cook Africa) pour que le bouton
+   se reconnaisse immédiatement comme un moyen de paiement tiers. */
+.pub-wave-pay {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; max-width: 340px; margin-top: 22px;
+  padding: 12px 16px; border-radius: 14px;
+  background: #1DC8CD; color: var(--white); text-decoration: none;
+  box-shadow: 0 6px 18px rgba(29,200,205,.35);
+  animation: pubWavePulse 2.4s ease infinite;
+}
+.pub-wave-pay-logo { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--white); }
+.pub-wave-pay-text { flex: 1; display: flex; flex-direction: column; gap: 2px; text-align: left; }
+.pub-wave-pay-text strong { font-size: .95rem; }
+.pub-wave-pay-text small { font-size: .72rem; opacity: .92; line-height: 1.25; }
+.pub-wave-pay i { font-size: .9rem; opacity: .85; }
+@keyframes pubWavePulse { 0%,100% { box-shadow: 0 6px 18px rgba(29,200,205,.35); } 50% { box-shadow: 0 6px 22px rgba(29,200,205,.6); } }
+
 .pub-status-track { display: flex; align-items: center; gap: 6px; margin: 26px 0 20px; width: 100%; max-width: 320px; }
 .pub-status-step { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: .74rem; color: var(--gray); position: relative; }
 .pub-status-step:not(:last-child)::after {
