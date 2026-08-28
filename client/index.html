@@ -15,7 +15,7 @@
 <body>
 
 <!-- Offline banner -->
-<div class="offline-banner"><i class="fas fa-wifi-slash"></i> Mode hors ligne – données possiblement indisponibles</div>
+<div class="offline-banner"><i class="fas fa-wifi-slash"></i> <span data-i18n="offline.banner">Mode hors ligne – données possiblement indisponibles</span></div>
 
 <!-- ══ Splash Screen (chargement initial) ═══════════════ -->
 <div id="splash-screen">
@@ -26,8 +26,8 @@
     <div class="spl-logo-badge">
       <img src="logo-cookafrica.png" alt="Cook Africa" onerror="this.style.display='none'">
     </div>
-    <h1>COOK AFRICA</h1>
-    <p>Application de Gestion</p>
+    <h1 data-i18n="splash.title">COOK AFRICA</h1>
+    <p data-i18n="splash.subtitle">Application de Gestion</p>
   </div>
   <div class="spl-sep"></div>
   <div class="spl-icons">
@@ -51,7 +51,7 @@
   <div class="lt-circle lt-c2"></div>
   <div class="lt-content">
     <div class="lt-icon"><i class="fas fa-right-from-bracket"></i></div>
-    <p class="lt-farewell">À bientôt</p>
+    <p class="lt-farewell" data-i18n="logout.farewell">À bientôt</p>
     <p class="lt-name" id="lt-name"></p>
   </div>
 </div>
@@ -62,7 +62,7 @@
   <div class="wt-circle wt-c2"></div>
   <div class="wt-content">
     <div class="wt-bell"><i class="fas fa-utensils" id="wt-bell-icon"></i></div>
-    <p class="wt-label">Bienvenue</p>
+    <p class="wt-label" data-i18n="welcome.label">Bienvenue</p>
     <p class="wt-name" id="wt-name"></p>
     <div class="wt-line"></div>
     <p class="wt-role" id="wt-role"></p>
@@ -83,21 +83,21 @@
   <div class="login-card">
     <div class="login-logo">
       <img src="logo-cookafrica.png" alt="Cook Africa" style="height:80px;object-fit:contain;margin-bottom:4px" onerror="this.style.display='none'">
-      <h1>COOK AFRICA</h1>
-      <p>Application de Gestion Interne</p>
+      <h1 data-i18n="login.title">COOK AFRICA</h1>
+      <p data-i18n="login.subtitle">Application de Gestion Interne</p>
     </div>
     <form id="login-form">
       <div class="form-group">
-        <label for="login-username">Identifiant</label>
-        <input type="text" id="login-username" placeholder="Votre identifiant" autocomplete="username" required>
+        <label for="login-username" data-i18n="login.username_label">Identifiant</label>
+        <input type="text" id="login-username" placeholder="Votre identifiant" data-i18n-placeholder="login.username_placeholder" autocomplete="username" required>
       </div>
       <div class="form-group">
-        <label for="login-password">Mot de passe</label>
+        <label for="login-password" data-i18n="login.password_label">Mot de passe</label>
         <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" required>
       </div>
       <div id="login-error" class="form-error" style="display:none"></div>
       <button type="submit" class="btn btn-primary" style="width:100%;margin-top:8px;justify-content:center;padding:11px" id="login-btn">
-        <i class="fas fa-sign-in-alt"></i> Se connecter
+        <i class="fas fa-sign-in-alt"></i> <span data-i18n="login.submit">Se connecter</span>
       </button>
     </form>
   </div>
@@ -111,48 +111,48 @@
 
   <!-- Sidebar -->
   <aside class="sidebar" id="main-sidebar">
-    <div class="sidebar-logo" id="sidebar-logo" title="Rafraîchir l'application" style="cursor:pointer">
+    <div class="sidebar-logo" id="sidebar-logo" title="Rafraîchir l'application" data-i18n-title="nav.refresh_app" style="cursor:pointer">
       <img src="logo-cookafrica.png" alt="Cook Africa" style="height:32px;object-fit:contain" onerror="this.style.display='none'">
-      <span>COOK AFRICA</span>
+      <span data-i18n="nav.brand">COOK AFRICA</span>
     </div>
     <nav class="nav-menu">
 
-      <div class="nav-section-label">Général</div>
+      <div class="nav-section-label" data-i18n="nav.section_general">Général</div>
       <a class="nav-item active" data-page="dashboard">
-        <i class="fas fa-tachometer-alt"></i><span>Dashboard</span>
+        <i class="fas fa-tachometer-alt"></i><span data-i18n="nav.dashboard">Dashboard</span>
       </a>
 
-      <div class="nav-section-label" id="nav-section-salle">Service</div>
+      <div class="nav-section-label" id="nav-section-salle" data-i18n="nav.section_service">Service</div>
       <a class="nav-item" data-page="commandes" id="nav-commandes">
-        <i class="fas fa-list-alt"></i><span>Commandes</span>
+        <i class="fas fa-list-alt"></i><span data-i18n="nav.commandes">Commandes</span>
       </a>
       <a class="nav-item" data-page="facturation" id="nav-facturation">
-        <i class="fas fa-receipt"></i><span>Facturation</span>
+        <i class="fas fa-receipt"></i><span data-i18n="nav.facturation">Facturation</span>
       </a>
       <a class="nav-item" data-page="commandes-en-ligne" id="nav-commandes-en-ligne">
-        <i class="fas fa-globe"></i><span>Commandes en Ligne</span>
+        <i class="fas fa-globe"></i><span data-i18n="nav.commandes_en_ligne">Commandes en Ligne</span>
       </a>
 
-      <div class="nav-section-label" id="nav-section-cuisine" style="display:none">Stocks</div>
+      <div class="nav-section-label" id="nav-section-cuisine" data-i18n="nav.section_stocks" style="display:none">Stocks</div>
       <a class="nav-item" data-page="stocks" id="nav-stocks" style="display:none">
-        <i class="fas fa-boxes"></i><span>Stocks</span>
+        <i class="fas fa-boxes"></i><span data-i18n="nav.stocks">Stocks</span>
       </a>
 
-      <div class="nav-section-label" id="nav-section-admin">Administration</div>
+      <div class="nav-section-label" id="nav-section-admin" data-i18n="nav.section_admin">Administration</div>
       <a class="nav-item" data-page="menu" id="nav-menu">
-        <i class="fas fa-book-open"></i><span>Menu</span>
+        <i class="fas fa-book-open"></i><span data-i18n="nav.menu">Menu</span>
       </a>
       <a class="nav-item" data-page="reservations" id="nav-reservations">
-        <i class="fas fa-calendar-check"></i><span>Réservations</span>
+        <i class="fas fa-calendar-check"></i><span data-i18n="nav.reservations">Réservations</span>
       </a>
       <a class="nav-item" data-page="utilisateurs" id="nav-utilisateurs">
-        <i class="fas fa-users-cog"></i><span>Utilisateurs</span>
+        <i class="fas fa-users-cog"></i><span data-i18n="nav.utilisateurs">Utilisateurs</span>
       </a>
       <a class="nav-item" data-page="rapports" id="nav-rapports">
-        <i class="fas fa-chart-bar"></i><span>Rapports</span>
+        <i class="fas fa-chart-bar"></i><span data-i18n="nav.rapports">Rapports</span>
       </a>
       <a class="nav-item" data-page="sessions" id="nav-sessions">
-        <i class="fas fa-shield-alt"></i><span>Sessions</span>
+        <i class="fas fa-shield-alt"></i><span data-i18n="nav.sessions">Sessions</span>
       </a>
 
     </nav>
@@ -162,10 +162,10 @@
         <div class="user-name" id="sidebar-user-name">—</div>
         <div class="user-role" id="sidebar-user-role"></div>
       </div>
-      <button class="btn-logout" id="switch-site-btn" title="Gérer un autre site" style="display:none">
+      <button class="btn-logout" id="switch-site-btn" title="Gérer un autre site" data-i18n-title="nav.switch_site" style="display:none">
         <i class="fas fa-random"></i>
       </button>
-      <button class="btn-logout" id="logout-btn" title="Se déconnecter">
+      <button class="btn-logout" id="logout-btn" title="Se déconnecter" data-i18n-title="nav.logout">
         <i class="fas fa-power-off"></i>
       </button>
     </div>
@@ -175,31 +175,31 @@
   <main class="main-content">
     <header class="top-header">
       <div class="header-left">
-        <button class="hamburger-btn" id="sidebar-toggle" aria-label="Menu">
+        <button class="hamburger-btn" id="sidebar-toggle" aria-label="Menu" data-i18n-title="nav.hamburger_aria">
           <i class="fas fa-bars"></i>
         </button>
-        <h1 id="page-title">Dashboard</h1>
+        <h1 id="page-title" data-i18n="title.dashboard">Dashboard</h1>
       </div>
       <div class="header-right">
         <span class="date-badge" id="header-date"></span>
         <span id="offline-queue-badge" style="display:none;background:var(--warning);color:#fff;padding:3px 10px;border-radius:12px;font-size:.72rem;font-weight:700;white-space:nowrap"></span>
         <div class="notif-wrapper">
-          <button class="btn-notif" id="notif-btn" title="Notifications">
+          <button class="btn-notif" id="notif-btn" title="Notifications" data-i18n-title="nav.notifications">
             <i class="fas fa-bell"></i>
             <span class="badge" id="notif-badge" style="display:none">0</span>
           </button>
           <div class="notif-panel hidden" id="notif-panel">
             <div class="notif-panel-header">
-              <span><i class="fas fa-bell"></i> Notifications</span>
+              <span><i class="fas fa-bell"></i> <span data-i18n="nav.notifications">Notifications</span></span>
               <div style="display:flex;gap:8px;align-items:center">
-                <button class="btn btn-sm" id="notif-mark-read" title="Tout marquer comme lu" style="font-size:.75rem;padding:3px 8px">
+                <button class="btn btn-sm" id="notif-mark-read" title="Tout marquer comme lu" data-i18n-title="nav.mark_all_read" style="font-size:.75rem;padding:3px 8px">
                   <i class="fas fa-check-double"></i>
                 </button>
                 <button class="notif-close" id="notif-close"><i class="fas fa-times"></i></button>
               </div>
             </div>
             <div id="notif-list" class="notif-list">
-              <div class="notif-loading"><i class="fas fa-spinner fa-spin"></i> Chargement…</div>
+              <div class="notif-loading"><i class="fas fa-spinner fa-spin"></i> <span data-i18n="common.loading">Chargement…</span></div>
             </div>
           </div>
         </div>
@@ -863,7 +863,7 @@
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Prix (<span id="currency-label-plat">FCFA</span>) *</label>
+            <label id="label-plat-prix">Prix (FCFA) *</label>
             <input type="number" id="plat-prix" min="0" required placeholder="Ex: 2500">
           </div>
           <div class="form-group">
@@ -966,11 +966,11 @@
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Montant global (<span id="currency-label-resa-montant">FCFA</span>) *</label>
+            <label id="label-resa-montant">Montant global (FCFA) *</label>
             <input type="number" id="resa-montant" min="0" required>
           </div>
           <div class="form-group">
-            <label>Avance (<span id="currency-label-resa-avance">FCFA</span>)</label>
+            <label id="label-resa-avance">Avance (FCFA)</label>
             <input type="number" id="resa-avance" min="0" value="0">
           </div>
         </div>
@@ -1189,6 +1189,7 @@
   </div>
 </div>
 
+<script src="i18n.js"></script>
 <script src="app.js" type="module"></script>
 </body>
 </html>

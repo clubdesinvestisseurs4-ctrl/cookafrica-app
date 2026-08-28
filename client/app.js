@@ -34,6 +34,7 @@ const API = SITE.apiUrl;
 // plus tôt pour que le tout premier rendu (splash screen) soit déjà dans la bonne
 // couleur, pas seulement après un rafraîchissement.
 document.documentElement.dataset.site = SITE.siteId;
+setI18nLang(SITE.siteId === 'dubai' ? 'en' : 'fr'); // voir i18n.js, chargé avant ce module
 
 // Cloud Run peut redémarrer à froid après une période d'inactivité → ping /health avec backoff exponentiel
 // Max 6 tentatives : ~4s, 6s, 9s, 14s, 20s = 6 requêtes sur ~55s
@@ -50,7 +51,7 @@ async function wakeUpServer() {
       clearTimeout(tid);
       if (res.ok) { if (statusEl) statusEl.textContent = ''; return; }
     } catch { /* réseau ou timeout */ }
-    if (statusEl) statusEl.textContent = 'Démarrage du serveur en cours… veuillez patienter';
+    if (statusEl) statusEl.textContent = t('splash.server_waking');
   }
   if (statusEl) statusEl.textContent = '';
 }
@@ -96,12 +97,12 @@ let panierPicker, editcmdPicker, editfactPicker, resaMenuPicker;
 
 // ─── Labels des rôles ─────────────────────────────────
 const ROLE_LABELS = {
-  admin:      'Administrateur',
-  caissiere:  'Caissière',
-  serveur:    'Serveur',
-  cuisiniere: 'Cuisinière',
-  barman:     'Barman',
-  'caissier-en-ligne': 'Caissier en ligne',
+  admin:      t('utilisateurs.role_admin'),
+  caissiere:  t('utilisateurs.role_caissiere'),
+  serveur:    t('utilisateurs.role_serveur'),
+  cuisiniere: t('utilisateurs.role_cuisiniere'),
+  barman:     t('utilisateurs.role_barman'),
+  'caissier-en-ligne': t('utilisateurs.role_caissier_en_ligne'),
 };
 
 // ─── Visibilité des pages par rôle ────────────────────
@@ -119,16 +120,16 @@ const PAGE_ROLES = {
 };
 
 const PAGE_TITLES = {
-  dashboard:      'Dashboard',
-  commandes:      'Commandes',
-  'commandes-en-ligne': 'Commandes en Ligne',
-  facturation:    'Facturation',
-  menu:           'Carte du Menu',
-  stocks:         'Gestion des Stocks',
-  reservations:   'Réservations',
-  rapports:       'Rapports & Statistiques',
-  sessions:       'Journal des Sessions',
-  utilisateurs:   'Gestion des Utilisateurs',
+  dashboard:      t('title.dashboard'),
+  commandes:      t('title.commandes'),
+  'commandes-en-ligne': t('title.commandes-en-ligne'),
+  facturation:    t('title.facturation'),
+  menu:           t('title.menu'),
+  stocks:         t('title.stocks'),
+  reservations:   t('title.reservations'),
+  rapports:       t('title.rapports'),
+  sessions:       t('title.sessions'),
+  utilisateurs:   t('title.utilisateurs'),
 };
 
 // ─── Utilitaires ──────────────────────────────────────
@@ -484,7 +485,7 @@ async function logout(animate = false) {
 }
 
 function wifiLogout() {
-  toast('Vous n\'êtes plus sur le Wi-Fi de l\'entreprise. Déconnexion automatique.', 'warning');
+  toast(t('login.wifi_auto_logout'), 'warning');
   state.token = null; state.user = null;
   localStorage.removeItem('ca_token');
   localStorage.removeItem('ca_user');
@@ -3145,7 +3146,7 @@ function closeModal(name) {
 // être stylées et cassent la fluidité de l'interface.
 
 function confirmDialog(message, opts = {}) {
-  const { title = 'Confirmation', confirmLabel = 'Confirmer', cancelLabel = 'Annuler', danger = false } = opts;
+  const { title = t('modal.confirm_title'), confirmLabel = t('modal.confirm_ok'), cancelLabel = t('modal.cancel'), danger = false } = opts;
   return new Promise(resolve => {
     document.getElementById('confirm-title').textContent = title;
     document.getElementById('confirm-message').textContent = message;
@@ -3164,7 +3165,7 @@ function confirmDialog(message, opts = {}) {
 }
 
 function promptDialog(message, opts = {}) {
-  const { title = 'Saisie', placeholder = '', defaultValue = '', inputType = 'text', confirmLabel = 'Valider' } = opts;
+  const { title = t('modal.prompt_title'), placeholder = '', defaultValue = '', inputType = 'text', confirmLabel = t('modal.prompt_ok') } = opts;
   return new Promise(resolve => {
     document.getElementById('prompt-title').textContent = title;
     document.getElementById('prompt-message').textContent = message;
@@ -3255,12 +3256,18 @@ window.addEventListener('offline', () => document.body.classList.add('offline'))
 
 document.addEventListener('DOMContentLoaded', async () => {
 
-  // Libellés de devise sur les champs de saisie (prix, montant réservation…) —
-  // le reste de l'affichage passe par fmt(), qui inclut déjà SITE.currency.label.
-  ['currency-label-plat', 'currency-label-resa-montant', 'currency-label-resa-avance'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = SITE.currency.label;
-  });
+  // Traduit tout le HTML statique porteur de data-i18n / data-i18n-placeholder /
+  // data-i18n-title (voir i18n.js) — avant tout le reste, pour éviter un flash de
+  // français sur le site anglais.
+  applyI18n();
+
+  // Libellés avec devise intégrée (prix, montant réservation…) — entièrement pilotés
+  // par JS plutôt que data-i18n, pour ne pas écraser un <span> imbriqué avec
+  // textContent. Le reste des montants affichés passe par fmt(), qui inclut déjà
+  // SITE.currency.label.
+  document.getElementById('label-plat-prix').textContent = t('modal.plat_prix_label', { devise: SITE.currency.label });
+  document.getElementById('label-resa-montant').textContent = t('modal.resa_montant_label', { devise: SITE.currency.label });
+  document.getElementById('label-resa-avance').textContent = t('modal.resa_avance_label', { devise: SITE.currency.label });
 
   updateOfflineBadge();
   await wakeUpServer();
@@ -3270,7 +3277,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     e.preventDefault();
     const btn = document.getElementById('login-btn');
     const err = document.getElementById('login-error');
-    btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Connexion…';
+    btn.disabled = true; btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${t('login.connecting')}`;
     err.style.display = 'none';
 
     try {
@@ -3286,22 +3293,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (data.token) {
         await loginFlow(data.token, data.user);
       } else {
+        // data.message/data.error viennent du serveur (encore en français, hors
+        // périmètre de cette passe — voir décision utilisateur "client d'abord").
         err.textContent = data.error === 'wifi_restricted'
-          ? '⚠️ Accès refusé : vous devez être connecté au Wi-Fi de l\'entreprise'
-          : (data.message || data.error || 'Identifiants invalides');
+          ? t('login.wifi_restricted')
+          : (data.message || data.error || t('login.invalid'));
         err.style.display = 'block';
       }
     } catch {
-      err.textContent = 'Impossible de contacter le serveur';
+      err.textContent = t('login.server_unreachable');
       err.style.display = 'block';
     } finally {
-      btn.disabled = false; btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Se connecter';
+      btn.disabled = false; btn.innerHTML = `<i class="fas fa-sign-in-alt"></i> ${t('login.submit')}`;
     }
   });
 
   // Logout
   document.getElementById('logout-btn').addEventListener('click', async () => {
-    if (await confirmDialog('Se déconnecter ?')) logout(true);
+    if (await confirmDialog(t('nav.logout_confirm'))) logout(true);
   });
 
   // Bascule multi-site (admin)
