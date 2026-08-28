@@ -14,27 +14,37 @@ const {
 
 const router = express.Router();
 
-// POST /api/directory/login — vérifie les identifiants (distincts du mot de passe
-// de chaque site) et renvoie la liste des sites accessibles pour ce compte.
+// POST /api/directory/login — pas de mot de passe séparé à retenir : vérifie le
+// mot de passe RÉEL du compte sur le site maison (celui que l'admin utilise déjà pour
+// s'y connecter normalement), via sa propre collection `utilisateurs`. Reste à jour
+// automatiquement si ce mot de passe change plus tard — rien à resynchroniser.
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) {
       return res.status(400).json({ error: 'Identifiants requis' });
     }
+    const normalizedUsername = username.toLowerCase().trim();
 
-    const snapshot = await db.collection('admin_directory')
-      .where('username', '==', username.toLowerCase().trim())
+    const dirSnapshot = await db.collection('admin_directory')
+      .where('username', '==', normalizedUsername)
       .limit(1).get();
-
-    if (snapshot.empty) {
+    if (dirSnapshot.empty) {
       return res.status(401).json({ error: 'Identifiants invalides' });
     }
-
-    const doc = snapshot.docs[0];
+    const doc = dirSnapshot.docs[0];
     const account = doc.data();
 
-    const passwordMatch = await bcrypt.compare(password, account.passwordHash);
+    const userSnapshot = await db.collection('utilisateurs')
+      .where('username', '==', normalizedUsername)
+      .where('actif', '==', true)
+      .limit(1).get();
+    if (userSnapshot.empty) {
+      return res.status(401).json({ error: 'Identifiants invalides' });
+    }
+    const user = userSnapshot.docs[0].data();
+
+    const passwordMatch = await bcrypt.compare(password, user.passwordHash);
     if (!passwordMatch) {
       return res.status(401).json({ error: 'Identifiants invalides' });
     }
@@ -91,7 +101,9 @@ router.post('/switch', async (req, res) => {
 // Protégé par le même jeton d'amorçage que POST /api/auth/seed (header X-Seed-Token).
 // Contrairement à ce seed-là (comptes fixes, refuse si la base n'est pas vide), celui-ci
 // est pensé pour être rejoué à chaque ajout/màj de compte multi-site — un admin doit déjà
-// exister comme utilisateur normal (actif) sur chacun des sites listés dans `sites`.
+// exister comme utilisateur normal (actif) sur chacun des sites listés dans `sites`, y
+// compris le site maison lui-même (son mot de passe y sert aussi de mot de passe
+// d'annuaire — voir POST /login — donc aucun mot de passe séparé à fournir ici).
 router.post('/seed', async (req, res) => {
   try {
     const seedToken = process.env.SEED_TOKEN;
@@ -99,9 +111,9 @@ router.post('/seed', async (req, res) => {
       return res.status(403).json({ error: 'Accès refusé' });
     }
 
-    const { username, password, sites } = req.body;
-    if (!username || !password || !Array.isArray(sites) || sites.length === 0) {
-      return res.status(400).json({ error: 'username, password et sites (non vide) requis' });
+    const { username, sites } = req.body;
+    if (!username || !Array.isArray(sites) || sites.length === 0) {
+      return res.status(400).json({ error: 'username et sites (non vide) requis' });
     }
     for (const s of sites) {
       if (!s.siteId || !s.label || !s.apiUrl || !s.appUrl || !s.userId) {
@@ -110,8 +122,7 @@ router.post('/seed', async (req, res) => {
     }
 
     const normalizedUsername = username.toLowerCase().trim();
-    const passwordHash = await bcrypt.hash(password, 10);
-    const data = { username: normalizedUsername, passwordHash, sites, updatedAt: new Date().toISOString() };
+    const data = { username: normalizedUsername, sites, updatedAt: new Date().toISOString() };
 
     const existing = await db.collection('admin_directory')
       .where('username', '==', normalizedUsername).limit(1).get();

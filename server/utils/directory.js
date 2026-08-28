@@ -5,9 +5,13 @@
 const jwt = require('jsonwebtoken');
 
 // Jeton de session d'annuaire : prouve qu'un admin multi-site a passé la vérification
-// de mot de passe de l'annuaire. Courte durée — le temps de choisir un site dans l'UI.
+// de mot de passe de l'annuaire. Même durée que la session normale d'un site (12h) —
+// mémorisé côté client (voir openSwitchSite() dans app.js) pour ne pas redemander ce
+// mot de passe à chaque bascule. Reste un jeton de faible privilège : il ne permet que
+// de lister les sites accessibles et d'obtenir un jeton de bascule pour l'un d'eux,
+// jamais d'agir directement sur des données métier.
 function signDirectorySession(directoryId) {
-  return jwt.sign({ directoryId }, process.env.DIRECTORY_SESSION_SECRET, { expiresIn: '5m' });
+  return jwt.sign({ directoryId }, process.env.DIRECTORY_SESSION_SECRET, { expiresIn: '12h' });
 }
 function verifyDirectorySession(token) {
   return jwt.verify(token, process.env.DIRECTORY_SESSION_SECRET);

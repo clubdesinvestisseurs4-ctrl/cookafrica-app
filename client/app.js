@@ -468,6 +468,7 @@ async function logout(animate = false) {
   state.token = null; state.user = null;
   localStorage.removeItem('ca_token');
   localStorage.removeItem('ca_user');
+  clearStoredDirectorySession();
   clearReadCache();
   clearIntervals();
   document.getElementById('app-screen').style.display = 'none';
@@ -479,6 +480,7 @@ function wifiLogout() {
   state.token = null; state.user = null;
   localStorage.removeItem('ca_token');
   localStorage.removeItem('ca_user');
+  clearStoredDirectorySession();
   clearReadCache();
   clearIntervals();
   document.getElementById('app-screen').style.display = 'none';
@@ -558,18 +560,66 @@ function applyRoleNav() {
 // Utilise fetch() directement (pas api()) : api() avale le corps d'erreur sur les
 // réponses non-2xx et mettrait tout échec en file d'attente hors-ligne — inadapté
 // à un flux de connexion interactif, même raison que le formulaire de login normal.
+//
+// Chaque bascule est une vraie navigation vers une autre origine (voir
+// confirmSwitchSite), qui efface tout l'état JS — sans mémorisation, le mot de passe
+// d'annuaire serait redemandé à CHAQUE bascule, même deux fois de suite. On mémorise
+// donc la session d'annuaire dans localStorage (même principe que ca_token pour la
+// session normale) : jeton de faible privilège, ne permet que de lister les sites
+// accessibles et d'obtenir un jeton de bascule pour l'un d'eux — jamais d'agir
+// directement sur des données métier. Durée de vie alignée sur la session normale
+// (12h côté serveur, voir signDirectorySession).
+const DIRECTORY_TOKEN_KEY = 'ca_directory_token';
+const DIRECTORY_SITES_KEY = 'ca_directory_sites';
+
+function getStoredDirectorySession() {
+  const token = localStorage.getItem(DIRECTORY_TOKEN_KEY);
+  const sitesJson = localStorage.getItem(DIRECTORY_SITES_KEY);
+  if (!token || !sitesJson) return null;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    if (!payload.exp || payload.exp * 1000 <= Date.now()) return null;
+    return { token, sites: JSON.parse(sitesJson) };
+  } catch {
+    return null;
+  }
+}
+
+function clearStoredDirectorySession() {
+  localStorage.removeItem(DIRECTORY_TOKEN_KEY);
+  localStorage.removeItem(DIRECTORY_SITES_KEY);
+}
 
 window.openSwitchSite = () => {
+  document.getElementById('switch-site-pick-error').style.display = 'none';
+  openModal('switch-site');
+
+  const stored = getStoredDirectorySession();
+  if (stored) {
+    state.switchSiteDirectoryToken = stored.token;
+    showSwitchSitePickStep(stored.sites);
+  } else {
+    showSwitchSiteLoginStep();
+  }
+};
+
+function showSwitchSiteLoginStep() {
   document.getElementById('switch-site-username').value = '';
   document.getElementById('switch-site-password').value = '';
   document.getElementById('switch-site-login-error').style.display = 'none';
-  document.getElementById('switch-site-pick-error').style.display = 'none';
   document.getElementById('switch-site-step-login').style.display = 'block';
   document.getElementById('switch-site-step-pick').style.display  = 'none';
   document.getElementById('btn-switch-site-login').style.display  = 'inline-flex';
   state.switchSiteDirectoryToken = null;
-  openModal('switch-site');
-};
+}
+
+function showSwitchSitePickStep(sites) {
+  // Inutile de proposer de "basculer" vers le site déjà affiché.
+  renderSwitchSiteList((sites || []).filter(s => s.siteId !== SITE.siteId));
+  document.getElementById('switch-site-step-login').style.display = 'none';
+  document.getElementById('switch-site-step-pick').style.display  = 'block';
+  document.getElementById('btn-switch-site-login').style.display  = 'none';
+}
 
 async function submitSwitchSiteLogin() {
   const username = document.getElementById('switch-site-username').value.trim();
@@ -600,11 +650,9 @@ async function submitSwitchSiteLogin() {
     }
 
     state.switchSiteDirectoryToken = data.directoryToken;
-    // Inutile de proposer de "basculer" vers le site déjà affiché.
-    renderSwitchSiteList((data.sites || []).filter(s => s.siteId !== SITE.siteId));
-    document.getElementById('switch-site-step-login').style.display = 'none';
-    document.getElementById('switch-site-step-pick').style.display  = 'block';
-    btn.style.display = 'none';
+    localStorage.setItem(DIRECTORY_TOKEN_KEY, data.directoryToken);
+    localStorage.setItem(DIRECTORY_SITES_KEY, JSON.stringify(data.sites || []));
+    showSwitchSitePickStep(data.sites);
   } catch {
     errEl.textContent = 'Impossible de contacter le serveur';
     errEl.style.display = 'block';
@@ -617,13 +665,21 @@ function renderSwitchSiteList(sites) {
   const container = document.getElementById('switch-site-list');
   if (sites.length === 0) {
     container.innerHTML = '<p style="color:var(--gray);font-size:.85rem">Aucun autre site accessible avec ce compte.</p>';
-    return;
+  } else {
+    container.innerHTML = sites.map(s => `
+      <button type="button" class="btn btn-secondary" style="width:100%;margin-bottom:8px;justify-content:flex-start"
+        onclick="confirmSwitchSite('${s.siteId}')">
+        <i class="fas fa-store"></i> ${escapeHtml(s.label)}
+      </button>`).join('');
   }
-  container.innerHTML = sites.map(s => `
-    <button type="button" class="btn btn-secondary" style="width:100%;margin-bottom:8px;justify-content:flex-start"
-      onclick="confirmSwitchSite('${s.siteId}')">
-      <i class="fas fa-store"></i> ${escapeHtml(s.label)}
-    </button>`).join('');
+  container.innerHTML += `
+    <button type="button" id="switch-site-forget" style="background:none;border:none;color:var(--gray);font-size:.8rem;cursor:pointer;padding:4px 0">
+      Ce n'est pas vous ? Changer de compte
+    </button>`;
+  document.getElementById('switch-site-forget').addEventListener('click', () => {
+    clearStoredDirectorySession();
+    showSwitchSiteLoginStep();
+  });
 }
 
 window.confirmSwitchSite = async (siteId) => {
