@@ -6,27 +6,26 @@
 // Configuration par site (multi-restaurant) — clé = hostname exact du domaine qui sert
 // ce site. Tout hostname non listé (localhost, previews Vercel, etc.) retombe sur
 // SITE_DEFAULT, qui reproduit le comportement d'avant l'ajout du multi-site.
-// isHome : seul le site "maison" héberge l'annuaire multi-site (voir DIRECTORY_ENABLED
-// côté serveur). Depuis un autre site, "Gérer un autre site" redirige simplement vers
-// homeAppUrl (navigation, pas un appel API) — évite d'ouvrir le CORS de chaque backend
-// à l'origine de tous les autres juste pour ce cas rare (voir plan multi-site).
-const HOME_APP_URL = 'https://cookafrica-app.vercel.app';
+// L'annuaire multi-site (voir DIRECTORY_ENABLED côté serveur) vit uniquement sur le
+// backend "maison" — HOME_API_URL — mais le CORS de ce backend autorise déjà l'origine
+// de chaque site (voir server/config/corsOrigins.js), donc "Gérer un autre site" appelle
+// l'annuaire directement depuis n'importe quel site, sans détour par une reconnexion.
+const HOME_API_URL = 'https://cookafrica-api-667992371198.us-central1.run.app';
 const SITE_DEFAULT = {
-  apiUrl:   'https://cookafrica-api-667992371198.us-central1.run.app', // Cloud Run (us-central1)
+  apiUrl:   HOME_API_URL, // Cloud Run (us-central1)
   currency: { label: 'FCFA', locale: 'fr-FR' },
-  isHome:   true,
+  siteId:   'cote-divoire',
 };
 const SITE_CONFIG = {
-  'localhost': { apiUrl: 'http://localhost:3001', currency: SITE_DEFAULT.currency, isHome: true },
-  '127.0.0.1': { apiUrl: 'http://localhost:3001', currency: SITE_DEFAULT.currency, isHome: true },
+  'localhost': { apiUrl: 'http://localhost:3001', currency: SITE_DEFAULT.currency, siteId: 'cote-divoire' },
+  '127.0.0.1': { apiUrl: 'http://localhost:3001', currency: SITE_DEFAULT.currency, siteId: 'cote-divoire' },
   // Site Dubaï — Cloud Run (me-central1). Domaine sur un projet Vercel séparé
   // (cookafrica-dubai) : *.cookafrica-app.vercel.app n'est pas attribuable, seul le
   // nom exact d'un projet l'est — même code source, déployé comme second projet.
   'cookafrica-dubai.vercel.app': {
     apiUrl:   'https://cookafrica-api-dubai-667992371198.me-central1.run.app',
     currency: { label: 'USD', locale: 'en-US' },
-    isHome:   false,
-    homeAppUrl: HOME_APP_URL,
+    siteId:   'dubai',
   },
 };
 const SITE = SITE_CONFIG[window.location.hostname] || SITE_DEFAULT;
@@ -561,10 +560,6 @@ function applyRoleNav() {
 // à un flux de connexion interactif, même raison que le formulaire de login normal.
 
 window.openSwitchSite = () => {
-  if (!SITE.isHome) {
-    window.location.href = SITE.homeAppUrl;
-    return;
-  }
   document.getElementById('switch-site-username').value = '';
   document.getElementById('switch-site-password').value = '';
   document.getElementById('switch-site-login-error').style.display = 'none';
@@ -590,7 +585,9 @@ async function submitSwitchSiteLogin() {
   const btn = document.getElementById('btn-switch-site-login');
   btn.disabled = true;
   try {
-    const res = await fetch(`${API}/api/directory/login`, {
+    // Toujours vers le backend "maison" (là où vit l'annuaire), jamais vers le site
+    // actuellement affiché — son CORS autorise déjà l'origine de chaque site.
+    const res = await fetch(`${HOME_API_URL}/api/directory/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
@@ -603,7 +600,8 @@ async function submitSwitchSiteLogin() {
     }
 
     state.switchSiteDirectoryToken = data.directoryToken;
-    renderSwitchSiteList(data.sites || []);
+    // Inutile de proposer de "basculer" vers le site déjà affiché.
+    renderSwitchSiteList((data.sites || []).filter(s => s.siteId !== SITE.siteId));
     document.getElementById('switch-site-step-login').style.display = 'none';
     document.getElementById('switch-site-step-pick').style.display  = 'block';
     btn.style.display = 'none';
@@ -642,7 +640,7 @@ window.confirmSwitchSite = async (siteId) => {
 
   showLoader();
   try {
-    const res = await fetch(`${API}/api/directory/switch`, {
+    const res = await fetch(`${HOME_API_URL}/api/directory/switch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ directoryToken: state.switchSiteDirectoryToken, siteId }),
