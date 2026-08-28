@@ -19,8 +19,10 @@ const SITE_DEFAULT = {
 const SITE_CONFIG = {
   'localhost': { apiUrl: 'http://localhost:3001', currency: SITE_DEFAULT.currency, isHome: true },
   '127.0.0.1': { apiUrl: 'http://localhost:3001', currency: SITE_DEFAULT.currency, isHome: true },
-  // Site Dubaï — Cloud Run (me-central1).
-  'dubai.cookafrica-app.vercel.app': {
+  // Site Dubaï — Cloud Run (me-central1). Domaine sur un projet Vercel séparé
+  // (cookafrica-dubai) : *.cookafrica-app.vercel.app n'est pas attribuable, seul le
+  // nom exact d'un projet l'est — même code source, déployé comme second projet.
+  'cookafrica-dubai.vercel.app': {
     apiUrl:   'https://cookafrica-api-dubai-667992371198.me-central1.run.app',
     currency: { label: 'USD', locale: 'en-US' },
     isHome:   false,

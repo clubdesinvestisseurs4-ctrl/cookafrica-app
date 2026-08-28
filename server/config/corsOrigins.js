@@ -6,6 +6,9 @@
 const corsOrigins = [
   process.env.CLIENT_URL || 'http://localhost:5500',
   /^https:\/\/cookafrica-app(-[\w.-]+)?\.vercel\.app$/,
+  // Site Dubaï — même code partagé par les deux backends, donc les deux motifs de
+  // preview sont listés ici même si un seul s'applique à un déploiement donné.
+  /^https:\/\/cookafrica-dubai(-[\w.-]+)?\.vercel\.app$/,
   /\.web\.app$/,
 ];
 

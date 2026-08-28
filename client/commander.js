@@ -12,7 +12,7 @@ const SITE_DEFAULT = {
 const SITE_CONFIG = {
   'localhost': { apiUrl: 'http://localhost:3001', currency: SITE_DEFAULT.currency },
   '127.0.0.1': { apiUrl: 'http://localhost:3001', currency: SITE_DEFAULT.currency },
-  'dubai.cookafrica-app.vercel.app': {
+  'cookafrica-dubai.vercel.app': {
     apiUrl:   'https://cookafrica-api-dubai-667992371198.me-central1.run.app',
     currency: { label: 'USD', locale: 'en-US' },
   },
