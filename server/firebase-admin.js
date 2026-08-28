@@ -18,7 +18,9 @@ const app = getApps().length
         : undefined
     );
 
-const db = getFirestore(app);
+// FIRESTORE_DATABASE_ID sélectionne la base nommée du site (ex. 'dubai') — absent ou
+// '(default)' pour le site d'origine, qui garde la base par défaut du projet.
+const db = getFirestore(app, process.env.FIRESTORE_DATABASE_ID || '(default)');
 db.settings({ ignoreUndefinedProperties: true });
 
 module.exports = { db, FieldPath };

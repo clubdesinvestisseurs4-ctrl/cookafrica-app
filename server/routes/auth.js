@@ -6,6 +6,7 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 const { pushNotification } = require('../utils/notifications');
 
 const { isAllowedIp, getClientIp } = require('../utils/wifi');
+const { verifySwitchToken } = require('../utils/directory');
 
 const router = express.Router();
 
@@ -87,6 +88,51 @@ router.post('/login', async (req, res) => {
     res.json({ token, user: { id: userDoc.id, username: user.username, nom: nomComplet, role: effectiveRole } });
   } catch (err) {
     console.error('Login error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// POST /api/auth/exchange-switch-token — échange un jeton de bascule (émis par
+// l'annuaire multi-site, POST /api/directory/switch sur le backend "maison") contre
+// un vrai jeton de session sur CE site. Le jeton de bascule ne prouve que
+// l'autorisation accordée par l'annuaire ; l'utilisateur est revérifié ici, dans la
+// base de ce site (existence + actif) — un compte désactivé directement sur ce site
+// perd l'accès immédiatement, sans synchronisation avec l'annuaire.
+router.post('/exchange-switch-token', async (req, res) => {
+  try {
+    const { switchToken } = req.body;
+    if (!switchToken) {
+      return res.status(400).json({ error: 'Jeton requis' });
+    }
+
+    let payload;
+    try {
+      payload = verifySwitchToken(switchToken);
+    } catch {
+      return res.status(401).json({ error: 'Jeton invalide ou expiré' });
+    }
+
+    const userDoc = await db.collection('utilisateurs').doc(payload.userId).get();
+    if (!userDoc.exists || !userDoc.data().actif) {
+      return res.status(403).json({ error: 'Compte introuvable ou désactivé sur ce site' });
+    }
+
+    const user = userDoc.data();
+    const effectiveRole = ROLE_MIGRATION[user.role] || user.role;
+    const nomComplet = user.prenom ? `${user.prenom} ${user.nom}`.trim() : user.nom;
+
+    await userDoc.ref.update({ lastLogin: new Date().toISOString() });
+    await logSession(userDoc.id, user.username, nomComplet, effectiveRole, 'login-bascule', req.ip).catch(() => {});
+
+    const token = jwt.sign(
+      { id: userDoc.id, username: user.username, nom: nomComplet, role: effectiveRole },
+      process.env.JWT_SECRET,
+      { expiresIn: '12h' }
+    );
+
+    res.json({ token, user: { id: userDoc.id, username: user.username, nom: nomComplet, role: effectiveRole } });
+  } catch (err) {
+    console.error('Exchange switch token error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });

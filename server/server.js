@@ -75,6 +75,7 @@ app.get('/api/events', (req, res) => {
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 app.post('/api/auth/login', authLimiter);
+app.post('/api/auth/exchange-switch-token', authLimiter);
 app.use('/api/auth',          require('./routes/auth'));
 app.use('/api/commandes',     require('./routes/commandes'));
 app.use('/api/menu',          require('./routes/menu'));
@@ -87,6 +88,15 @@ app.use('/api/discount-pin',  require('./routes/discount-pin'));
 app.use('/api/integration',   require('./routes/integration'));
 app.use('/api/reservations',  require('./routes/reservations'));
 app.use('/api/public',        require('./routes/commande-publique'));
+
+// Annuaire multi-site — uniquement sur le backend désigné comme site "maison"
+// (DIRECTORY_ENABLED=true dans son .env). Absent des autres sites : ceux-ci
+// n'exposent que POST /api/auth/exchange-switch-token (voir routes/auth.js), qui
+// ne fait aucune confiance à l'annuaire au-delà de vérifier sa signature.
+if (process.env.DIRECTORY_ENABLED === 'true') {
+  app.post('/api/directory/login', authLimiter);
+  app.use('/api/directory', require('./routes/directory'));
+}
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), service: 'Cook Africa API' });

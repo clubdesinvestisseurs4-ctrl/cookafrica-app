@@ -7,6 +7,7 @@ const eventBus = require('../utils/eventBus');
 const { buildCommandeUpdate } = require('../utils/commandeUpdate');
 const { getNextNumero, decrementStocksForItems } = require('../utils/commandes');
 const { createFactureFromCommande } = require('../utils/factures');
+const { formatMontant } = require('../utils/currency');
 
 const router = express.Router();
 
@@ -99,7 +100,7 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere',
     pushNotification({
       type: 'info', icon: 'utensils',
       titre: `Nouvelle commande ${numero}`,
-      message: `${items.length} article(s) – Total: ${total.toLocaleString('fr-FR')} FCFA`,
+      message: `${items.length} article(s) – Total: ${formatMontant(total)}`,
       createdBy: req.user.username,
     });
 
@@ -227,7 +228,7 @@ router.put('/:id/items', authenticateToken, requireRole('admin', 'serveur', 'cai
     pushNotification({
       type: 'info', icon: 'edit',
       titre: 'Commande modifiée',
-      message: `${existing.numero} – nouveau total : ${total.toLocaleString('fr-FR')} FCFA`,
+      message: `${existing.numero} – nouveau total : ${formatMontant(total)}`,
       createdBy: req.user.username,
     });
 

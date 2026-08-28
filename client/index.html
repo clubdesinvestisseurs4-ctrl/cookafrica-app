@@ -162,6 +162,9 @@
         <div class="user-name" id="sidebar-user-name">—</div>
         <div class="user-role" id="sidebar-user-role"></div>
       </div>
+      <button class="btn-logout" id="switch-site-btn" title="Gérer un autre site" style="display:none">
+        <i class="fas fa-random"></i>
+      </button>
       <button class="btn-logout" id="logout-btn" title="Se déconnecter">
         <i class="fas fa-power-off"></i>
       </button>
@@ -218,15 +221,15 @@
           </div>
           <div class="stat-card">
             <div class="stat-icon green"><i class="fas fa-money-bill-wave"></i></div>
-            <div><div class="stat-value" id="stat-revenus-jour">—</div><div class="stat-label">Revenus du jour (FCFA)</div></div>
+            <div><div class="stat-value" id="stat-revenus-jour">—</div><div class="stat-label">Revenus du jour</div></div>
           </div>
           <div class="stat-card">
             <div class="stat-icon orange"><i class="fas fa-utensils"></i></div>
-            <div><div class="stat-value" id="stat-total-plats">—</div><div class="stat-label">Total plats (FCFA)</div></div>
+            <div><div class="stat-value" id="stat-total-plats">—</div><div class="stat-label">Total plats</div></div>
           </div>
           <div class="stat-card">
             <div class="stat-icon blue"><i class="fas fa-wine-glass-alt"></i></div>
-            <div><div class="stat-value" id="stat-total-boissons">—</div><div class="stat-label">Total boissons (FCFA)</div></div>
+            <div><div class="stat-value" id="stat-total-boissons">—</div><div class="stat-label">Total boissons</div></div>
           </div>
         </div>
 
@@ -266,7 +269,7 @@
           <table class="data-table">
             <thead><tr>
               <th>N° Commande</th><th>Heure</th><th>Articles</th>
-              <th>Total (FCFA)</th><th>Table</th><th>Statut</th><th>Actions</th>
+              <th>Total</th><th>Table</th><th>Statut</th><th>Actions</th>
             </tr></thead>
             <tbody id="commandes-tbody"></tbody>
           </table>
@@ -299,7 +302,7 @@
           <table class="data-table">
             <thead><tr>
               <th>N° Facture</th><th>Date</th><th>Commande</th>
-              <th>Articles</th><th>Total (FCFA)</th><th>Reste</th><th>Mode</th><th>Statut</th><th>Actions</th>
+              <th>Articles</th><th>Total</th><th>Reste</th><th>Mode</th><th>Statut</th><th>Actions</th>
             </tr></thead>
             <tbody id="factures-tbody"></tbody>
           </table>
@@ -323,7 +326,7 @@
         <div class="table-wrapper">
           <table class="data-table">
             <thead><tr>
-              <th>N°</th><th>Date</th><th>Client</th><th>Articles</th><th>Total (FCFA)</th><th>Statut</th><th>Actions</th>
+              <th>N°</th><th>Date</th><th>Client</th><th>Articles</th><th>Total</th><th>Statut</th><th>Actions</th>
             </tr></thead>
             <tbody id="commandes-ligne-tbody"></tbody>
           </table>
@@ -423,7 +426,7 @@
           <div class="rapport-card">
             <h3><i class="fas fa-money-bill-wave"></i> Chiffre d'affaires</h3>
             <div class="kpi-value-big" id="rapp-ca">—</div>
-            <div class="kpi-label-sm">Total FCFA</div>
+            <div class="kpi-label-sm">Total</div>
             <ul class="kpi-list" id="rapp-par-mode" style="margin-top:12px"></ul>
           </div>
           <div class="rapport-card">
@@ -458,7 +461,7 @@
           </div>
           <table class="data-table">
             <thead><tr>
-              <th>Article</th><th>Catégorie</th><th>Quantité vendue</th><th>CA généré (FCFA)</th>
+              <th>Article</th><th>Catégorie</th><th>Quantité vendue</th><th>CA généré</th>
             </tr></thead>
             <tbody id="rapport-ventes-tbody">
               <tr><td colspan="4" style="text-align:center;color:var(--gray);padding:24px">Cliquez sur "Générer" pour afficher les données</td></tr>
@@ -471,7 +474,7 @@
           </div>
           <table class="data-table">
             <thead><tr>
-              <th>N° Facture</th><th>Date</th><th>Commande</th><th>Articles</th><th>Total (FCFA)</th><th>Mode</th><th>Statut</th>
+              <th>N° Facture</th><th>Date</th><th>Commande</th><th>Articles</th><th>Total</th><th>Mode</th><th>Statut</th>
             </tr></thead>
             <tbody id="rapport-factures-tbody">
               <tr><td colspan="7" style="text-align:center;color:var(--gray);padding:24px">Cliquez sur "Générer" pour afficher les données</td></tr>
@@ -669,7 +672,7 @@
         <div id="panier-items"></div>
         <div class="panier-total" id="panier-total" style="display:none">
           <span>Total commande</span>
-          <span id="panier-total-val">0 FCFA</span>
+          <span id="panier-total-val">0</span>
         </div>
       </div>
     </div>
@@ -747,6 +750,9 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" data-modal="pay-facture">Annuler</button>
+      <button class="btn btn-primary" id="btn-save-pay-facture-prices" style="display:none">
+        <i class="fas fa-save"></i> Enregistrer
+      </button>
       <button class="btn btn-success" id="btn-confirm-pay-facture">
         <i class="fas fa-check"></i> Marquer payée
       </button>
@@ -790,6 +796,43 @@
   </div>
 </div>
 
+<!-- Modal Bascule multi-site (admin) -->
+<div class="modal-overlay hidden" id="modal-switch-site">
+  <div class="modal-box" style="max-width:380px">
+    <div class="modal-header">
+      <h2>Gérer un autre site</h2>
+      <button class="modal-close" data-modal="switch-site">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="switch-site-step-login">
+        <p style="margin-bottom:14px;color:var(--gray);font-size:.88rem">
+          Identifiants distincts de votre compte sur ce site.
+        </p>
+        <div class="form-group">
+          <label>Identifiant</label>
+          <input type="text" id="switch-site-username" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>Mot de passe</label>
+          <input type="password" id="switch-site-password" autocomplete="off">
+        </div>
+        <div id="switch-site-login-error" class="form-error" style="display:none"></div>
+      </div>
+      <div id="switch-site-step-pick" style="display:none">
+        <p style="margin-bottom:14px;color:var(--gray);font-size:.88rem">Choisissez le site à gérer :</p>
+        <div id="switch-site-list"></div>
+        <div id="switch-site-pick-error" class="form-error" style="display:none"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-modal="switch-site">Annuler</button>
+      <button class="btn btn-primary" id="btn-switch-site-login">
+        <i class="fas fa-sign-in-alt"></i> Continuer
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Plat Menu -->
 <div class="modal-overlay hidden" id="modal-plat">
   <div class="modal-box">
@@ -820,7 +863,7 @@
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Prix (FCFA) *</label>
+            <label>Prix (<span id="currency-label-plat">FCFA</span>) *</label>
             <input type="number" id="plat-prix" min="0" required placeholder="Ex: 2500">
           </div>
           <div class="form-group">
@@ -923,16 +966,16 @@
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Montant global (FCFA) *</label>
+            <label>Montant global (<span id="currency-label-resa-montant">FCFA</span>) *</label>
             <input type="number" id="resa-montant" min="0" required>
           </div>
           <div class="form-group">
-            <label>Avance (FCFA)</label>
+            <label>Avance (<span id="currency-label-resa-avance">FCFA</span>)</label>
             <input type="number" id="resa-avance" min="0" value="0">
           </div>
         </div>
         <p style="font-size:.9rem;color:var(--gray)">
-          Reste à payer : <strong id="resa-reste-preview">0 FCFA</strong>
+          Reste à payer : <strong id="resa-reste-preview">0</strong>
         </p>
       </form>
     </div>

@@ -3,9 +3,22 @@
 //  Vanilla JS — parle uniquement à /api/public/*
 // ══════════════════════════════════════════════════════
 
-const API = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ? 'http://localhost:3001'
-  : 'https://cookafrica-api-667992371198.us-central1.run.app';
+// Configuration par site (multi-restaurant) — même table que client/app.js, à garder
+// synchronisée (pas de module partagé entre les deux, aucun n'a de build step).
+const SITE_DEFAULT = {
+  apiUrl:   'https://cookafrica-api-667992371198.us-central1.run.app', // Cloud Run (us-central1)
+  currency: { label: 'FCFA', locale: 'fr-FR' },
+};
+const SITE_CONFIG = {
+  'localhost': { apiUrl: 'http://localhost:3001', currency: SITE_DEFAULT.currency },
+  '127.0.0.1': { apiUrl: 'http://localhost:3001', currency: SITE_DEFAULT.currency },
+  'dubai.cookafrica-app.vercel.app': {
+    apiUrl:   'https://cookafrica-api-dubai-667992371198.me-central1.run.app',
+    currency: { label: 'USD', locale: 'en-US' },
+  },
+};
+const SITE = SITE_CONFIG[window.location.hostname] || SITE_DEFAULT;
+const API = SITE.apiUrl;
 
 // Ordre d'affichage des rayons : mots-clés cherchés dans le nom de catégorie
 // (insensible à la casse/accents approximatifs) plutôt qu'une liste exacte,
@@ -63,7 +76,7 @@ function rechercheDansMenu() {
 
 // ─── Utilitaires ────────────────────────────────────────
 
-const fmt = (n) => `${Number(n || 0).toLocaleString('fr-FR')} FCFA`;
+const fmt = (n) => `${Number(n || 0).toLocaleString(SITE.currency.locale)} ${SITE.currency.label}`;
 
 function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, (c) => ({

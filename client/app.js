@@ -3,9 +3,32 @@
 //  Vanilla JS (ES modules) + Express API + Firebase
 // ══════════════════════════════════════════════════════
 
-const API = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ? 'http://localhost:3001'
-  : 'https://cookafrica-api-667992371198.us-central1.run.app'; // Cloud Run (us-central1)
+// Configuration par site (multi-restaurant) — clé = hostname exact du domaine qui sert
+// ce site. Tout hostname non listé (localhost, previews Vercel, etc.) retombe sur
+// SITE_DEFAULT, qui reproduit le comportement d'avant l'ajout du multi-site.
+// isHome : seul le site "maison" héberge l'annuaire multi-site (voir DIRECTORY_ENABLED
+// côté serveur). Depuis un autre site, "Gérer un autre site" redirige simplement vers
+// homeAppUrl (navigation, pas un appel API) — évite d'ouvrir le CORS de chaque backend
+// à l'origine de tous les autres juste pour ce cas rare (voir plan multi-site).
+const HOME_APP_URL = 'https://cookafrica-app.vercel.app';
+const SITE_DEFAULT = {
+  apiUrl:   'https://cookafrica-api-667992371198.us-central1.run.app', // Cloud Run (us-central1)
+  currency: { label: 'FCFA', locale: 'fr-FR' },
+  isHome:   true,
+};
+const SITE_CONFIG = {
+  'localhost': { apiUrl: 'http://localhost:3001', currency: SITE_DEFAULT.currency, isHome: true },
+  '127.0.0.1': { apiUrl: 'http://localhost:3001', currency: SITE_DEFAULT.currency, isHome: true },
+  // Site Dubaï — Cloud Run (me-central1).
+  'dubai.cookafrica-app.vercel.app': {
+    apiUrl:   'https://cookafrica-api-dubai-667992371198.me-central1.run.app',
+    currency: { label: 'USD', locale: 'en-US' },
+    isHome:   false,
+    homeAppUrl: HOME_APP_URL,
+  },
+};
+const SITE = SITE_CONFIG[window.location.hostname] || SITE_DEFAULT;
+const API = SITE.apiUrl;
 
 // Cloud Run peut redémarrer à froid après une période d'inactivité → ping /health avec backoff exponentiel
 // Max 6 tentatives : ~4s, 6s, 9s, 14s, 20s = 6 requêtes sur ~55s
@@ -270,7 +293,7 @@ async function api(path, opts = {}, _retry = false) {
   }
 }
 
-function fmt(n)   { return Number(n || 0).toLocaleString('fr-FR'); }
+function fmt(n)   { return `${Number(n || 0).toLocaleString(SITE.currency.locale)} ${SITE.currency.label}`; }
 function fmtDate(iso) {
   if (!iso) return '—';
   try {
@@ -485,6 +508,7 @@ async function loginFlow(token, user, skipWelcome = false) {
 
   document.getElementById('sidebar-user-name').textContent = user.nom;
   document.getElementById('sidebar-user-role').textContent = ROLE_LABELS[user.role] || user.role;
+  document.getElementById('switch-site-btn').style.display = user.role === 'admin' ? 'flex' : 'none';
   applyRoleNav();
   updateSoundButtons();
   updateOfflineBadge();
@@ -527,6 +551,152 @@ function applyRoleNav() {
     }
     label.style.display = hasVisible ? 'block' : 'none';
   });
+}
+
+// ─── Bascule multi-site (admin) ────────────────────────────────────────────────
+// Utilise fetch() directement (pas api()) : api() avale le corps d'erreur sur les
+// réponses non-2xx et mettrait tout échec en file d'attente hors-ligne — inadapté
+// à un flux de connexion interactif, même raison que le formulaire de login normal.
+
+window.openSwitchSite = () => {
+  if (!SITE.isHome) {
+    window.location.href = SITE.homeAppUrl;
+    return;
+  }
+  document.getElementById('switch-site-username').value = '';
+  document.getElementById('switch-site-password').value = '';
+  document.getElementById('switch-site-login-error').style.display = 'none';
+  document.getElementById('switch-site-pick-error').style.display = 'none';
+  document.getElementById('switch-site-step-login').style.display = 'block';
+  document.getElementById('switch-site-step-pick').style.display  = 'none';
+  document.getElementById('btn-switch-site-login').style.display  = 'inline-flex';
+  state.switchSiteDirectoryToken = null;
+  openModal('switch-site');
+};
+
+async function submitSwitchSiteLogin() {
+  const username = document.getElementById('switch-site-username').value.trim();
+  const password = document.getElementById('switch-site-password').value;
+  const errEl = document.getElementById('switch-site-login-error');
+  errEl.style.display = 'none';
+  if (!username || !password) {
+    errEl.textContent = 'Identifiants requis';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const btn = document.getElementById('btn-switch-site-login');
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${API}/api/directory/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.directoryToken) {
+      errEl.textContent = data.error || 'Identifiants invalides';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    state.switchSiteDirectoryToken = data.directoryToken;
+    renderSwitchSiteList(data.sites || []);
+    document.getElementById('switch-site-step-login').style.display = 'none';
+    document.getElementById('switch-site-step-pick').style.display  = 'block';
+    btn.style.display = 'none';
+  } catch {
+    errEl.textContent = 'Impossible de contacter le serveur';
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderSwitchSiteList(sites) {
+  const container = document.getElementById('switch-site-list');
+  if (sites.length === 0) {
+    container.innerHTML = '<p style="color:var(--gray);font-size:.85rem">Aucun autre site accessible avec ce compte.</p>';
+    return;
+  }
+  container.innerHTML = sites.map(s => `
+    <button type="button" class="btn btn-secondary" style="width:100%;margin-bottom:8px;justify-content:flex-start"
+      onclick="confirmSwitchSite('${s.siteId}')">
+      <i class="fas fa-store"></i> ${escapeHtml(s.label)}
+    </button>`).join('');
+}
+
+window.confirmSwitchSite = async (siteId) => {
+  const errEl = document.getElementById('switch-site-pick-error');
+  errEl.style.display = 'none';
+
+  // Des écritures locales en attente rejoueraient sur le mauvais backend une fois la
+  // connexion revenue — on bloque la bascule plutôt que de risquer une corruption.
+  if (getOfflineQueue().length > 0 || getPendingCommandes().length > 0) {
+    errEl.textContent = 'Des actions sont en attente de synchronisation sur ce site — reconnectez-vous au réseau avant de changer de site.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  showLoader();
+  try {
+    const res = await fetch(`${API}/api/directory/switch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ directoryToken: state.switchSiteDirectoryToken, siteId }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.switchToken) {
+      errEl.textContent = data.error || 'Erreur lors de la bascule';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    // Même nettoyage que logout()/wifiLogout() : évite qu'un cache de lecture du
+    // site précédent (clé par chemin, pas par site) s'affiche un instant sur le
+    // nouveau site avant le premier vrai chargement de données.
+    clearReadCache();
+    window.location.href = `${data.appUrl}/#switchToken=${encodeURIComponent(data.switchToken)}`;
+  } catch {
+    errEl.textContent = 'Impossible de contacter le serveur';
+    errEl.style.display = 'block';
+  } finally {
+    hideLoader();
+  }
+};
+
+// Consomme un #switchToken=... présent dans l'URL au chargement (atterrissage après
+// une bascule) — retourne true si un tel jeton a été traité (avec succès ou non),
+// pour que l'appelant sache s'il doit court-circuiter la restauration normale de
+// session (ca_token). Nettoie le fragment d'URL avant tout, qu'il soit valide ou non.
+async function consumeSwitchToken() {
+  const hash = window.location.hash;
+  if (!hash.startsWith('#switchToken=')) return false;
+
+  const switchToken = decodeURIComponent(hash.slice('#switchToken='.length));
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+
+  try {
+    const res = await fetch(`${API}/api/auth/exchange-switch-token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ switchToken }),
+    });
+    const data = await res.json();
+    if (res.ok && data.token) {
+      await hideSplash();
+      await loginFlow(data.token, data.user);
+    } else {
+      await hideSplash();
+      hideLoader();
+      toast(data.error || 'La bascule vers ce site a échoué, reconnectez-vous', 'error');
+    }
+  } catch {
+    await hideSplash();
+    hideLoader();
+    toast('Impossible de contacter le serveur pour finaliser la bascule', 'error');
+  }
+  return true;
 }
 
 // ─── Navigation ────────────────────────────────────────
@@ -711,7 +881,7 @@ async function loadDashboard() {
           ${c.tableNumero ? `<span style="color:var(--gray);font-size:.78rem"> – ${escapeHtml(c.tableNumero)}</span>` : ''}
         </div>
         <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:.78rem;color:var(--gray)">${fmt(c.total)} FCFA</span>
+          <span style="font-size:.78rem;color:var(--gray)">${fmt(c.total)}</span>
           ${badgeStatus(c.statut)}
         </div>
       </div>`).join('');
@@ -765,7 +935,7 @@ async function loadCommandes() {
         <td data-label="N°"><strong>${c.numero}</strong></td>
         <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
         <td data-label="Articles" style="font-size:.82rem">${items}</td>
-        <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
+        <td data-label="Total"><strong>${fmt(c.total)}</strong></td>
         <td data-label="Table" style="color:var(--gray);font-size:.82rem">—</td>
         <td data-label="Statut"><span class="badge-pending-sync"><i class="fas fa-cloud-upload-alt"></i> Hors ligne — en attente de synchro</span></td>
         <td data-label="Actions">—</td>
@@ -784,7 +954,7 @@ async function loadCommandes() {
       <td data-label="N°"><strong>${c.numero}</strong> ${badgeQui(c)}${nomClientCmd ? `<div style="font-size:.78rem;color:var(--gray);margin-top:2px">${nomClientCmd}</div>` : ''}</td>
       <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
       <td data-label="Articles" style="font-size:.82rem">${items}</td>
-      <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
+      <td data-label="Total"><strong>${fmt(c.total)}</strong></td>
       <td data-label="Table" style="color:var(--gray);font-size:.82rem">${c.commandeClient
         ? `${c.clientTelephone ? `<a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);text-decoration:none;white-space:nowrap"><i class="fas fa-phone"></i> ${escapeHtml(c.clientTelephone)}</a>` : '—'}${c.clientLocalisation ? `<br><a href="${escapeHtml(localisationHref(c.clientLocalisation))}" target="_blank" rel="noopener" style="color:var(--primary);font-weight:600;text-decoration:none;white-space:nowrap"><i class="fas fa-location-dot"></i> Localisation</a>` : ''}`
         : (escapeHtml(c.tableNumero) || '—')}</td>
@@ -817,7 +987,7 @@ async function viewCommande(id) {
   const items = (c.items || []).map(i => `
     <div class="commande-item">
       <span><span class="commande-item-qty">${i.quantite}</span> ${escapeHtml(i.nom)}</span>
-      <span>${fmt(i.sousTotal)} FCFA</span>
+      <span>${fmt(i.sousTotal)}</span>
     </div>`).join('');
 
   document.getElementById('modal-detail-titre').textContent = `Commande ${c.numero}`;
@@ -837,7 +1007,7 @@ async function viewCommande(id) {
     </div>
     <div style="margin-bottom:12px">${items}</div>
     <div style="text-align:right;font-size:1.1rem;font-weight:800;color:var(--primary)">
-      Total : ${fmt(c.total)} FCFA
+      Total : ${fmt(c.total)}
     </div>`;
   openModal('detail-commande');
 }
@@ -891,14 +1061,14 @@ function renderEditCommandeItems() {
         <input class="panier-qty" type="number" min="1" max="99" value="${item.quantite}"
           onchange="updateEditCommandeQty(${i}, this.value)">
         <span class="panier-item-nom">${escapeHtml(item.nom)}</span>
-        <span class="panier-item-prix">${fmt(item.sousTotal)} FCFA</span>
+        <span class="panier-item-prix">${fmt(item.sousTotal)}</span>
         <button class="panier-item-remove" onclick="removeEditCommandeItem(${i})">
           <i class="fas fa-trash"></i>
         </button>
       </div>`).join('');
   }
   const total = state.editCommandeItems.reduce((s, i) => s + i.sousTotal, 0);
-  document.getElementById('editcmd-total').textContent = `Total : ${fmt(total)} FCFA`;
+  document.getElementById('editcmd-total').textContent = `Total : ${fmt(total)}`;
 }
 
 window.updateEditCommandeQty = (i, qty) => {
@@ -985,14 +1155,14 @@ function renderMenuSearchDropdown(query, dropdown, onSelect) {
     items.forEach(m => {
       html += `<div class="menu-search-item" data-id="${m.id}" data-nom="${m.nom}" data-prix="${m.prix}" data-cat="${m.categorie || ''}">
         <span class="menu-search-item-nom">${hlSearch(m.nom, q)}</span>
-        <span class="menu-search-item-prix">${fmt(m.prix)} FCFA</span>
+        <span class="menu-search-item-prix">${fmt(m.prix)}</span>
       </div>`;
     });
   });
   filtered.filter(m => !m.categorie).forEach(m => {
     html += `<div class="menu-search-item" data-id="${m.id}" data-nom="${m.nom}" data-prix="${m.prix}" data-cat="">
       <span class="menu-search-item-nom">${hlSearch(m.nom, q)}</span>
-      <span class="menu-search-item-prix">${fmt(m.prix)} FCFA</span>
+      <span class="menu-search-item-prix">${fmt(m.prix)}</span>
     </div>`;
   });
 
@@ -1072,7 +1242,7 @@ function renderPanier() {
       <input class="panier-qty" type="number" min="1" max="99" value="${item.quantite}"
         onchange="updatePanierQty(${i}, this.value)">
       <span class="panier-item-nom">${item.nom}</span>
-      <span class="panier-item-prix">${fmt(item.sousTotal)} FCFA</span>
+      <span class="panier-item-prix">${fmt(item.sousTotal)}</span>
       <button class="panier-item-remove" onclick="removePanierItem(${i})">
         <i class="fas fa-trash"></i>
       </button>
@@ -1080,7 +1250,7 @@ function renderPanier() {
 
   const total = state.panier.reduce((s, p) => s + p.sousTotal, 0);
   totalEl.style.display = 'flex';
-  totalVal.textContent  = `${fmt(total)} FCFA`;
+  totalVal.textContent  = `${fmt(total)}`;
 }
 
 window.updatePanierQty = (i, val) => {
@@ -1172,7 +1342,7 @@ async function loadCommandesLigne() {
         <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
         <td data-label="Client">—</td>
         <td data-label="Articles" style="font-size:.82rem">${items}</td>
-        <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
+        <td data-label="Total"><strong>${fmt(c.total)}</strong></td>
         <td data-label="Statut"><span class="badge-pending-sync"><i class="fas fa-cloud-upload-alt"></i> Hors ligne — en attente de synchro</span></td>
         <td data-label="Actions">—</td>
       </tr>`;
@@ -1187,7 +1357,7 @@ async function loadCommandesLigne() {
       <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
       <td data-label="Client">${badgeQui(c)}${nomClient ? `<div style="font-size:.78rem;margin-top:3px">${nomClient}</div>` : ''}${c.clientTelephone ? `<div style="margin-top:2px"><a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);font-size:.76rem;text-decoration:none;white-space:nowrap"><i class="fas fa-phone"></i> ${escapeHtml(c.clientTelephone)}</a></div>` : ''}</td>
       <td data-label="Articles" style="font-size:.82rem">${items}</td>
-      <td data-label="Total"><strong>${fmt(c.total)} FCFA</strong></td>
+      <td data-label="Total"><strong>${fmt(c.total)}</strong></td>
       <td data-label="Statut">${badgeStatus(c.statut)}</td>
       <td data-label="Actions">
         ${c.clientLocalisation ? `<a class="btn btn-secondary btn-sm" href="${escapeHtml(localisationHref(c.clientLocalisation))}" target="_blank" rel="noopener" title="Voir la localisation">
@@ -1275,8 +1445,8 @@ async function loadFactures() {
       <td data-label="Date" style="font-size:.8rem">${fmtDateOnly(f.date)}</td>
       <td data-label="Commande" style="font-size:.82rem;color:var(--gray)">${f.commandeNumero || '—'}</td>
       <td data-label="Articles" style="font-size:.82rem">${nbArticles} article(s)</td>
-      <td data-label="Total"><strong>${fmt(f.total)} FCFA</strong></td>
-      <td data-label="Reste" style="color:${f.reste > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:700">${fmt(f.reste)} FCFA</td>
+      <td data-label="Total"><strong>${fmt(f.total)}</strong></td>
+      <td data-label="Reste" style="color:${f.reste > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:700">${fmt(f.reste)}</td>
       <td data-label="Paiement" style="font-size:.82rem;color:var(--gray)">${f.modePaiement || '—'}</td>
       <td data-label="Statut">${badgeStatus(f.statut)}</td>
       <td data-label="Actions">
@@ -1348,14 +1518,33 @@ function renderEditFactureItems() {
         <input class="panier-qty" type="number" min="1" max="99" value="${item.quantite}"
           onchange="updateEditFactureQty(${i}, this.value)">
         <span class="panier-item-nom">${escapeHtml(item.nom)}</span>
-        <span class="panier-item-prix">${fmt(item.sousTotal)} FCFA</span>
+        <input type="number" min="0" step="1" value="${item.prix}" style="width:80px" data-i="${i}" class="editfact-price-input">
+        <span class="panier-item-prix" data-sous-i="${i}">${fmt(item.sousTotal)}</span>
         <button class="panier-item-remove" onclick="removeEditFactureItem(${i})">
           <i class="fas fa-trash"></i>
         </button>
       </div>`).join('');
   }
+
+  // Délégation sur la liste entière : évite de recréer les <input> (donc de perdre le
+  // focus/curseur) à chaque frappe — même raison que renderPayFacturePrices().
+  container.oninput = function (e) {
+    const inp = e.target.closest('.editfact-price-input');
+    if (!inp) return;
+    const i = Number(inp.dataset.i);
+    const prix = Math.max(0, Number(inp.value) || 0);
+    state.editFactureItems[i].prix = prix;
+    state.editFactureItems[i].sousTotal = prix * state.editFactureItems[i].quantite;
+    container.querySelector(`[data-sous-i="${i}"]`).textContent = `${fmt(state.editFactureItems[i].sousTotal)}`;
+    updateEditFactureTotal();
+  };
+
+  updateEditFactureTotal();
+}
+
+function updateEditFactureTotal() {
   const total = state.editFactureItems.reduce((s, i) => s + i.sousTotal, 0);
-  document.getElementById('editfact-total').textContent = `Total : ${fmt(total)} FCFA`;
+  document.getElementById('editfact-total').textContent = `Total : ${fmt(total)}`;
 }
 
 window.updateEditFactureQty = (i, qty) => {
@@ -1448,7 +1637,7 @@ function openNewFacture() {
   });
   const sel = document.getElementById('new-facture-commande');
   sel.innerHTML = '<option value="">Sélectionner une commande…</option>' +
-    cmdsEligibles.map(c => `<option value="${c.id}">${c.numero} – ${fmt(c.total)} FCFA${c.tableNumero ? ' – ' + escapeHtml(c.tableNumero) : ''}</option>`).join('');
+    cmdsEligibles.map(c => `<option value="${c.id}">${c.numero} – ${fmt(c.total)}${c.tableNumero ? ' – ' + escapeHtml(c.tableNumero) : ''}</option>`).join('');
   openModal('new-facture');
 }
 
@@ -1456,7 +1645,7 @@ window.openNewFactureForCmd = (cmdId) => {
   const c = state.commandes.find(x => x.id === cmdId);
   if (!c) return;
   const sel = document.getElementById('new-facture-commande');
-  sel.innerHTML = `<option value="${c.id}" selected>${c.numero} – ${fmt(c.total)} FCFA</option>`;
+  sel.innerHTML = `<option value="${c.id}" selected>${c.numero} – ${fmt(c.total)}</option>`;
   openModal('new-facture');
 };
 
@@ -1486,15 +1675,21 @@ async function saveNewFacture() {
 
 window.openPayFacture = (id, reste) => {
   document.getElementById('pay-facture-id').value   = id;
-  document.getElementById('pay-facture-info').textContent = `Facture – Reste à payer : ${reste} FCFA`;
+  document.getElementById('pay-facture-info').textContent = `Facture – Reste à payer : ${reste}`;
   document.getElementById('pay-facture-prices').style.display = 'none';
+  document.getElementById('btn-save-pay-facture-prices').style.display = 'none';
   state.payFactureItems = null; // tant que non ouvert, on paie au prix de la facture telle quelle
   openModal('pay-facture');
 };
 
 async function togglePayFacturePrices() {
   const panel = document.getElementById('pay-facture-prices');
-  if (panel.style.display === 'block') { panel.style.display = 'none'; return; }
+  const saveBtn = document.getElementById('btn-save-pay-facture-prices');
+  if (panel.style.display === 'block') {
+    panel.style.display = 'none';
+    saveBtn.style.display = 'none';
+    return;
+  }
 
   if (state.menu.length === 0) {
     const menu = await api('/api/menu');
@@ -1507,6 +1702,36 @@ async function togglePayFacturePrices() {
   state.payFactureItems = (f.items || []).map(i => ({ ...i }));
   renderPayFacturePrices();
   panel.style.display = 'block';
+  saveBtn.style.display = 'inline-block';
+}
+
+// Sauvegarde un prix corrigé sans encaisser — distinct de "Marquer payée", qui
+// reste le seul geste qui clôture la facture. Réutilise l'endpoint edit-items
+// (même que le modal "Modifier la facture") : la facture doit être non payée.
+async function savePayFacturePrices() {
+  if (!state.payFactureItems || state.payFactureItems.length === 0) return;
+  const id = document.getElementById('pay-facture-id').value;
+
+  const discounted = findDiscountedItems(state.payFactureItems);
+  let discountPin;
+  if (discounted.length > 0) {
+    discountPin = await askDiscountPin(discounted);
+    if (discountPin === null) return;
+  }
+
+  showLoader();
+  const res = await api(`/api/factures/${id}/edit-items`, {
+    method: 'POST',
+    body: JSON.stringify({ items: state.payFactureItems, discountPin }),
+  });
+  hideLoader();
+
+  if (discounted.length > 0) trackDiscountOtp(discountPin, res);
+  if (!res?.id) { toast(res?.error || 'Erreur lors de l\'enregistrement du prix', 'error'); return; }
+
+  state.factures = state.factures.filter(f => f.id !== id).concat(res);
+  document.getElementById('pay-facture-info').textContent = `Facture – Reste à payer : ${fmt(res.reste)}`;
+  toast('Prix enregistré', 'success');
 }
 
 function renderPayFacturePrices() {
@@ -1515,7 +1740,7 @@ function renderPayFacturePrices() {
     <div class="panier-item">
       <span class="panier-item-nom">${escapeHtml(item.nom)} <small style="color:var(--gray)">(x${item.quantite})</small></span>
       <input type="number" min="0" step="1" value="${item.prix}" style="width:90px" data-i="${i}" class="pay-price-input">
-      <span class="panier-item-prix" data-sous-i="${i}">${fmt(item.sousTotal)} FCFA</span>
+      <span class="panier-item-prix" data-sous-i="${i}">${fmt(item.sousTotal)}</span>
     </div>`).join('');
 
   // Écoute sur la liste entière (délégation) : pas besoin de la reconstruire à chaque frappe,
@@ -1527,7 +1752,7 @@ function renderPayFacturePrices() {
     const prix = Math.max(0, Number(inp.value) || 0);
     state.payFactureItems[i].prix = prix;
     state.payFactureItems[i].sousTotal = prix * state.payFactureItems[i].quantite;
-    container.querySelector(`[data-sous-i="${i}"]`).textContent = `${fmt(state.payFactureItems[i].sousTotal)} FCFA`;
+    container.querySelector(`[data-sous-i="${i}"]`).textContent = `${fmt(state.payFactureItems[i].sousTotal)}`;
     updatePayFactureTotals();
   };
 
@@ -1536,7 +1761,7 @@ function renderPayFacturePrices() {
 
 function updatePayFactureTotals() {
   const total = state.payFactureItems.reduce((s, i) => s + i.sousTotal, 0);
-  document.getElementById('pay-facture-total-live').textContent = `Nouveau total : ${fmt(total)} FCFA`;
+  document.getElementById('pay-facture-total-live').textContent = `Nouveau total : ${fmt(total)}`;
 }
 
 async function confirmPayFacture() {
@@ -1640,10 +1865,10 @@ window.aperçuFacture = async (id) => {
       <table class="facture-totaux">
         <tr class="facture-total-final">
           <td><strong>TOTAL</strong></td>
-          <td><strong>${fmt(f.total)} FCFA</strong></td>
+          <td><strong>${fmt(f.total)}</strong></td>
         </tr>
         ${f.reste > 0
-          ? `<tr><td style="color:var(--danger)"><strong>RESTE À PAYER</strong></td><td style="color:var(--danger)"><strong>${fmt(f.reste)} FCFA</strong></td></tr>`
+          ? `<tr><td style="color:var(--danger)"><strong>RESTE À PAYER</strong></td><td style="color:var(--danger)"><strong>${fmt(f.reste)}</strong></td></tr>`
           : ''}
       </table>
       <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border);font-size:.78rem;color:var(--gray)">
@@ -1786,7 +2011,7 @@ function renderMenu(menu) {
       <div class="menu-card-nom">${m.nom}</div>
       <div class="menu-card-desc">${m.description || ''}</div>
       <div class="menu-card-footer">
-        <div class="menu-card-prix">${fmt(m.prix)} FCFA</div>
+        <div class="menu-card-prix">${fmt(m.prix)}</div>
         <div style="display:flex;gap:6px;align-items:center">
           <span class="badge-status ${m.disponible ? 'disponible' : 'annulee'}" style="font-size:.7rem">
             ${m.disponible ? 'Dispo' : 'Indispo'}
@@ -1912,9 +2137,9 @@ function renderReservations(reservations) {
       <td data-label="Client">${escapeHtml(nomClient)}${r.contact ? `<div style="font-size:.78rem;color:var(--gray)">${escapeHtml(r.contact)}</div>` : ''}</td>
       <td data-label="Salle">${escapeHtml(r.salle) || '—'}</td>
       <td data-label="Jour J" style="font-size:.85rem">${fmtDateOnly(r.dateEvenement)}</td>
-      <td data-label="Montant global"><strong>${fmt(r.montantGlobal)} FCFA</strong></td>
-      <td data-label="Avance">${fmt(r.avance)} FCFA</td>
-      <td data-label="Reste" style="color:${r.reste > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:700">${fmt(r.reste)} FCFA</td>
+      <td data-label="Montant global"><strong>${fmt(r.montantGlobal)}</strong></td>
+      <td data-label="Avance">${fmt(r.avance)}</td>
+      <td data-label="Reste" style="color:${r.reste > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:700">${fmt(r.reste)}</td>
       <td data-label="Statut">${badgeReservationStatut(r.statut)}</td>
       <td data-label="Actions">
         <button class="btn btn-secondary btn-sm" onclick="apercuReservation('${r.id}')" title="Imprimer le reçu de réservation"><i class="fas fa-print"></i></button>
@@ -2018,7 +2243,7 @@ function updateResaRestePreview() {
   const montant = Number(document.getElementById('resa-montant').value) || 0;
   const avance  = Number(document.getElementById('resa-avance').value) || 0;
   const reste   = Math.max(0, montant - avance);
-  document.getElementById('resa-reste-preview').textContent = `${fmt(reste)} FCFA`;
+  document.getElementById('resa-reste-preview').textContent = `${fmt(reste)}`;
 }
 
 async function saveReservation() {
@@ -2151,11 +2376,11 @@ window.apercuReservation = (id) => {
         </tbody>
       </table>
       <table class="facture-totaux">
-        <tr><td>Montant global</td><td>${fmt(r.montantGlobal)} FCFA</td></tr>
-        <tr><td>Avance versée</td><td>${fmt(r.avance)} FCFA</td></tr>
+        <tr><td>Montant global</td><td>${fmt(r.montantGlobal)}</td></tr>
+        <tr><td>Avance versée</td><td>${fmt(r.avance)}</td></tr>
         <tr class="facture-total-final">
           <td><strong>RESTE À PAYER LE JOUR J</strong></td>
-          <td><strong>${fmt(r.reste)} FCFA</strong></td>
+          <td><strong>${fmt(r.reste)}</strong></td>
         </tr>
       </table>
       <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border);font-size:.78rem;color:var(--gray)">
@@ -2364,7 +2589,7 @@ async function loadRapport() {
   if (!data) return;
 
   document.getElementById('rapp-nombre').textContent = data.nombre ?? '—';
-  document.getElementById('rapp-ca').textContent     = fmt(data.total) + ' FCFA';
+  document.getElementById('rapp-ca').textContent     = fmt(data.total);
   document.getElementById('rapp-commandes-ligne').textContent = data.commandesEnLigne ?? '—';
 
   // Quantité vendue par catégorie : sélecteur peuplé depuis les catégories réellement
@@ -2390,14 +2615,14 @@ async function loadRapport() {
   document.getElementById('rapp-par-statut').innerHTML = `
     <li><span>✅ Payées</span><strong>${data.parStatut?.payee || 0}</strong></li>
     <li><span>⚠️ Partielles</span><strong>${data.parStatut?.partielle || 0}</strong></li>
-    <li><span>Ticket moyen</span><strong>${fmt(data.moyenne)} FCFA</strong></li>
+    <li><span>Ticket moyen</span><strong>${fmt(data.moyenne)}</strong></li>
   `;
 
   // Par mode de paiement
   const parMode = data.parMode || {};
   document.getElementById('rapp-par-mode').innerHTML =
     Object.entries(parMode).map(([mode, total]) =>
-      `<li><span>${mode}</span><strong>${fmt(total)} FCFA</strong></li>`
+      `<li><span>${mode}</span><strong>${fmt(total)}</strong></li>`
     ).join('') || '<li><span>Aucune donnée</span></li>';
 
   // Plats & boissons vendus (quantités)
@@ -2406,7 +2631,7 @@ async function loadRapport() {
 
   // Top plats / Top boissons — article précis, quantité vendue et CA généré
   const renderTop = (items) => (items || []).map(p =>
-    `<li><span>${escapeHtml(p.nom)}</span><strong>${p.quantite} vendus — ${fmt(p.total)} FCFA</strong></li>`
+    `<li><span>${escapeHtml(p.nom)}</span><strong>${p.quantite} vendus — ${fmt(p.total)}</strong></li>`
   ).join('') || '<li><span>Aucune donnée</span></li>';
 
   document.getElementById('rapp-top-plats').innerHTML    = renderTop(data.topPlats);
@@ -2416,7 +2641,7 @@ async function loadRapport() {
   const parCat = data.parCategorie || {};
   document.getElementById('rapp-par-categorie').innerHTML =
     Object.entries(parCat).sort((a, b) => b[1] - a[1]).map(([cat, total]) =>
-      `<li><span>${cat}</span><strong>${fmt(total)} FCFA</strong></li>`
+      `<li><span>${cat}</span><strong>${fmt(total)}</strong></li>`
     ).join('') || '<li><span>Aucune donnée</span></li>';
 
   // Détail complet des ventes par article, toutes catégories — pas seulement un top 5.
@@ -2429,7 +2654,7 @@ async function loadRapport() {
         <td data-label="Article"><strong>${escapeHtml(v.nom)}</strong></td>
         <td data-label="Catégorie" style="font-size:.82rem;color:var(--gray)">${escapeHtml(v.categorie)}</td>
         <td data-label="Quantité vendue">${v.quantite}</td>
-        <td data-label="CA généré"><strong>${fmt(v.total)} FCFA</strong></td>
+        <td data-label="CA généré"><strong>${fmt(v.total)}</strong></td>
       </tr>`).join('');
   }
 
@@ -2445,7 +2670,7 @@ async function loadRapport() {
       <td data-label="Date" style="font-size:.8rem">${fmtDateOnly(f.date)}</td>
       <td data-label="Commande" style="font-size:.82rem;color:var(--gray)">${f.commandeNumero || '—'}</td>
       <td data-label="Articles" style="font-size:.82rem">${(f.items || []).length} article(s)</td>
-      <td data-label="Total"><strong>${fmt(f.total)} FCFA</strong></td>
+      <td data-label="Total"><strong>${fmt(f.total)}</strong></td>
       <td data-label="Paiement" style="font-size:.82rem;color:var(--gray)">${f.modePaiement || '—'}</td>
       <td data-label="Statut">${badgeStatus(f.statut)}</td>
     </tr>`).join('');
@@ -2455,7 +2680,7 @@ function exportCSV() {
   const tbody = document.getElementById('rapport-factures-tbody');
   if (!tbody || !tbody.querySelectorAll('tr').length) { toast('Générez d\'abord le rapport', 'warning'); return; }
 
-  const rows = [['N° Facture', 'Date', 'Commande', 'Articles', 'Total FCFA', 'Mode', 'Statut']];
+  const rows = [['N° Facture', 'Date', 'Commande', 'Articles', `Total ${SITE.currency.label}`, 'Mode', 'Statut']];
   tbody.querySelectorAll('tr').forEach(tr => {
     rows.push(Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim()));
   });
@@ -2966,6 +3191,13 @@ window.addEventListener('offline', () => document.body.classList.add('offline'))
 
 document.addEventListener('DOMContentLoaded', async () => {
 
+  // Libellés de devise sur les champs de saisie (prix, montant réservation…) —
+  // le reste de l'affichage passe par fmt(), qui inclut déjà SITE.currency.label.
+  ['currency-label-plat', 'currency-label-resa-montant', 'currency-label-resa-avance'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = SITE.currency.label;
+  });
+
   updateOfflineBadge();
   await wakeUpServer();
 
@@ -3007,6 +3239,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('logout-btn').addEventListener('click', async () => {
     if (await confirmDialog('Se déconnecter ?')) logout(true);
   });
+
+  // Bascule multi-site (admin)
+  document.getElementById('switch-site-btn').addEventListener('click', openSwitchSite);
+  document.getElementById('btn-switch-site-login').addEventListener('click', submitSwitchSiteLogin);
 
   // Navigation
   document.querySelectorAll('.nav-item[data-page]').forEach(el => {
@@ -3093,6 +3329,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-save-new-facture').addEventListener('click', saveNewFacture);
   document.getElementById('btn-confirm-pay-facture').addEventListener('click', confirmPayFacture);
   document.getElementById('btn-toggle-pay-prices').addEventListener('click', togglePayFacturePrices);
+  document.getElementById('btn-save-pay-facture-prices').addEventListener('click', savePayFacturePrices);
   document.getElementById('btn-filter-fact').addEventListener('click', loadFactures);
   // Filtrage immédiat au changement de période/statut, sans avoir à cliquer sur "Filtrer"
   document.getElementById('filter-fact-start').addEventListener('change', loadFactures);
@@ -3142,6 +3379,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Code de baisse de prix (OTP) ──
   document.getElementById('btn-generate-discount-otp')?.addEventListener('click', generateDiscountOtp);
   document.getElementById('btn-save-discount-otp-window')?.addEventListener('click', saveDiscountOtpWindow);
+
+  // ── Atterrissage après bascule multi-site ──
+  // #switchToken=... dans l'URL prime sur toute session ca_token existante — voir
+  // confirmSwitchSite(). Consommé avant tout le reste : traité et nettoyé une seule
+  // fois, avec ou sans succès, jamais retraité au rechargement suivant.
+  if (await consumeSwitchToken()) return;
 
   // ── Restauration session ──
   // Vérifie le token côté serveur avant de restaurer la session.

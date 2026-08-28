@@ -6,6 +6,7 @@ const cache    = require('../utils/cache');
 const eventBus = require('../utils/eventBus');
 const { createFactureFromCommande } = require('../utils/factures');
 const { findDiscountedItems, verifyDiscountPin } = require('../utils/discountPin');
+const { formatMontant } = require('../utils/currency');
 
 const router = express.Router();
 
@@ -124,7 +125,7 @@ router.post('/', authenticateToken, requireRole('admin', 'caissiere', 'caissier-
     pushNotification({
       type: 'success', icon: 'receipt',
       titre: `Facture ${facture.numero} générée`,
-      message: `${commande.numero} – Total: ${facture.total.toLocaleString('fr-FR')} FCFA`,
+      message: `${commande.numero} – Total: ${formatMontant(facture.total)}`,
       createdBy: req.user.username,
     });
 
@@ -223,7 +224,7 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere', 'cai
     pushNotification({
       type: 'success', icon: 'money-bill-wave',
       titre: 'Paiement enregistré',
-      message: `${facture.numero} – ${finalTotal.toLocaleString('fr-FR')} FCFA encaissés`,
+      message: `${facture.numero} – ${formatMontant(finalTotal)} encaissés`,
       createdBy: req.user.username,
     });
 
@@ -297,7 +298,7 @@ router.post('/:id/edit-items', authenticateToken, requireRole('admin', 'caissier
     pushNotification({
       type: 'info', icon: 'edit',
       titre: 'Facture modifiée',
-      message: `${facture.numero} — nouveau total : ${total.toLocaleString('fr-FR')} FCFA`,
+      message: `${facture.numero} — nouveau total : ${formatMontant(total)}`,
       createdBy: req.user.username,
     });
 

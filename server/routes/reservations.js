@@ -5,6 +5,7 @@ const { pushNotification } = require('../utils/notifications');
 const cache = require('../utils/cache');
 const eventBus = require('../utils/eventBus');
 const { getNextNumeroFacture } = require('../utils/factures');
+const { formatMontant } = require('../utils/currency');
 
 const router = express.Router();
 
@@ -231,7 +232,7 @@ router.post('/:id/facturer', authenticateToken, requireRole('admin'), async (req
     pushNotification({
       type: 'success', icon: 'receipt',
       titre: `Facture ${numero} générée`,
-      message: `Réservation ${reservation.nomEvenement} — ${reservation.montantGlobal.toLocaleString('fr-FR')} FCFA`,
+      message: `Réservation ${reservation.nomEvenement} — ${formatMontant(reservation.montantGlobal)}`,
       createdBy: req.user.username,
     });
 

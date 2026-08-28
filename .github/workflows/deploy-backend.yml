@@ -47,11 +47,23 @@ jobs:
         with:
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
-      - name: Déploiement Cloud Run
+      - name: Déploiement Cloud Run — Dakar (site d'origine)
         uses: google-github-actions/deploy-cloudrun@251330ba9a8a34bfbc1622895f42e1d53fd14522 # v2
         with:
           service: cookafrica-api
           region: us-central1
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          source: ./server
+          flags: --max-instances=1
+
+      # Même code source (server/), même projet GCP — juste une région et un service
+      # distincts, avec sa propre base Firestore nommée (voir FIRESTORE_DATABASE_ID
+      # dans les variables d'env du service, configurées hors de ce workflow).
+      - name: Déploiement Cloud Run — Dubaï
+        uses: google-github-actions/deploy-cloudrun@251330ba9a8a34bfbc1622895f42e1d53fd14522 # v2
+        with:
+          service: cookafrica-api-dubai
+          region: me-central1
           project_id: ${{ secrets.GCP_PROJECT_ID }}
           source: ./server
           flags: --max-instances=1

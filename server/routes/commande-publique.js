@@ -9,6 +9,7 @@ const cache    = require('../utils/cache');
 const eventBus = require('../utils/eventBus');
 const { getNextNumero, decrementStocksForItems } = require('../utils/commandes');
 const { resolvePublicItems, resolvePublicContact } = require('../utils/publicCommande');
+const { formatMontant } = require('../utils/currency');
 
 const router = express.Router();
 
@@ -94,7 +95,7 @@ router.post('/commandes', orderLimiter, async (req, res) => {
     pushNotification({
       type: 'info', icon: 'user-clock',
       titre: `Nouvelle commande client ${numero}`,
-      message: `${contact.prenom} ${contact.nom} – ${resolved.items.length} article(s) – Total : ${resolved.total.toLocaleString('fr-FR')} FCFA`,
+      message: `${contact.prenom} ${contact.nom} – ${resolved.items.length} article(s) – Total : ${formatMontant(resolved.total)}`,
       createdBy: 'client-web',
     });
 

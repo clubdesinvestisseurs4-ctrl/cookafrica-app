@@ -2,6 +2,7 @@ const express = require('express');
 const { db } = require('../firebase-admin');
 const { authenticateToken } = require('../middleware/auth');
 const cache = require('../utils/cache');
+const { formatMontant } = require('../utils/currency');
 
 const router = express.Router();
 
@@ -220,7 +221,7 @@ router.get('/notifications', authenticateToken, async (req, res) => {
         title: `${partiellesSnap.size} facture(s) impayée(s)`,
         message: partiellesSnap.docs.slice(0, 3).map(d => {
           const f = d.data();
-          return `${f.numero} – reste ${(f.reste || 0).toLocaleString('fr-FR')} FCFA`;
+          return `${f.numero} – reste ${formatMontant(f.reste)}`;
         }).join(' | '),
       });
     }
