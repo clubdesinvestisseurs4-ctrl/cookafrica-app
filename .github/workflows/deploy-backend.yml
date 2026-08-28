@@ -47,7 +47,7 @@ jobs:
         with:
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
-      - name: Déploiement Cloud Run — Dakar (site d'origine)
+      - name: Déploiement Cloud Run — Côte d'Ivoire (site d'origine)
         uses: google-github-actions/deploy-cloudrun@251330ba9a8a34bfbc1622895f42e1d53fd14522 # v2
         with:
           service: cookafrica-api
