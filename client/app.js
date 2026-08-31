@@ -599,17 +599,45 @@ function clearStoredDirectorySession() {
   localStorage.removeItem(DIRECTORY_SITES_KEY);
 }
 
-window.openSwitchSite = () => {
+window.openSwitchSite = async () => {
   document.getElementById('switch-site-pick-error').style.display = 'none';
+  document.getElementById('switch-site-step-login').style.display = 'none';
+  document.getElementById('switch-site-step-pick').style.display  = 'none';
+  document.getElementById('btn-switch-site-login').style.display  = 'none';
   openModal('switch-site');
 
   const stored = getStoredDirectorySession();
   if (stored) {
     state.switchSiteDirectoryToken = stored.token;
     showSwitchSitePickStep(stored.sites);
-  } else {
-    showSwitchSiteLoginStep();
+    return;
   }
+
+  // Sur le site maison, la session déjà active suffit à prouver l'identité de
+  // l'admin (voir GET /api/directory/my-sites, vérifié avec le JWT_SECRET de ce
+  // même backend) — inutile de redemander un mot de passe. Ce raccourci n'existe
+  // que dans ce sens : un site secondaire ne peut pas vérifier ce jeton, chacun
+  // gardant son propre secret par conception (voir HOME_API_URL en tête de fichier).
+  if (API === HOME_API_URL && state.token) {
+    showLoader();
+    try {
+      const res = await fetch(`${HOME_API_URL}/api/directory/my-sites`, {
+        headers: { Authorization: `Bearer ${state.token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        state.switchSiteDirectoryToken = data.directoryToken;
+        localStorage.setItem(DIRECTORY_TOKEN_KEY, data.directoryToken);
+        localStorage.setItem(DIRECTORY_SITES_KEY, JSON.stringify(data.sites || []));
+        hideLoader();
+        showSwitchSitePickStep(data.sites);
+        return;
+      }
+    } catch { /* silencieux — retombe sur le formulaire de mot de passe ci-dessous */ }
+    hideLoader();
+  }
+
+  showSwitchSiteLoginStep();
 };
 
 function showSwitchSiteLoginStep() {
