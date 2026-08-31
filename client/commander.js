@@ -8,17 +8,30 @@
 const SITE_DEFAULT = {
   apiUrl:   'https://cookafrica-api-667992371198.us-central1.run.app', // Cloud Run (us-central1)
   currency: { label: 'FCFA', locale: 'fr-FR' },
+  siteId:   'cote-divoire',
 };
 const SITE_CONFIG = {
-  'localhost': { apiUrl: 'http://localhost:3001', currency: SITE_DEFAULT.currency },
-  '127.0.0.1': { apiUrl: 'http://localhost:3001', currency: SITE_DEFAULT.currency },
+  'localhost': { apiUrl: 'http://localhost:3001', currency: SITE_DEFAULT.currency, siteId: 'cote-divoire' },
+  '127.0.0.1': { apiUrl: 'http://localhost:3001', currency: SITE_DEFAULT.currency, siteId: 'cote-divoire' },
   'cookafrica-dubai.vercel.app': {
     apiUrl:   'https://cookafrica-api-dubai-667992371198.me-central1.run.app',
     currency: { label: 'USD', locale: 'en-US' },
+    siteId:   'dubai',
   },
 };
 const SITE = SITE_CONFIG[window.location.hostname] || SITE_DEFAULT;
 const API = SITE.apiUrl;
+document.documentElement.lang = SITE.siteId === 'dubai' ? 'en' : 'fr';
+document.documentElement.dataset.site = SITE.siteId;
+setI18nLang(SITE.siteId === 'dubai' ? 'en' : 'fr');
+
+applyI18n();
+document.getElementById('pub-cart-back')?.setAttribute('aria-label', t('pub.retour'));
+document.title = SITE.siteId === 'dubai' ? 'Cook Africa – Order' : 'Cook Africa – Commander';
+
+// Wave (mobile money) n'opère pas aux Émirats arabes unis — le lien marchand est
+// spécifique à la Côte d'Ivoire, donc invisible pour les clients du site Dubaï.
+if (SITE.siteId === 'dubai') document.getElementById('pub-wave-pay')?.remove();
 
 // Ordre d'affichage des rayons : mots-clés cherchés dans le nom de catégorie
 // (insensible à la casse/accents approximatifs) plutôt qu'une liste exacte,
@@ -104,7 +117,7 @@ async function apiCall(path, opts = {}) {
     });
     clearTimeout(tid);
     const data = await res.json().catch(() => null);
-    if (!res.ok) return { error: data?.error || `Erreur ${res.status}` };
+    if (!res.ok) return { error: data?.error || t('pub.erreur_statut', { status: res.status }) };
     return data;
   } catch {
     return { error: 'network' };
@@ -141,7 +154,7 @@ async function loadMenu(onLoadingScreen) {
 
   for (let i = 0; i < delays.length; i++) {
     if (delays[i] > 0) {
-      if (onLoadingScreen) statusEl.textContent = 'Démarrage du serveur… encore un instant';
+      if (onLoadingScreen) statusEl.textContent = t('pub.demarrage_serveur');
       await new Promise((r) => setTimeout(r, delays[i]));
     }
     const res = await apiCall('/api/public/menu');
@@ -157,8 +170,7 @@ async function initMenuFlow() {
   show('pub-loading');
   const ok = await loadMenu(true);
   if (!ok) {
-    document.getElementById('pub-error-msg').textContent =
-      'Impossible de charger le menu pour le moment. Vérifiez votre connexion et réessayez.';
+    document.getElementById('pub-error-msg').textContent = t('pub.erreur_chargement_full');
     show('pub-error');
     return;
   }
@@ -231,9 +243,9 @@ function renderMenuStatus() {
   const statusEl = document.getElementById('pub-menu-status');
   if (!statusEl) return;
   if (state.recherche.trim()) {
-    statusEl.textContent = `Résultats pour "${state.recherche.trim()}"`;
+    statusEl.textContent = t('pub.resultats_pour', { q: state.recherche.trim() });
   } else if (state.activeCat === PLAT_DU_JOUR) {
-    statusEl.textContent = `Sélection du ${todayLabel()} — recherchez un autre plat si besoin`;
+    statusEl.textContent = t('pub.selection_du', { jour: todayLabel() });
   } else {
     statusEl.textContent = '';
   }
@@ -248,11 +260,11 @@ function renderMenu() {
   const list = document.getElementById('pub-menu-list');
 
   if (state.menu.length === 0) {
-    list.innerHTML = '<p class="pub-empty"><i class="fas fa-utensils"></i><br>Aucun plat disponible pour le moment.</p>';
+    list.innerHTML = `<p class="pub-empty"><i class="fas fa-utensils"></i><br>${t('pub.aucun_plat_dispo')}</p>`;
     return;
   }
   if (active.length === 0) {
-    list.innerHTML = '<p class="pub-empty"><i class="fas fa-search"></i><br>Aucun plat trouvé.</p>';
+    list.innerHTML = `<p class="pub-empty"><i class="fas fa-search"></i><br>${t('pub.aucun_plat_trouve')}</p>`;
     return;
   }
 
@@ -326,16 +338,16 @@ function renderCartBar() {
 function renderCartScreen() {
   const container = document.getElementById('pub-cart-items');
   if (state.panier.length === 0) {
-    container.innerHTML = '<p class="pub-empty">Votre panier est vide.</p>';
+    container.innerHTML = `<p class="pub-empty">${t('pub.panier_vide')}</p>`;
   } else {
     container.innerHTML = state.panier.map((p) => `
       <div class="pub-cart-item">
         <div class="pub-cart-item-info">
           <strong>${p.quantite}x ${escapeHtml(p.nom)}</strong>
-          <span>${fmt(p.prix)} l'unité</span>
+          <span>${fmt(p.prix)} ${t('pub.unite_suffix')}</span>
         </div>
         <strong>${fmt(p.prix * p.quantite)}</strong>
-        <button class="pub-cart-item-remove" data-id="${p.menuItemId}" title="Retirer"><i class="fas fa-trash"></i></button>
+        <button class="pub-cart-item-remove" data-id="${p.menuItemId}" title="${t('pub.retirer')}"><i class="fas fa-trash"></i></button>
       </div>`).join('');
     container.querySelectorAll('.pub-cart-item-remove').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -394,19 +406,19 @@ function setGeolocUi(kind, html) {
 }
 
 function renderGeolocSuccess({ lat, lng }) {
-  geolocLabel.textContent = 'Position enregistrée';
+  geolocLabel.textContent = t('pub.position_enregistree');
   const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
-  setGeolocUi('is-success', `<i class="fas fa-check"></i> Position capturée — <a href="${mapsUrl}" target="_blank" rel="noopener">vérifier sur Google Maps</a> · <button type="button" class="pub-geoloc-refresh-link" id="pub-geoloc-refresh">Actualiser</button>`);
+  setGeolocUi('is-success', `<i class="fas fa-check"></i> ${t('pub.position_capturee_prefix')} <a href="${mapsUrl}" target="_blank" rel="noopener">${t('pub.verifier_google_maps')}</a> · <button type="button" class="pub-geoloc-refresh-link" id="pub-geoloc-refresh">${t('pub.actualiser')}</button>`);
   document.getElementById('pub-geoloc-refresh')?.addEventListener('click', captureLocalisation);
 }
 
 function captureLocalisation() {
   if (!navigator.geolocation) {
-    setGeolocUi('is-error', "Votre navigateur ne permet pas la géolocalisation — indiquez votre adresse à la caisse par téléphone.");
+    setGeolocUi('is-error', t('pub.geoloc_non_supportee'));
     return;
   }
-  geolocLabel.textContent = 'Localisation en cours…';
-  setGeolocUi('is-loading', 'Autorisez l’accès à la position dans la fenêtre du navigateur…');
+  geolocLabel.textContent = t('pub.localisation_en_cours');
+  setGeolocUi('is-loading', t('pub.autoriser_position'));
 
   navigator.geolocation.getCurrentPosition(
     (pos) => {
@@ -417,13 +429,13 @@ function captureLocalisation() {
     },
     (err) => {
       state.localisation = null;
-      geolocLabel.textContent = 'Partager ma position';
+      geolocLabel.textContent = t('pub.partager_position');
       const messages = {
-        1: "Autorisation refusée. Activez la localisation pour ce site dans les réglages de votre navigateur, puis réessayez.",
-        2: 'Position indisponible. Vérifiez que le GPS est activé sur votre appareil.',
-        3: 'La demande de localisation a expiré. Réessayez.',
+        1: t('pub.geoloc_err_1'),
+        2: t('pub.geoloc_err_2'),
+        3: t('pub.geoloc_err_3'),
       };
-      setGeolocUi('is-error', messages[err.code] || 'Impossible de récupérer votre position. Réessayez.');
+      setGeolocUi('is-error', messages[err.code] || t('pub.geoloc_err_default'));
       updateSubmitState();
     },
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 300000 }
@@ -443,7 +455,7 @@ geolocBtn.addEventListener('click', captureLocalisation);
 // ─── Envoi de la commande ───────────────────────────────
 
 document.getElementById('pub-submit-btn').addEventListener('click', async () => {
-  if (state.panier.length === 0) { toast('Votre panier est vide', 'error'); return; }
+  if (state.panier.length === 0) { toast(t('pub.panier_vide_toast'), 'error'); return; }
 
   const prenomEl = document.getElementById('pub-cart-prenom');
   const nomEl    = document.getElementById('pub-cart-nom');
@@ -452,11 +464,11 @@ document.getElementById('pub-submit-btn').addEventListener('click', async () => 
   const nom    = nomEl.value.trim();
   const tel    = telEl.value.trim();
 
-  if (!prenom) { prenomEl.classList.add('pub-field-invalid'); prenomEl.focus(); toast('Indiquez votre prénom', 'error'); return; }
-  if (!nom) { nomEl.classList.add('pub-field-invalid'); nomEl.focus(); toast('Indiquez votre nom', 'error'); return; }
-  if (tel.replace(/\D/g, '').length < 8) { telEl.classList.add('pub-field-invalid'); telEl.focus(); toast('Indiquez un numéro de téléphone valide', 'error'); return; }
+  if (!prenom) { prenomEl.classList.add('pub-field-invalid'); prenomEl.focus(); toast(t('pub.indiquez_prenom'), 'error'); return; }
+  if (!nom) { nomEl.classList.add('pub-field-invalid'); nomEl.focus(); toast(t('pub.indiquez_nom'), 'error'); return; }
+  if (tel.replace(/\D/g, '').length < 8) { telEl.classList.add('pub-field-invalid'); telEl.focus(); toast(t('pub.indiquez_tel'), 'error'); return; }
   if (!state.localisation) {
-    toast('Partagez votre position pour la livraison', 'error');
+    toast(t('pub.partagez_position'), 'error');
     geolocBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return;
   }
@@ -464,7 +476,7 @@ document.getElementById('pub-submit-btn').addEventListener('click', async () => 
   saveContact();
   const btn = document.getElementById('pub-submit-btn');
   btn.disabled = true;
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Envoi…';
+  btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${t('pub.envoi_en_cours')}`;
 
   const res = await apiCall('/api/public/commandes', {
     method: 'POST',
@@ -476,15 +488,15 @@ document.getElementById('pub-submit-btn').addEventListener('click', async () => 
   });
 
   btn.disabled = false;
-  btn.innerHTML = '<i class="fas fa-paper-plane"></i> Envoyer ma commande';
+  btn.innerHTML = `<i class="fas fa-paper-plane"></i> ${t('pub.envoyer_commande')}`;
 
-  if (res.error === 'network') { toast('Vérifiez votre connexion internet et réessayez', 'error'); return; }
+  if (res.error === 'network') { toast(t('pub.verifiez_connexion'), 'error'); return; }
   if (res.error) { toast(res.error, 'error'); return; }
 
   state.panier = [];
   savePanier();
   saveOrder(res);
-  toast(`Commande ${res.numero} envoyée !`, 'success');
+  toast(t('pub.commande_envoyee_toast', { numero: res.numero }), 'success');
   showConfirmScreen(res);
 });
 
@@ -495,7 +507,7 @@ function renderConfirmItems(order) {
   itemsEl.innerHTML = (order.items || []).map((i) => `
     <div class="pub-ci-row"><span>${i.quantite}x ${escapeHtml(i.nom)}</span><span>${fmt(i.prix * i.quantite)}</span></div>
   `).join('');
-  document.getElementById('pub-confirm-total').innerHTML = `<span>Total</span><span>${fmt(order.total)}</span>`;
+  document.getElementById('pub-confirm-total').innerHTML = `<span>${t('pub.total')}</span><span>${fmt(order.total)}</span>`;
 }
 
 function applyStatutTrack(statut) {

@@ -164,7 +164,7 @@ function updateOfflineBadge() {
   if (!badge) return;
   const n = getOfflineQueue().length;
   badge.style.display = n > 0 ? 'inline-flex' : 'none';
-  badge.innerHTML = `<i class="fas fa-cloud-upload-alt"></i> ${n} en attente de synchro`;
+  badge.innerHTML = t('sys.offline_queue_pending', { n });
 }
 
 let flushingOfflineQueue = false;
@@ -191,11 +191,11 @@ async function flushOfflineQueue() {
       setOfflineQueue(queue);
       removePendingCommande(item.id); // que ça réussisse ou soit refusé, le placeholder local n'a plus lieu d'être
       if (res.ok) synced++;
-      else toast('Une action en attente a été refusée par le serveur (ignorée)', 'warning');
+      else toast(t('sys.offline_action_rejected'), 'warning');
       queue = getOfflineQueue();
     }
     if (synced > 0) {
-      toast(`${synced} action(s) hors-ligne synchronisée(s)`, 'success');
+      toast(t('sys.offline_synced', { n: synced }), 'success');
       handleSSEEvent('commandes'); // rafraîchit l'écran courant avec les données à jour
     }
   } finally {
@@ -280,7 +280,7 @@ async function api(path, opts = {}, _retry = false) {
       return api(path, opts, true);
     }
     if (res.status === 429) {
-      toast('Trop de requêtes envoyées — patientez quelques secondes', 'warning');
+      toast(t('sys.too_many_requests'), 'warning');
       return null;
     }
     if (!res.ok) return null;
@@ -292,7 +292,7 @@ async function api(path, opts = {}, _retry = false) {
       let body = null;
       try { body = opts.body ? JSON.parse(opts.body) : null; } catch {}
       const queueId = queueOfflineRequest(method, path, body);
-      toast('Pas de connexion — action enregistrée, elle sera synchronisée automatiquement', 'warning');
+      toast(t('sys.queued_offline'), 'warning');
       return { queued: true, queueId };
     }
     return getReadCache(path);
@@ -376,7 +376,7 @@ function speak(text) {
   if (!state.soundEnabled || !('speechSynthesis' in window)) return;
   try {
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'fr-FR';
+    u.lang = SITE.currency.locale;
     u.rate = 0.95;
     window.speechSynthesis.speak(u);
   } catch {}
@@ -396,8 +396,8 @@ function updateSoundButtons() {
     factBtn.classList.toggle('btn-success', state.soundEnabled);
     factBtn.classList.toggle('btn-accent', !state.soundEnabled);
     factBtn.innerHTML = state.soundEnabled
-      ? '<i class="fas fa-volume-up"></i> Son activé'
-      : '<i class="fas fa-volume-mute"></i> Activer le son';
+      ? t('facturation.sound_on')
+      : t('facturation.sound_off');
   }
 }
 
@@ -406,7 +406,7 @@ function enableSound(screen, announce = true) {
   localStorage.setItem('ca_sound', '1');
   updateSoundButtons();
   if (!announce) return;
-  speak('Son activé pour la facturation');
+  speak(t('facturation.tts_enabled'));
 }
 
 function toast(msg, type = 'info') {
@@ -420,13 +420,13 @@ function toast(msg, type = 'info') {
 
 function badgeStatus(statut) {
   const labels = {
-    'en-attente':    '📝 En cours (serveur)',
-    'en-preparation':'💳 Envoyée à la caisse',
-    'prete':         '✅ Prête',
-    'servie':        '🍽️ Servie',
-    'annulee':       '❌ Annulée',
-    'payee':         '✅ Payée',
-    'partielle':     '⚠️ Partielle',
+    'en-attente':    t('commandes.badge_en_attente'),
+    'en-preparation':t('commandes.badge_en_preparation'),
+    'prete':         t('commandes.badge_prete'),
+    'servie':        t('commandes.badge_servie'),
+    'annulee':       t('commandes.badge_annulee'),
+    'payee':         t('facturation.badge_payee'),
+    'partielle':     t('facturation.badge_partielle'),
   };
   return `<span class="badge-status ${statut}">${labels[statut] || statut}</span>`;
 }
@@ -436,8 +436,8 @@ function badgeStatus(statut) {
 function badgeQui(c) {
   if (c.source !== 'en-ligne') return '';
   return c.commandeClient
-    ? '<span style="background:#FFF3E0;color:#E65100;border:1px solid #FFCC80;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600;white-space:nowrap"><i class="fas fa-user"></i> Client</span>'
-    : '<span style="background:#E3F2FD;color:#0d47a1;border:1px solid #90CAF9;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600;white-space:nowrap"><i class="fas fa-cash-register"></i> Caisse</span>';
+    ? `<span style="background:#FFF3E0;color:#E65100;border:1px solid #FFCC80;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600;white-space:nowrap"><i class="fas fa-user"></i> ${t('commandes.badge_qui_client')}</span>`
+    : `<span style="background:#E3F2FD;color:#0d47a1;border:1px solid #90CAF9;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600;white-space:nowrap"><i class="fas fa-cash-register"></i> ${t('commandes.badge_qui_caisse')}</span>`;
 }
 
 // Lien vers la localisation du client livreur. Sur Android, le lien geo:
@@ -636,7 +636,7 @@ async function submitSwitchSiteLogin() {
   const errEl = document.getElementById('switch-site-login-error');
   errEl.style.display = 'none';
   if (!username || !password) {
-    errEl.textContent = 'Identifiants requis';
+    errEl.textContent = t('modal.switch_identifiants_requis');
     errEl.style.display = 'block';
     return;
   }
@@ -653,7 +653,7 @@ async function submitSwitchSiteLogin() {
     });
     const data = await res.json();
     if (!res.ok || !data.directoryToken) {
-      errEl.textContent = data.error || 'Identifiants invalides';
+      errEl.textContent = data.error || t('modal.switch_identifiants_invalides');
       errEl.style.display = 'block';
       return;
     }
@@ -663,7 +663,7 @@ async function submitSwitchSiteLogin() {
     localStorage.setItem(DIRECTORY_SITES_KEY, JSON.stringify(data.sites || []));
     showSwitchSitePickStep(data.sites);
   } catch {
-    errEl.textContent = 'Impossible de contacter le serveur';
+    errEl.textContent = t('modal.switch_serveur_inaccessible');
     errEl.style.display = 'block';
   } finally {
     btn.disabled = false;
@@ -673,7 +673,7 @@ async function submitSwitchSiteLogin() {
 function renderSwitchSiteList(sites) {
   const container = document.getElementById('switch-site-list');
   if (sites.length === 0) {
-    container.innerHTML = '<p style="color:var(--gray);font-size:.85rem">Aucun autre site accessible avec ce compte.</p>';
+    container.innerHTML = `<p style="color:var(--gray);font-size:.85rem">${t('modal.switch_no_site')}</p>`;
   } else {
     container.innerHTML = sites.map(s => `
       <button type="button" class="btn btn-secondary" style="width:100%;margin-bottom:8px;justify-content:flex-start"
@@ -683,7 +683,7 @@ function renderSwitchSiteList(sites) {
   }
   container.innerHTML += `
     <button type="button" id="switch-site-forget" style="background:none;border:none;color:var(--gray);font-size:.8rem;cursor:pointer;padding:4px 0">
-      Ce n'est pas vous ? Changer de compte
+      ${t('modal.switch_forget')}
     </button>`;
   document.getElementById('switch-site-forget').addEventListener('click', () => {
     clearStoredDirectorySession();
@@ -698,7 +698,7 @@ window.confirmSwitchSite = async (siteId) => {
   // Des écritures locales en attente rejoueraient sur le mauvais backend une fois la
   // connexion revenue — on bloque la bascule plutôt que de risquer une corruption.
   if (getOfflineQueue().length > 0 || getPendingCommandes().length > 0) {
-    errEl.textContent = 'Des actions sont en attente de synchronisation sur ce site — reconnectez-vous au réseau avant de changer de site.';
+    errEl.textContent = t('modal.switch_offline_blocked');
     errEl.style.display = 'block';
     return;
   }
@@ -712,7 +712,7 @@ window.confirmSwitchSite = async (siteId) => {
     });
     const data = await res.json();
     if (!res.ok || !data.switchToken) {
-      errEl.textContent = data.error || 'Erreur lors de la bascule';
+      errEl.textContent = data.error || t('modal.switch_erreur');
       errEl.style.display = 'block';
       return;
     }
@@ -723,7 +723,7 @@ window.confirmSwitchSite = async (siteId) => {
     clearReadCache();
     window.location.href = `${data.appUrl}/#switchToken=${encodeURIComponent(data.switchToken)}`;
   } catch {
-    errEl.textContent = 'Impossible de contacter le serveur';
+    errEl.textContent = t('modal.switch_serveur_inaccessible');
     errEl.style.display = 'block';
   } finally {
     hideLoader();
@@ -754,12 +754,12 @@ async function consumeSwitchToken() {
     } else {
       await hideSplash();
       hideLoader();
-      toast(data.error || 'La bascule vers ce site a échoué, reconnectez-vous', 'error');
+      toast(data.error || t('modal.switch_echec'), 'error');
     }
   } catch {
     await hideSplash();
     hideLoader();
-    toast('Impossible de contacter le serveur pour finaliser la bascule', 'error');
+    toast(t('modal.switch_echec_finalisation'), 'error');
   }
   return true;
 }
@@ -988,7 +988,7 @@ async function loadCommandes() {
 
   const tbody = document.getElementById('commandes-tbody');
   if (commandes.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="empty-state" style="padding:32px"><i class="fas fa-list-alt"></i><p>Aucune commande</p></td></tr>';
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-state" style="padding:32px"><i class="fas fa-list-alt"></i><p>${t('commandes.aucune')}</p></td></tr>`;
     return;
   }
 
@@ -997,13 +997,13 @@ async function loadCommandes() {
     if (c._pending) {
       return `
       <tr class="commande-pending">
-        <td data-label="N°"><strong>${c.numero}</strong></td>
-        <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
-        <td data-label="Articles" style="font-size:.82rem">${items}</td>
-        <td data-label="Total"><strong>${fmt(c.total)}</strong></td>
-        <td data-label="Table" style="color:var(--gray);font-size:.82rem">—</td>
-        <td data-label="Statut"><span class="badge-pending-sync"><i class="fas fa-cloud-upload-alt"></i> Hors ligne — en attente de synchro</span></td>
-        <td data-label="Actions">—</td>
+        <td data-label="${t('common.num')}"><strong>${c.numero}</strong></td>
+        <td data-label="${t('common.date')}" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
+        <td data-label="${t('commandes.th_articles')}" style="font-size:.82rem">${items}</td>
+        <td data-label="${t('commandes.th_total')}"><strong>${fmt(c.total)}</strong></td>
+        <td data-label="${t('commandes.th_table')}" style="color:var(--gray);font-size:.82rem">—</td>
+        <td data-label="${t('common.status')}"><span class="badge-pending-sync"><i class="fas fa-cloud-upload-alt"></i> ${t('commandes.hors_ligne_sync')}</span></td>
+        <td data-label="${t('common.actions')}">—</td>
       </tr>`;
     }
     const alreadyFactured = state.factures.some(f => f.commandeId === c.id);
@@ -1016,26 +1016,26 @@ async function loadCommandes() {
     const nomClientCmd = c.commandeClient ? `${escapeHtml(c.clientPrenom || '')} ${escapeHtml(c.clientNom || '')}`.trim() : '';
     return `
     <tr>
-      <td data-label="N°"><strong>${c.numero}</strong> ${badgeQui(c)}${nomClientCmd ? `<div style="font-size:.78rem;color:var(--gray);margin-top:2px">${nomClientCmd}</div>` : ''}</td>
-      <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
-      <td data-label="Articles" style="font-size:.82rem">${items}</td>
-      <td data-label="Total"><strong>${fmt(c.total)}</strong></td>
-      <td data-label="Table" style="color:var(--gray);font-size:.82rem">${c.commandeClient
-        ? `${c.clientTelephone ? `<a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);text-decoration:none;white-space:nowrap"><i class="fas fa-phone"></i> ${escapeHtml(c.clientTelephone)}</a>` : '—'}${c.clientLocalisation ? `<br><a href="${escapeHtml(localisationHref(c.clientLocalisation))}" target="_blank" rel="noopener" style="color:var(--primary);font-weight:600;text-decoration:none;white-space:nowrap"><i class="fas fa-location-dot"></i> Localisation</a>` : ''}`
+      <td data-label="${t('common.num')}"><strong>${c.numero}</strong> ${badgeQui(c)}${nomClientCmd ? `<div style="font-size:.78rem;color:var(--gray);margin-top:2px">${nomClientCmd}</div>` : ''}</td>
+      <td data-label="${t('common.date')}" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
+      <td data-label="${t('commandes.th_articles')}" style="font-size:.82rem">${items}</td>
+      <td data-label="${t('commandes.th_total')}"><strong>${fmt(c.total)}</strong></td>
+      <td data-label="${t('commandes.th_table')}" style="color:var(--gray);font-size:.82rem">${c.commandeClient
+        ? `${c.clientTelephone ? `<a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);text-decoration:none;white-space:nowrap"><i class="fas fa-phone"></i> ${escapeHtml(c.clientTelephone)}</a>` : '—'}${c.clientLocalisation ? `<br><a href="${escapeHtml(localisationHref(c.clientLocalisation))}" target="_blank" rel="noopener" style="color:var(--primary);font-weight:600;text-decoration:none;white-space:nowrap"><i class="fas fa-location-dot"></i> ${t('commandes.localisation')}</a>` : ''}`
         : (escapeHtml(c.tableNumero) || '—')}</td>
-      <td data-label="Statut">${badgeStatus(c.statut)}</td>
-      <td data-label="Actions">
+      <td data-label="${t('common.status')}">${badgeStatus(c.statut)}</td>
+      <td data-label="${t('common.actions')}">
         <button class="btn btn-secondary btn-sm" onclick="viewCommande('${c.id}')">
           <i class="fas fa-eye"></i>
         </button>
-        ${canEdit ? `<button class="btn btn-secondary btn-sm" onclick="openEditCommande('${c.id}')" title="Modifier la commande">
+        ${canEdit ? `<button class="btn btn-secondary btn-sm" onclick="openEditCommande('${c.id}')" title="${t('commandes.modifier_titre')}">
           <i class="fas fa-edit"></i>
         </button>` : ''}
-        ${canEnvoyer ? `<button class="btn btn-primary btn-sm" onclick="envoyerFacturation('${c.id}','${c.numero}')" title="Envoyer à la facturation">
-          <i class="fas fa-paper-plane"></i> Envoyer
+        ${canEnvoyer ? `<button class="btn btn-primary btn-sm" onclick="envoyerFacturation('${c.id}','${c.numero}')" title="${t('commandes.envoyer_titre')}">
+          <i class="fas fa-paper-plane"></i> ${t('commandes.envoyer_btn')}
         </button>` : ''}
         ${canFacture ? `<button class="btn btn-accent btn-sm" onclick="openNewFactureForCmd('${c.id}')">
-          <i class="fas fa-receipt"></i> Facturer
+          <i class="fas fa-receipt"></i> ${t('commandes.facturer_btn')}
         </button>` : ''}
         ${canCancel ? `<button class="btn btn-danger btn-sm" onclick="annulerCommande('${c.id}','${c.numero}')">
           <i class="fas fa-times"></i>
@@ -1055,7 +1055,7 @@ async function viewCommande(id) {
       <span>${fmt(i.sousTotal)}</span>
     </div>`).join('');
 
-  document.getElementById('modal-detail-titre').textContent = `Commande ${c.numero}`;
+  document.getElementById('modal-detail-titre').textContent = t('commandes.detail_titre', { numero: c.numero });
   document.getElementById('modal-detail-body').innerHTML = `
     <div style="margin-bottom:12px">
       ${badgeQui(c) ? `<p style="margin-bottom:8px">${badgeQui(c)}</p>` : ''}
@@ -1063,36 +1063,36 @@ async function viewCommande(id) {
         <div style="background:var(--light);border-radius:8px;padding:10px 12px;margin-bottom:10px">
           <p style="font-weight:700">${escapeHtml(c.clientPrenom || '')} ${escapeHtml(c.clientNom || '')}</p>
           ${c.clientTelephone ? `<p style="font-size:.85rem;margin-top:3px"><i class="fas fa-phone"></i> <a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);text-decoration:none">${escapeHtml(c.clientTelephone)}</a></p>` : ''}
-          ${c.clientLocalisation ? `<p style="font-size:.85rem;margin-top:3px"><a href="${escapeHtml(localisationHref(c.clientLocalisation))}" target="_blank" rel="noopener" style="color:var(--primary);font-weight:700;text-decoration:none"><i class="fas fa-location-dot"></i> Voir la localisation</a></p>` : ''}
+          ${c.clientLocalisation ? `<p style="font-size:.85rem;margin-top:3px"><a href="${escapeHtml(localisationHref(c.clientLocalisation))}" target="_blank" rel="noopener" style="color:var(--primary);font-weight:700;text-decoration:none"><i class="fas fa-location-dot"></i> ${t('commandes.voir_localisation')}</a></p>` : ''}
         </div>` : ''}
-      ${c.tableNumero ? `<p><strong>Table :</strong> ${escapeHtml(c.tableNumero)}</p>` : ''}
+      ${c.tableNumero ? `<p><strong>${t('commandes.table_label')}</strong> ${escapeHtml(c.tableNumero)}</p>` : ''}
       ${c.note ? `<p style="color:var(--gray);font-size:.85rem;font-style:italic"><i class="fas fa-sticky-note"></i> ${escapeHtml(c.note)}</p>` : ''}
-      <p><strong>Statut :</strong> ${badgeStatus(c.statut)}</p>
-      <p style="font-size:.8rem;color:var(--gray)"><strong>Créée par :</strong> ${escapeHtml(c.commandeClient ? (c.clientNom || 'Client (en ligne)') : (c.createdByNom || c.createdBy))} – ${fmtDate(c.createdAt)}</p>
+      <p><strong>${t('commandes.statut_label')}</strong> ${badgeStatus(c.statut)}</p>
+      <p style="font-size:.8rem;color:var(--gray)"><strong>${t('commandes.creee_par_label')}</strong> ${escapeHtml(c.commandeClient ? (c.clientNom || t('commandes.client_en_ligne')) : (c.createdByNom || c.createdBy))} – ${fmtDate(c.createdAt)}</p>
     </div>
     <div style="margin-bottom:12px">${items}</div>
     <div style="text-align:right;font-size:1.1rem;font-weight:800;color:var(--primary)">
-      Total : ${fmt(c.total)}
+      ${t('commandes.total_label', { total: fmt(c.total) })}
     </div>`;
   openModal('detail-commande');
 }
 
 async function annulerCommande(id, numero) {
-  if (!(await confirmDialog(`Annuler la commande ${numero} ?`, { danger: true }))) return;
+  if (!(await confirmDialog(t('commandes.cancel_confirm', { numero }), { danger: true }))) return;
   const res = await api(`/api/commandes/${id}`, { method: 'DELETE' });
   if (res?.message) {
-    toast(res.factureSupprimee ? 'Commande annulée — sa facture a été supprimée' : 'Commande annulée', 'warning');
+    toast(res.factureSupprimee ? t('commandes.annulee_facture_del') : t('commandes.annulee'), 'warning');
     loadCommandes();
   }
 }
 
 window.envoyerFacturation = async (id, numero) => {
-  if (!(await confirmDialog(`Envoyer la commande ${numero} à la facturation ? Vous ne pourrez plus la modifier ensuite.`))) return;
+  if (!(await confirmDialog(t('commandes.send_confirm', { numero })))) return;
   showLoader();
   const res = await api(`/api/commandes/${id}/envoyer`, { method: 'PUT', body: '{}' });
   hideLoader();
-  if (!res?.id) { toast(res?.error || 'Erreur', 'error'); return; }
-  toast(`Commande ${numero} envoyée à la facturation`, 'success');
+  if (!res?.id) { toast(res?.error || t('common.error'), 'error'); return; }
+  toast(t('commandes.envoyee', { numero }), 'success');
   loadCommandes();
 };
 
@@ -1119,7 +1119,7 @@ window.openEditCommande = async (id) => {
 function renderEditCommandeItems() {
   const container = document.getElementById('editcmd-items');
   if (state.editCommandeItems.length === 0) {
-    container.innerHTML = '<p style="color:var(--gray);font-size:.85rem;text-align:center;padding:12px">Aucun article</p>';
+    container.innerHTML = `<p style="color:var(--gray);font-size:.85rem;text-align:center;padding:12px">${t('commandes.aucun_article')}</p>`;
   } else {
     container.innerHTML = state.editCommandeItems.map((item, i) => `
       <div class="panier-item">
@@ -1133,7 +1133,7 @@ function renderEditCommandeItems() {
       </div>`).join('');
   }
   const total = state.editCommandeItems.reduce((s, i) => s + i.sousTotal, 0);
-  document.getElementById('editcmd-total').textContent = `Total : ${fmt(total)}`;
+  document.getElementById('editcmd-total').textContent = t('commandes.total_label', { total: fmt(total) });
 }
 
 window.updateEditCommandeQty = (i, qty) => {
@@ -1156,7 +1156,7 @@ function addToEditCommande(id, nom, prix, categorie) {
 }
 
 async function saveEditCommande() {
-  if (state.editCommandeItems.length === 0) { toast('La commande doit contenir au moins un article', 'warning'); return; }
+  if (state.editCommandeItems.length === 0) { toast(t('commandes.min_1_article'), 'warning'); return; }
   const id = document.getElementById('editcmd-id').value;
 
   showLoader();
@@ -1166,8 +1166,8 @@ async function saveEditCommande() {
   });
   hideLoader();
 
-  if (!res?.id) { toast(res?.error || 'Erreur lors de la modification', 'error'); return; }
-  toast('Commande modifiée', 'success');
+  if (!res?.id) { toast(res?.error || t('commandes.modif_erreur'), 'error'); return; }
+  toast(t('commandes.modifiee'), 'success');
   closeModal('edit-commande');
   if (state.currentPage === 'commandes-en-ligne') loadCommandesLigne(); else loadCommandes();
 }
@@ -1187,7 +1187,7 @@ async function openNewCommande(source = 'sur-place') {
   renderPanier();
   panierPicker.reset();
   document.getElementById('modal-commande-title').textContent =
-    source === 'en-ligne' ? 'Nouvelle commande en ligne' : 'Nouvelle commande';
+    source === 'en-ligne' ? t('cmdligne.new') : t('commandes.new');
   openModal('commande');
 }
 
@@ -1206,7 +1206,7 @@ function renderMenuSearchDropdown(query, dropdown, onSelect) {
   const filtered  = q ? menuDispo.filter(m => m.nom.toLowerCase().includes(q)) : menuDispo;
 
   if (!filtered.length) {
-    dropdown.innerHTML = '<div class="menu-search-empty"><i class="fas fa-search"></i> Aucun résultat</div>';
+    dropdown.innerHTML = `<div class="menu-search-empty"><i class="fas fa-search"></i> ${t('menu.aucun_resultat_court')}</div>`;
     dropdown.style.display = 'block';
     return;
   }
@@ -1297,7 +1297,7 @@ function renderPanier() {
   const totalVal  = document.getElementById('panier-total-val');
 
   if (state.panier.length === 0) {
-    container.innerHTML = '<p style="color:var(--gray);font-size:.85rem;text-align:center;padding:12px">Aucun article</p>';
+    container.innerHTML = `<p style="color:var(--gray);font-size:.85rem;text-align:center;padding:12px">${t('commandes.aucun_article')}</p>`;
     totalEl.style.display = 'none';
     return;
   }
@@ -1331,14 +1331,14 @@ window.removePanierItem = (i) => {
 };
 
 async function saveCommande() {
-  if (state.panier.length === 0) { toast('Ajoutez au moins un article', 'warning'); return; }
+  if (state.panier.length === 0) { toast(t('commandes.ajoutez_article'), 'warning'); return; }
   const isOnline = state.panierSource === 'en-ligne';
   const body = { items: state.panier, source: state.panierSource || 'sur-place' };
   showLoader();
   const res = await api('/api/commandes', { method: 'POST', body: JSON.stringify(body) });
   hideLoader();
   if (res?.id) {
-    toast(`Commande ${res.numero} créée !`, 'success');
+    toast(t('commandes.creee', { numero: res.numero }), 'success');
     closeModal('commande');
     if (isOnline) loadCommandesLigne(); else loadCommandes();
   } else if (res?.queued) {
@@ -1348,7 +1348,7 @@ async function saveCommande() {
       id: `local_${res.queueId}`,
       _queueId: res.queueId,
       _pending: true,
-      numero: 'En attente',
+      numero: t('commandes.en_attente_numero'),
       items: state.panier,
       total: state.panier.reduce((s, p) => s + p.sousTotal, 0),
       statut: state.user?.role === 'serveur' ? 'en-attente' : 'en-preparation',
@@ -1359,7 +1359,7 @@ async function saveCommande() {
     closeModal('commande');
     if (isOnline) loadCommandesLigne(); else loadCommandes();
   } else {
-    toast(res?.error || 'Erreur lors de la création', 'error');
+    toast(res?.error || t('commandes.creation_erreur'), 'error');
   }
 }
 
@@ -1394,7 +1394,7 @@ async function loadCommandesLigne() {
   const enLigne = commandes;
   const tbody = document.getElementById('commandes-ligne-tbody');
   if (enLigne.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="empty-state" style="padding:32px"><i class="fas fa-globe"></i><p>Aucune commande en ligne pour cette période</p></td></tr>';
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-state" style="padding:32px"><i class="fas fa-globe"></i><p>${t('commandes.aucune_ligne')}</p></td></tr>`;
     return;
   }
 
@@ -1403,13 +1403,13 @@ async function loadCommandesLigne() {
     if (c._pending) {
       return `
       <tr class="commande-pending">
-        <td data-label="N°"><strong>${c.numero}</strong></td>
-        <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
-        <td data-label="Client">—</td>
-        <td data-label="Articles" style="font-size:.82rem">${items}</td>
-        <td data-label="Total"><strong>${fmt(c.total)}</strong></td>
-        <td data-label="Statut"><span class="badge-pending-sync"><i class="fas fa-cloud-upload-alt"></i> Hors ligne — en attente de synchro</span></td>
-        <td data-label="Actions">—</td>
+        <td data-label="${t('common.num')}"><strong>${c.numero}</strong></td>
+        <td data-label="${t('common.date')}" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
+        <td data-label="${t('commandes.dl_client')}">—</td>
+        <td data-label="${t('commandes.th_articles')}" style="font-size:.82rem">${items}</td>
+        <td data-label="${t('commandes.th_total')}"><strong>${fmt(c.total)}</strong></td>
+        <td data-label="${t('common.status')}"><span class="badge-pending-sync"><i class="fas fa-cloud-upload-alt"></i> ${t('commandes.hors_ligne_sync')}</span></td>
+        <td data-label="${t('common.actions')}">—</td>
       </tr>`;
     }
     const alreadyFactured = state.factures.some(f => f.commandeId === c.id);
@@ -1418,24 +1418,24 @@ async function loadCommandesLigne() {
     const nomClient = c.commandeClient ? `${escapeHtml(c.clientPrenom || '')} ${escapeHtml(c.clientNom || '')}`.trim() : '';
     return `
     <tr>
-      <td data-label="N°"><strong>${c.numero}</strong></td>
-      <td data-label="Date" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
-      <td data-label="Client">${badgeQui(c)}${nomClient ? `<div style="font-size:.78rem;margin-top:3px">${nomClient}</div>` : ''}${c.clientTelephone ? `<div style="margin-top:2px"><a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);font-size:.76rem;text-decoration:none;white-space:nowrap"><i class="fas fa-phone"></i> ${escapeHtml(c.clientTelephone)}</a></div>` : ''}</td>
-      <td data-label="Articles" style="font-size:.82rem">${items}</td>
-      <td data-label="Total"><strong>${fmt(c.total)}</strong></td>
-      <td data-label="Statut">${badgeStatus(c.statut)}</td>
-      <td data-label="Actions">
-        ${c.clientLocalisation ? `<a class="btn btn-secondary btn-sm" href="${escapeHtml(localisationHref(c.clientLocalisation))}" target="_blank" rel="noopener" title="Voir la localisation">
+      <td data-label="${t('common.num')}"><strong>${c.numero}</strong></td>
+      <td data-label="${t('common.date')}" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
+      <td data-label="${t('commandes.dl_client')}">${badgeQui(c)}${nomClient ? `<div style="font-size:.78rem;margin-top:3px">${nomClient}</div>` : ''}${c.clientTelephone ? `<div style="margin-top:2px"><a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);font-size:.76rem;text-decoration:none;white-space:nowrap"><i class="fas fa-phone"></i> ${escapeHtml(c.clientTelephone)}</a></div>` : ''}</td>
+      <td data-label="${t('commandes.th_articles')}" style="font-size:.82rem">${items}</td>
+      <td data-label="${t('commandes.th_total')}"><strong>${fmt(c.total)}</strong></td>
+      <td data-label="${t('common.status')}">${badgeStatus(c.statut)}</td>
+      <td data-label="${t('common.actions')}">
+        ${c.clientLocalisation ? `<a class="btn btn-secondary btn-sm" href="${escapeHtml(localisationHref(c.clientLocalisation))}" target="_blank" rel="noopener" title="${t('commandes.voir_localisation')}">
           <i class="fas fa-location-dot"></i>
         </a>` : ''}
-        <button class="btn btn-secondary btn-sm" onclick="viewCommande('${c.id}')" title="Voir le détail">
+        <button class="btn btn-secondary btn-sm" onclick="viewCommande('${c.id}')" title="${t('commandes.voir_detail')}">
           <i class="fas fa-eye"></i>
         </button>
-        ${canEdit ? `<button class="btn btn-secondary btn-sm" onclick="openEditCommande('${c.id}')" title="Modifier">
+        ${canEdit ? `<button class="btn btn-secondary btn-sm" onclick="openEditCommande('${c.id}')" title="${t('common.modifier')}">
           <i class="fas fa-edit"></i>
         </button>` : ''}
         ${canFacture ? `<button class="btn btn-accent btn-sm" onclick="openNewFactureForCmd('${c.id}')">
-          <i class="fas fa-receipt"></i> Facturer
+          <i class="fas fa-receipt"></i> ${t('commandes.facturer_btn')}
         </button>` : ''}
       </td>
     </tr>`;
@@ -1452,11 +1452,11 @@ async function checkFacturationReady(entering = false) {
 
   const ids = new Set(factures.map(f => f.id));
   if (entering) {
-    factures.forEach(f => speak(`Facture de la commande ${f.commandeNumero || f.numero} est prête pour le client`));
+    factures.forEach(f => speak(t('facturation.tts_facture_prete', { numero: f.commandeNumero || f.numero })));
   } else if (state.factureKnownIds) {
     factures
       .filter(f => !state.factureKnownIds.has(f.id))
-      .forEach(f => speak(`Facture de la commande ${f.commandeNumero || f.numero} est prête pour le client`));
+      .forEach(f => speak(t('facturation.tts_facture_prete', { numero: f.commandeNumero || f.numero })));
   }
   state.factureKnownIds = ids;
 }
@@ -1506,19 +1506,19 @@ async function loadFactures() {
 
     return `
     <tr>
-      <td data-label="N°"><strong>${f.numero}</strong></td>
-      <td data-label="Date" style="font-size:.8rem">${fmtDateOnly(f.date)}</td>
-      <td data-label="Commande" style="font-size:.82rem;color:var(--gray)">${f.commandeNumero || '—'}</td>
-      <td data-label="Articles" style="font-size:.82rem">${nbArticles} article(s)</td>
-      <td data-label="Total"><strong>${fmt(f.total)}</strong></td>
-      <td data-label="Reste" style="color:${f.reste > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:700">${fmt(f.reste)}</td>
-      <td data-label="Paiement" style="font-size:.82rem;color:var(--gray)">${f.modePaiement || '—'}</td>
-      <td data-label="Statut">${badgeStatus(f.statut)}</td>
-      <td data-label="Actions">
+      <td data-label="${t('common.num')}"><strong>${f.numero}</strong></td>
+      <td data-label="${t('common.date')}" style="font-size:.8rem">${fmtDateOnly(f.date)}</td>
+      <td data-label="${t('facturation.th_commande')}" style="font-size:.82rem;color:var(--gray)">${f.commandeNumero || '—'}</td>
+      <td data-label="${t('commandes.th_articles')}" style="font-size:.82rem">${nbArticles} article(s)</td>
+      <td data-label="${t('commandes.th_total')}"><strong>${fmt(f.total)}</strong></td>
+      <td data-label="${t('facturation.th_reste')}" style="color:${f.reste > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:700">${fmt(f.reste)}</td>
+      <td data-label="${t('facturation.dl_paiement')}" style="font-size:.82rem;color:var(--gray)">${f.modePaiement || '—'}</td>
+      <td data-label="${t('common.status')}">${badgeStatus(f.statut)}</td>
+      <td data-label="${t('common.actions')}">
         <button class="btn btn-secondary btn-sm" onclick="aperçuFacture('${f.id}')"><i class="fas fa-print"></i></button>
         ${canPay ? `<button class="btn btn-success btn-sm" onclick="openPayFacture('${f.id}','${fmt(f.reste)}')"><i class="fas fa-check"></i> Payer</button>` : ''}
-        ${canPay ? `<button class="btn btn-secondary btn-sm" onclick="openEditFacture('${f.id}')" title="Modifier la facture"><i class="fas fa-edit"></i></button>` : ''}
-        ${isAdmin ? `<button class="btn btn-danger btn-sm" onclick="supprimerFacture('${f.id}','${f.numero}',${f.statut === 'payee'})" title="Supprimer définitivement"><i class="fas fa-trash"></i></button>` : ''}
+        ${canPay ? `<button class="btn btn-secondary btn-sm" onclick="openEditFacture('${f.id}')" title="${t('facturation.modifier_title')}"><i class="fas fa-edit"></i></button>` : ''}
+        ${isAdmin ? `<button class="btn btn-danger btn-sm" onclick="supprimerFacture('${f.id}','${f.numero}',${f.statut === 'payee'})" title="${t('facturation.supprimer_title')}"><i class="fas fa-trash"></i></button>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -1526,27 +1526,27 @@ async function loadFactures() {
 
 async function supprimerFacture(id, numero, estPayee) {
   const msg = estPayee
-    ? `⚠️ La facture ${numero} est déjà payée. La supprimer effacera cette vente de l'historique. Continuer ?`
-    : `Supprimer définitivement la facture ${numero} ?`;
+    ? t('facturation.deja_payee_supp', { numero })
+    : t('facturation.supprimer_confirm', { numero });
   if (!(await confirmDialog(msg, { danger: true }))) return;
 
   const res = await api(`/api/factures/${id}`, { method: 'DELETE' });
   if (res?.message) {
-    toast('Facture supprimée', 'warning');
+    toast(t('facturation.supprimee'), 'warning');
     loadFactures();
   } else {
-    toast(res?.error || 'Erreur', 'error');
+    toast(res?.error || t('common.error'), 'error');
   }
 }
 window.supprimerFacture = supprimerFacture;
 
 async function repairNumeros() {
-  if (!(await confirmDialog('Réparer les numéros de facture invalides (FACT-0NaN) en base ? Cette action est irréversible.'))) return;
+  if (!(await confirmDialog(t('facturation.reparer_confirm')))) return;
   showLoader();
   const res = await api('/api/factures/repair-numeros', { method: 'POST', body: '{}' });
   hideLoader();
-  if (!res) { toast('Erreur lors de la réparation', 'error'); return; }
-  toast(res.message || 'Réparation terminée', 'success');
+  if (!res) { toast(t('facturation.reparation_erreur'), 'error'); return; }
+  toast(res.message || t('facturation.reparation_ok'), 'success');
   document.getElementById('btn-repair-numeros').style.display = 'none';
   loadFactures();
 }
@@ -1576,7 +1576,7 @@ window.openEditFacture = async (factureId) => {
 function renderEditFactureItems() {
   const container = document.getElementById('editfact-items');
   if (state.editFactureItems.length === 0) {
-    container.innerHTML = '<p style="color:var(--gray);font-size:.85rem;text-align:center;padding:12px">Aucun article</p>';
+    container.innerHTML = `<p style="color:var(--gray);font-size:.85rem;text-align:center;padding:12px">${t('commandes.aucun_article')}</p>`;
   } else {
     container.innerHTML = state.editFactureItems.map((item, i) => `
       <div class="panier-item">
@@ -1651,11 +1651,10 @@ async function askDiscountPin(discountedItems) {
     return state.discountOtp.code;
   }
   const noms = discountedItems.map(i => i.nom).join(', ');
-  return promptDialog(`Le prix de "${noms}" est en dessous du tarif normal. Demandez le code à l'administrateur.`, {
-    title: 'Code admin requis',
-    placeholder: 'Code temporaire (6 chiffres)',
+  return promptDialog(t('facturation.discount_pin_prompt', { noms }), {
+    title: t('facturation.discount_pin_title'),
+    placeholder: t('facturation.discount_pin_placeholder'),
     inputType: 'password',
-    confirmLabel: 'Valider',
   });
 }
 
@@ -1670,7 +1669,7 @@ function trackDiscountOtp(code, res) {
 }
 
 async function saveEditFacture() {
-  if (state.editFactureItems.length === 0) { toast('La facture doit contenir au moins un article', 'warning'); return; }
+  if (state.editFactureItems.length === 0) { toast(t('facturation.min_1_article'), 'warning'); return; }
   const factureId = document.getElementById('editfact-facture-id').value;
 
   const discounted = findDiscountedItems(state.editFactureItems);
@@ -1688,8 +1687,8 @@ async function saveEditFacture() {
   hideLoader();
 
   if (discounted.length > 0) trackDiscountOtp(discountPin, res);
-  if (!res?.id) { toast(res?.error || 'Erreur lors de la modification', 'error'); return; }
-  toast('Facture modifiée', 'success');
+  if (!res?.id) { toast(res?.error || t('commandes.modif_erreur'), 'error'); return; }
+  toast(t('facturation.modifiee'), 'success');
   closeModal('edit-facture');
   loadFactures();
 }
@@ -1701,7 +1700,7 @@ function openNewFacture() {
     return c.statut === 'en-preparation';
   });
   const sel = document.getElementById('new-facture-commande');
-  sel.innerHTML = '<option value="">Sélectionner une commande…</option>' +
+  sel.innerHTML = `<option value="">${t('facturation.select_commande_placeholder')}</option>` +
     cmdsEligibles.map(c => `<option value="${c.id}">${c.numero} – ${fmt(c.total)}${c.tableNumero ? ' – ' + escapeHtml(c.tableNumero) : ''}</option>`).join('');
   openModal('new-facture');
 }
@@ -1718,7 +1717,7 @@ async function saveNewFacture() {
   const commandeId   = document.getElementById('new-facture-commande').value;
   const modePaiement = document.getElementById('new-facture-mode').value;
 
-  if (!commandeId) { toast('Sélectionnez une commande', 'warning'); return; }
+  if (!commandeId) { toast(t('facturation.select_commande'), 'warning'); return; }
 
   showLoader();
   const res = await api('/api/factures', {
@@ -1728,19 +1727,19 @@ async function saveNewFacture() {
   hideLoader();
 
   if (res?.id) {
-    toast(`Facture ${res.numero} générée !`, 'success');
+    toast(t('facturation.generee_excl', { numero: res.numero }), 'success');
     closeModal('new-facture');
     loadFactures();
     // Afficher aperçu immédiatement
     await aperçuFacture(res.id);
   } else {
-    toast(res?.error || 'Erreur lors de la génération', 'error');
+    toast(res?.error || t('facturation.generation_erreur'), 'error');
   }
 }
 
 window.openPayFacture = (id, reste) => {
   document.getElementById('pay-facture-id').value   = id;
-  document.getElementById('pay-facture-info').textContent = `Facture – Reste à payer : ${reste}`;
+  document.getElementById('pay-facture-info').textContent = t('facturation.reste_a_payer_info', { montant: reste });
   document.getElementById('pay-facture-prices').style.display = 'none';
   document.getElementById('btn-save-pay-facture-prices').style.display = 'none';
   state.payFactureItems = null; // tant que non ouvert, on paie au prix de la facture telle quelle
@@ -1792,11 +1791,11 @@ async function savePayFacturePrices() {
   hideLoader();
 
   if (discounted.length > 0) trackDiscountOtp(discountPin, res);
-  if (!res?.id) { toast(res?.error || 'Erreur lors de l\'enregistrement du prix', 'error'); return; }
+  if (!res?.id) { toast(res?.error || t('facturation.enregistrement_prix_erreur'), 'error'); return; }
 
   state.factures = state.factures.filter(f => f.id !== id).concat(res);
-  document.getElementById('pay-facture-info').textContent = `Facture – Reste à payer : ${fmt(res.reste)}`;
-  toast('Prix enregistré', 'success');
+  document.getElementById('pay-facture-info').textContent = t('facturation.reste_a_payer_info', { montant: fmt(res.reste) });
+  toast(t('facturation.prix_enregistre'), 'success');
 }
 
 function renderPayFacturePrices() {
@@ -1853,11 +1852,11 @@ async function confirmPayFacture() {
   hideLoader();
   if (discounted.length > 0) trackDiscountOtp(body.discountPin, res);
   if (res?.statut === 'payee') {
-    toast('Paiement enregistré !', 'success');
+    toast(t('facturation.paiement_enregistre'), 'success');
     closeModal('pay-facture');
     loadFactures();
   } else {
-    toast(res?.error || 'Erreur', 'error');
+    toast(res?.error || t('common.error'), 'error');
   }
 }
 
@@ -1869,8 +1868,8 @@ window.aperçuFacture = async (id) => {
     f = res;
   }
 
-  document.getElementById('apercu-modal-title').textContent = 'Aperçu – Facture';
-  state.printTitle = 'Facture Cook Africa';
+  document.getElementById('apercu-modal-title').textContent = t('modal.apercu_facture_title');
+  state.printTitle = t('print.titre_facture_defaut');
 
   const logoUrl = window.location.origin + '/logo-cookafrica.png';
 
@@ -1890,7 +1889,7 @@ window.aperçuFacture = async (id) => {
   const sectionBoissons = boissonsItems.length > 0 ? `
     <tr style="background:#eff6ff">
       <td colspan="4" style="font-weight:700;font-size:.8rem;color:#1565C0;padding:6px 8px">
-        <i class="fas fa-wine-glass-alt"></i> Boissons
+        <i class="fas fa-wine-glass-alt"></i> ${t('print.section_boissons')}
       </td>
     </tr>
     ${renderRows(boissonsItems)}` : '';
@@ -1898,7 +1897,7 @@ window.aperçuFacture = async (id) => {
   const sectionPlats = platsItems.length > 0 ? `
     <tr style="background:#fdf4f0">
       <td colspan="4" style="font-weight:700;font-size:.8rem;color:var(--primary);padding:6px 8px">
-        <i class="fas fa-utensils"></i> Plats
+        <i class="fas fa-utensils"></i> ${t('print.section_plats')}
       </td>
     </tr>
     ${renderRows(platsItems)}` : '';
@@ -1906,7 +1905,7 @@ window.aperçuFacture = async (id) => {
   const sectionBuffet = buffetItems.length > 0 ? `
     <tr style="background:#fefce8">
       <td colspan="4" style="font-weight:700;font-size:.8rem;color:#a16207;padding:6px 8px">
-        <i class="fas fa-utensils"></i> Buffet
+        <i class="fas fa-utensils"></i> ${t('print.section_buffet')}
       </td>
     </tr>
     ${renderRows(buffetItems)}` : '';
@@ -1916,30 +1915,30 @@ window.aperçuFacture = async (id) => {
       <div class="facture-print-header">
         <img src="${logoUrl}" alt="Cook Africa" style="height:72px;margin-bottom:6px;display:block;margin-left:auto;margin-right:auto"
              onerror="this.style.display='none'">
-        <p style="margin-top:4px;font-size:.9rem"><strong>FACTURE N° ${f.numero}</strong></p>
-        <p style="font-size:.78rem;color:var(--gray)">Date : ${fmtDateOnly(f.date)}</p>
-        ${f.tableNumero ? `<p style="font-size:.78rem"><strong>Table :</strong> ${escapeHtml(f.tableNumero)}</p>` : ''}
-        ${f.commandeNumero ? `<p style="font-size:.78rem;color:var(--gray)">Commande : ${f.commandeNumero}</p>` : ''}
-        ${f.serveurNom ? `<p style="font-size:.78rem">Servi par : <strong>${escapeHtml(f.serveurNom)}</strong></p>` : ''}
-        ${f.caissiereName ? `<p style="font-size:.78rem"><i class="fas fa-user-tie"></i> Caissière : <strong>${f.caissiereName}</strong></p>` : ''}
+        <p style="margin-top:4px;font-size:.9rem"><strong>${t('print.facture_titre', { numero: f.numero })}</strong></p>
+        <p style="font-size:.78rem;color:var(--gray)">${t('print.date_label', { date: fmtDateOnly(f.date) })}</p>
+        ${f.tableNumero ? `<p style="font-size:.78rem"><strong>${t('print.table_label')}</strong> ${escapeHtml(f.tableNumero)}</p>` : ''}
+        ${f.commandeNumero ? `<p style="font-size:.78rem;color:var(--gray)">${t('print.commande_label', { numero: f.commandeNumero })}</p>` : ''}
+        ${f.serveurNom ? `<p style="font-size:.78rem">${t('print.servi_par')} <strong>${escapeHtml(f.serveurNom)}</strong></p>` : ''}
+        ${f.caissiereName ? `<p style="font-size:.78rem"><i class="fas fa-user-tie"></i> ${t('print.caissiere_label')} <strong>${f.caissiereName}</strong></p>` : ''}
       </div>
       <table class="facture-items">
-        <thead><tr><th>Article</th><th>Qté</th><th>Prix unit.</th><th>Sous-total</th></tr></thead>
+        <thead><tr><th>${t('print.th_article')}</th><th>${t('print.th_qte')}</th><th>${t('print.th_prix_unit')}</th><th>${t('print.th_sous_total')}</th></tr></thead>
         <tbody>${sectionPlats}${sectionBuffet}${sectionBoissons}</tbody>
       </table>
       <table class="facture-totaux">
         <tr class="facture-total-final">
-          <td><strong>TOTAL</strong></td>
+          <td><strong>${t('print.total')}</strong></td>
           <td><strong>${fmt(f.total)}</strong></td>
         </tr>
         ${f.reste > 0
-          ? `<tr><td style="color:var(--danger)"><strong>RESTE À PAYER</strong></td><td style="color:var(--danger)"><strong>${fmt(f.reste)}</strong></td></tr>`
+          ? `<tr><td style="color:var(--danger)"><strong>${t('print.reste_a_payer')}</strong></td><td style="color:var(--danger)"><strong>${fmt(f.reste)}</strong></td></tr>`
           : ''}
       </table>
       <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border);font-size:.78rem;color:var(--gray)">
-        <p>Mode de paiement : <strong>${f.modePaiement || '—'}</strong></p>
-        <p style="margin-top:6px;text-align:center">Merci de votre visite !</p>
-        <p style="font-size:.7rem;text-align:center;margin-top:4px">Cook Africa – Le restaurant qui rassemble</p>
+        <p>${t('print.mode_paiement_label')} <strong>${f.modePaiement || '—'}</strong></p>
+        <p style="margin-top:6px;text-align:center">${t('print.merci')}</p>
+        <p style="font-size:.7rem;text-align:center;margin-top:4px">${t('print.tagline')}</p>
       </div>
     </div>`;
 
@@ -1950,7 +1949,7 @@ function printFacture() {
   const content = document.getElementById('facture-print-area').innerHTML;
   const logoUrl = window.location.origin + '/logo-cookafrica.png';
   const w = window.open('', '_blank');
-  w.document.write(`<!DOCTYPE html><html><head><title>${escapeHtml(state.printTitle || 'Facture Cook Africa')}</title>
+  w.document.write(`<!DOCTYPE html><html><head><title>${escapeHtml(state.printTitle || t('print.titre_facture_defaut'))}</title>
     <style>
       /* Format pensé pour une imprimante thermique 58mm — pas de couleurs de fond
          (invisibles si "imprimer les couleurs d'arrière-plan" est désactivé, ce qui est le
@@ -2040,7 +2039,7 @@ async function loadMenu() {
   const sel = document.getElementById('filter-menu-cat');
   const currentVal = sel.value;
   const cats = [...new Set(menu.map(m => m.categorie).filter(Boolean))].sort();
-  sel.innerHTML = '<option value="">Toutes les catégories</option>' +
+  sel.innerHTML = `<option value="">${t('menu.all_categories')}</option>` +
     cats.map(c => `<option value="${c}"${c === currentVal ? ' selected' : ''}>${c}</option>`).join('');
 
   // Synchroniser aussi le select du formulaire plat avec les catégories connues
@@ -2066,7 +2065,7 @@ function renderMenu(menu) {
   const grid = document.getElementById('menu-grid');
 
   if (filtered.length === 0) {
-    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><i class="fas fa-book-open"></i><p>${q ? 'Aucun résultat pour cette recherche' : 'Aucun plat dans le menu'}</p></div>`;
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><i class="fas fa-book-open"></i><p>${q ? t('menu.aucun_resultat') : t('menu.aucun_plat')}</p></div>`;
     return;
   }
 
@@ -2096,7 +2095,7 @@ function renderMenu(menu) {
 window.editPlat = (id) => {
   const m = state.menu.find(x => x.id === id);
   if (!m) return;
-  document.getElementById('modal-plat-title').textContent = 'Modifier le plat';
+  document.getElementById('modal-plat-title').textContent = t('menu.modifier_plat');
   document.getElementById('plat-id').value          = m.id;
   document.getElementById('plat-nom').value         = m.nom;
   document.getElementById('plat-categorie').value   = m.categorie;
@@ -2109,7 +2108,7 @@ window.editPlat = (id) => {
 };
 
 function openNewPlat() {
-  document.getElementById('modal-plat-title').textContent = 'Nouveau plat';
+  document.getElementById('modal-plat-title').textContent = t('menu.nouveau_plat_titre');
   document.getElementById('form-plat').reset();
   document.getElementById('plat-id').value = '';
   openModal('plat');
@@ -2125,7 +2124,7 @@ async function savePlat() {
     description: document.getElementById('plat-description').value.trim(),
     joursDisponibles: [...document.querySelectorAll('.plat-jour:checked')].map(cb => cb.value),
   };
-  if (!body.nom || !body.prix) { toast('Nom et prix requis', 'warning'); return; }
+  if (!body.nom || !body.prix) { toast(t('menu.nom_prix_requis'), 'warning'); return; }
 
   showLoader();
   const res = id
@@ -2134,18 +2133,18 @@ async function savePlat() {
   hideLoader();
 
   if (res?.id || res?.nom) {
-    toast(id ? 'Plat mis à jour' : 'Plat créé', 'success');
+    toast(id ? t('menu.plat_maj') : t('menu.plat_cree'), 'success');
     closeModal('plat');
     loadMenu();
   } else {
-    toast(res?.error || 'Erreur', 'error');
+    toast(res?.error || t('common.error'), 'error');
   }
 }
 
 window.deletePlat = async (id) => {
   const m = state.menu.find(x => x.id === id);
   if (!m) return;
-  if (!(await confirmDialog(`Supprimer "${m.nom}" du menu ?`, { danger: true }))) return;
+  if (!(await confirmDialog(t('menu.supprimer_confirm', { nom: m.nom }), { danger: true }))) return;
 
   showLoader();
   const res = await api(`/api/menu/${id}`, { method: 'DELETE' });
@@ -2156,17 +2155,17 @@ window.deletePlat = async (id) => {
     state.menu = state.menu.filter(x => x.id !== id);
     renderMenu(state.menu);
   } else {
-    toast(res?.error || 'Erreur', 'error');
+    toast(res?.error || t('common.error'), 'error');
   }
 };
 
 async function seedMenu() {
-  if (!(await confirmDialog('Initialiser le menu avec les plats par défaut ?'))) return;
+  if (!(await confirmDialog(t('menu.init_confirm')))) return;
   showLoader();
   const res = await api('/api/menu/seed', { method: 'POST', body: '{}' });
   hideLoader();
   if (res?.message) { toast(res.message, 'success'); loadMenu(); }
-  else toast(res?.error || 'Erreur', 'error');
+  else toast(res?.error || t('common.error'), 'error');
 }
 
 // ─── RÉSERVATIONS ──────────────────────────────────────
@@ -2182,14 +2181,14 @@ async function loadReservations() {
 
 function badgeReservationStatut(statut) {
   return statut === 'facturee'
-    ? '<span class="badge-status payee">✅ Facturée</span>'
-    : '<span class="badge-status en-attente">📝 En attente</span>';
+    ? `<span class="badge-status payee">${t('reservations.badge_facturee')}</span>`
+    : `<span class="badge-status en-attente">${t('reservations.badge_en_attente')}</span>`;
 }
 
 function renderReservations(reservations) {
   const tbody = document.getElementById('reservations-tbody');
   if (reservations.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--gray)">Aucune réservation</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--gray)">${t('reservations.aucune')}</td></tr>`;
     return;
   }
 
@@ -2198,27 +2197,27 @@ function renderReservations(reservations) {
     const canFacturer = r.statut !== 'facturee';
     return `
     <tr>
-      <td data-label="Événement"><strong>${escapeHtml(r.nomEvenement)}</strong>${r.menu ? `<div style="font-size:.78rem;color:var(--gray);margin-top:2px">${escapeHtml(r.menu)}</div>` : ''}</td>
-      <td data-label="Client">${escapeHtml(nomClient)}${r.contact ? `<div style="font-size:.78rem;color:var(--gray)">${escapeHtml(r.contact)}</div>` : ''}</td>
-      <td data-label="Salle">${escapeHtml(r.salle) || '—'}</td>
-      <td data-label="Jour J" style="font-size:.85rem">${fmtDateOnly(r.dateEvenement)}</td>
-      <td data-label="Montant global"><strong>${fmt(r.montantGlobal)}</strong></td>
-      <td data-label="Avance">${fmt(r.avance)}</td>
-      <td data-label="Reste" style="color:${r.reste > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:700">${fmt(r.reste)}</td>
-      <td data-label="Statut">${badgeReservationStatut(r.statut)}</td>
-      <td data-label="Actions">
-        <button class="btn btn-secondary btn-sm" onclick="apercuReservation('${r.id}')" title="Imprimer le reçu de réservation"><i class="fas fa-print"></i></button>
-        ${r.statut !== 'facturee' ? `<button class="btn btn-secondary btn-sm" onclick="editReservation('${r.id}')" title="Modifier"><i class="fas fa-edit"></i></button>` : ''}
-        ${canFacturer ? `<button class="btn btn-accent btn-sm" onclick="facturerReservation('${r.id}')" title="Générer la facture du jour J"><i class="fas fa-receipt"></i> Facturer</button>` : ''}
-        ${r.statut === 'facturee' ? `<button class="btn btn-success btn-sm" onclick="payerReservationFacture('${r.id}')" title="Encaisser le reste à payer"><i class="fas fa-check"></i> Payer</button>` : ''}
-        <button class="btn btn-danger btn-sm" onclick="deleteReservation('${r.id}')" title="Supprimer"><i class="fas fa-trash"></i></button>
+      <td data-label="${t('reservations.th_evenement')}"><strong>${escapeHtml(r.nomEvenement)}</strong>${r.menu ? `<div style="font-size:.78rem;color:var(--gray);margin-top:2px">${escapeHtml(r.menu)}</div>` : ''}</td>
+      <td data-label="${t('commandes.dl_client')}">${escapeHtml(nomClient)}${r.contact ? `<div style="font-size:.78rem;color:var(--gray)">${escapeHtml(r.contact)}</div>` : ''}</td>
+      <td data-label="${t('reservations.th_salle')}">${escapeHtml(r.salle) || '—'}</td>
+      <td data-label="${t('reservations.th_jourj')}" style="font-size:.85rem">${fmtDateOnly(r.dateEvenement)}</td>
+      <td data-label="${t('reservations.th_montant')}"><strong>${fmt(r.montantGlobal)}</strong></td>
+      <td data-label="${t('reservations.th_avance')}">${fmt(r.avance)}</td>
+      <td data-label="${t('facturation.th_reste')}" style="color:${r.reste > 0 ? 'var(--danger)' : 'var(--success)'};font-weight:700">${fmt(r.reste)}</td>
+      <td data-label="${t('common.status')}">${badgeReservationStatut(r.statut)}</td>
+      <td data-label="${t('common.actions')}">
+        <button class="btn btn-secondary btn-sm" onclick="apercuReservation('${r.id}')" title="${t('reservations.imprimer_recu')}"><i class="fas fa-print"></i></button>
+        ${r.statut !== 'facturee' ? `<button class="btn btn-secondary btn-sm" onclick="editReservation('${r.id}')" title="${t('common.modifier')}"><i class="fas fa-edit"></i></button>` : ''}
+        ${canFacturer ? `<button class="btn btn-accent btn-sm" onclick="facturerReservation('${r.id}')" title="${t('reservations.generer_facture_jourj')}"><i class="fas fa-receipt"></i> ${t('commandes.facturer_btn')}</button>` : ''}
+        ${r.statut === 'facturee' ? `<button class="btn btn-success btn-sm" onclick="payerReservationFacture('${r.id}')" title="${t('reservations.encaisser_reste')}"><i class="fas fa-check"></i> ${t('facturation.payer')}</button>` : ''}
+        <button class="btn btn-danger btn-sm" onclick="deleteReservation('${r.id}')" title="${t('common.supprimer')}"><i class="fas fa-trash"></i></button>
       </td>
     </tr>`;
   }).join('');
 }
 
 async function openNewReservation() {
-  document.getElementById('modal-reservation-title').textContent = 'Nouvelle réservation';
+  document.getElementById('modal-reservation-title').textContent = t('reservations.new');
   document.getElementById('form-reservation').reset();
   document.getElementById('resa-id').value = '';
   document.getElementById('resa-date-reservation').value = today();
@@ -2277,7 +2276,7 @@ function renderResaMenuItems() {
 window.editReservation = async (id) => {
   const r = state.reservations.find(x => x.id === id);
   if (!r) return;
-  document.getElementById('modal-reservation-title').textContent = 'Modifier la réservation';
+  document.getElementById('modal-reservation-title').textContent = t('reservations.modifier_titre');
   document.getElementById('resa-id').value = r.id;
   document.getElementById('resa-nom-evenement').value = r.nomEvenement;
   document.getElementById('resa-salle').value = r.salle || '';
@@ -2328,7 +2327,7 @@ async function saveReservation() {
   };
 
   if (!body.nomEvenement || !body.nom || !body.dateEvenement || !body.montantGlobal) {
-    toast("Nom de l'événement, nom du client, date du jour J et montant sont requis", 'warning');
+    toast(t('reservations.champs_requis'), 'warning');
     return;
   }
 
@@ -2339,19 +2338,19 @@ async function saveReservation() {
   hideLoader();
 
   if (res?.id) {
-    toast(id ? 'Réservation mise à jour' : 'Réservation créée', 'success');
+    toast(id ? t('reservations.maj') : t('reservations.creee'), 'success');
     closeModal('reservation');
     await loadReservations();
     if (!id) apercuReservation(res.id); // nouvelle réservation → propose aussitôt le reçu à imprimer
   } else {
-    toast(res?.error || 'Erreur', 'error');
+    toast(res?.error || t('common.error'), 'error');
   }
 }
 
 window.deleteReservation = async (id) => {
   const r = state.reservations.find(x => x.id === id);
   if (!r) return;
-  if (!(await confirmDialog(`Supprimer la réservation "${r.nomEvenement}" ?`, { danger: true }))) return;
+  if (!(await confirmDialog(t('reservations.supprimer_confirm', { nom: r.nomEvenement }), { danger: true }))) return;
 
   showLoader();
   const res = await api(`/api/reservations/${id}`, { method: 'DELETE' });
@@ -2361,26 +2360,26 @@ window.deleteReservation = async (id) => {
     toast(res.message, 'success');
     loadReservations();
   } else {
-    toast(res?.error || 'Erreur', 'error');
+    toast(res?.error || t('common.error'), 'error');
   }
 };
 
 window.facturerReservation = async (id) => {
   const r = state.reservations.find(x => x.id === id);
   if (!r) return;
-  if (!(await confirmDialog(`Générer la facture du jour J (${fmtDateOnly(r.dateEvenement)}) pour "${r.nomEvenement}" ?`))) return;
+  if (!(await confirmDialog(t('reservations.facturer_confirm', { date: fmtDateOnly(r.dateEvenement), nom: r.nomEvenement })))) return;
 
   showLoader();
   const res = await api(`/api/reservations/${id}/facturer`, { method: 'POST', body: '{}' });
   hideLoader();
 
   if (res?.facture?.id) {
-    toast(`Facture ${res.facture.numero} générée`, 'success');
+    toast(t('reservations.facture_generee', { numero: res.facture.numero }), 'success');
     await loadReservations();
     state.factures.push(res.facture);
     aperçuFacture(res.facture.id);
   } else {
-    toast(res?.error || 'Erreur', 'error');
+    toast(res?.error || t('common.error'), 'error');
   }
 };
 
@@ -2398,7 +2397,7 @@ window.payerReservationFacture = async (id) => {
   if (!facture) return;
 
   if (facture.statut === 'payee') {
-    toast('Cette facture est déjà entièrement payée', 'info');
+    toast(t('facturation.deja_entierement_payee'), 'info');
     return;
   }
   state.factures = state.factures.filter(f => f.id !== facture.id).concat(facture);
@@ -2412,8 +2411,8 @@ window.apercuReservation = (id) => {
   const r = state.reservations.find(x => x.id === id);
   if (!r) return;
 
-  document.getElementById('apercu-modal-title').textContent = 'Aperçu – Reçu de réservation';
-  state.printTitle = 'Reçu de réservation - Cook Africa';
+  document.getElementById('apercu-modal-title').textContent = t('modal.apercu_resa_title');
+  state.printTitle = t('print.resa_titre_defaut');
 
   const logoUrl = window.location.origin + '/logo-cookafrica.png';
   const nomClient = `${r.prenom || ''} ${r.nom}`.trim();
@@ -2423,39 +2422,39 @@ window.apercuReservation = (id) => {
       <div class="facture-print-header">
         <img src="${logoUrl}" alt="Cook Africa" style="height:72px;margin-bottom:6px;display:block;margin-left:auto;margin-right:auto"
              onerror="this.style.display='none'">
-        <p style="margin-top:4px;font-size:.9rem"><strong>REÇU DE RÉSERVATION${r.numero ? ' N° ' + r.numero : ''}</strong></p>
-        <p style="font-size:.78rem;color:var(--gray)">Émis le : ${fmtDateOnly(r.dateReservation)}</p>
-        <p style="font-size:.78rem"><strong>Événement :</strong> ${escapeHtml(r.nomEvenement)}</p>
-        ${r.salle ? `<p style="font-size:.78rem"><strong>Salle :</strong> ${escapeHtml(r.salle)}</p>` : ''}
-        <p style="font-size:.78rem">Client : <strong>${escapeHtml(nomClient)}</strong></p>
+        <p style="margin-top:4px;font-size:.9rem"><strong>${t('print.resa_titre')}${r.numero ? ' N° ' + r.numero : ''}</strong></p>
+        <p style="font-size:.78rem;color:var(--gray)">${t('print.emis_le', { date: fmtDateOnly(r.dateReservation) })}</p>
+        <p style="font-size:.78rem"><strong>${t('print.evenement_label')}</strong> ${escapeHtml(r.nomEvenement)}</p>
+        ${r.salle ? `<p style="font-size:.78rem"><strong>${t('print.salle_label')}</strong> ${escapeHtml(r.salle)}</p>` : ''}
+        <p style="font-size:.78rem">${t('print.client_label')} <strong>${escapeHtml(nomClient)}</strong></p>
         ${r.contact ? `<p style="font-size:.78rem">${escapeHtml(r.contact)}</p>` : ''}
         ${r.email ? `<p style="font-size:.78rem">${escapeHtml(r.email)}</p>` : ''}
       </div>
       <table class="facture-items">
-        <thead><tr><th>Description</th><th style="text-align:right">Montant</th></tr></thead>
+        <thead><tr><th>${t('print.th_description')}</th><th style="text-align:right">${t('print.th_montant')}</th></tr></thead>
         <tbody>
           <tr>
-            <td>${r.menu ? escapeHtml(r.menu) : 'Prestation événementielle'}</td>
+            <td>${r.menu ? escapeHtml(r.menu) : t('print.prestation_evenementielle')}</td>
             <td style="text-align:right"><strong>${fmt(r.montantGlobal)}</strong></td>
           </tr>
         </tbody>
       </table>
       <table class="facture-totaux">
-        <tr><td>Montant global</td><td>${fmt(r.montantGlobal)}</td></tr>
-        <tr><td>Avance versée</td><td>${fmt(r.avance)}</td></tr>
+        <tr><td>${t('print.montant_global')}</td><td>${fmt(r.montantGlobal)}</td></tr>
+        <tr><td>${t('print.avance_versee')}</td><td>${fmt(r.avance)}</td></tr>
         <tr class="facture-total-final">
-          <td><strong>RESTE À PAYER LE JOUR J</strong></td>
+          <td><strong>${t('print.reste_jourj')}</strong></td>
           <td><strong>${fmt(r.reste)}</strong></td>
         </tr>
       </table>
       <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border);font-size:.78rem;color:var(--gray)">
-        <p style="text-align:center"><strong>Jour J de l'événement : ${fmtDateOnly(r.dateEvenement)}</strong></p>
+        <p style="text-align:center"><strong>${t('print.jourj_label')} ${fmtDateOnly(r.dateEvenement)}</strong></p>
         <p style="margin-top:6px;text-align:center;font-style:italic">
-          Ce reçu atteste de la réservation et de l'avance versée.<br>
-          <strong>L'acompte versé n'est pas remboursable.</strong><br>
-          La facture officielle sera émise le jour de l'événement.
+          ${t('print.resa_note1')}<br>
+          <strong>${t('print.resa_note2')}</strong><br>
+          ${t('print.resa_note3')}
         </p>
-        <p style="font-size:.7rem;text-align:center;margin-top:8px">Cook Africa – Le restaurant qui rassemble</p>
+        <p style="font-size:.7rem;text-align:center;margin-top:8px">${t('print.tagline')}</p>
       </div>
     </div>`;
 
@@ -2490,7 +2489,7 @@ async function loadStocksPlats() {
 
   if (!menu) {
     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--danger)"><i class="fas fa-exclamation-triangle"></i> Impossible de charger le menu.</td></tr>';
-    toast('Erreur de chargement du menu', 'error');
+    toast(t('menu.chargement_erreur'), 'error');
     return;
   }
   if (state.menu.length === 0) state.menu = menu;
@@ -2517,21 +2516,21 @@ async function loadStocksPlats() {
       : restante === 0 && prepare > 0 ? 'var(--danger)'
       : restante <= prepare * 0.3 ? 'var(--warning)'
       : 'var(--success)';
-    const etatLabel = isFromPrev && prepare > 0 ? '📋 Report J-1'
-      : restante === 0 && prepare > 0 ? '❌ Épuisé'
-      : restante <= prepare * 0.3 && prepare > 0 ? '⚠️ Presque fini'
-      : prepare === 0 ? '—' : '✅ Disponible';
+    const etatLabel = isFromPrev && prepare > 0 ? t('stocks.etat_report')
+      : restante === 0 && prepare > 0 ? t('stocks.etat_epuise')
+      : restante <= prepare * 0.3 && prepare > 0 ? t('stocks.etat_presque_fini')
+      : prepare === 0 ? '—' : t('stocks.etat_disponible');
     return `
     <tr${isFromPrev ? ' style="opacity:.85"' : ''}>
-      <td data-label="Plat"><strong>${m.nom}</strong></td>
-      <td data-label="Catégorie" style="color:var(--gray);font-size:.82rem">${m.categorie}</td>
-      <td data-label="Préparé">
+      <td data-label="${t('stocks.th_plat')}"><strong>${m.nom}</strong></td>
+      <td data-label="${t('stocks.th_categorie')}" style="color:var(--gray);font-size:.82rem">${m.categorie}</td>
+      <td data-label="${t('stocks.dl_prepare')}">
         <input type="number" min="0" class="plats-qty-input" id="plat-qty-${m.id}"
           value="${prepare}" data-menu-id="${m.id}" data-nom="${m.nom}" data-categorie="${m.categorie}"
           data-has-existing="${ps && !isFromPrev ? '1' : ''}">
       </td>
-      <td data-label="Restant"><strong style="color:${etatColor}">${prepare > 0 ? (isFromPrev ? prepare : restante) : '—'}</strong>${prepare > 0 && !isFromPrev ? ` <small style="color:var(--gray)">(${pct}%)</small>` : ''}</td>
-      <td data-label="État"><span style="color:${etatColor};font-weight:600">${etatLabel}</span></td>
+      <td data-label="${t('stocks.dl_restant')}"><strong style="color:${etatColor}">${prepare > 0 ? (isFromPrev ? prepare : restante) : '—'}</strong>${prepare > 0 && !isFromPrev ? ` <small style="color:var(--gray)">(${pct}%)</small>` : ''}</td>
+      <td data-label="${t('stocks.th_etat')}"><span style="color:${etatColor};font-weight:600">${etatLabel}</span></td>
     </tr>`;
   }).join('');
 
@@ -2541,7 +2540,7 @@ async function loadStocksPlats() {
   if (banner) {
     if (epuises.length > 0) {
       banner.style.display = '';
-      banner.innerHTML = `<i class="fas fa-exclamation-circle"></i> Stock épuisé : ${epuises.map(p => `<strong>${p.nom}</strong>`).join(', ')}`;
+      banner.innerHTML = `<i class="fas fa-exclamation-circle"></i> ${t('stocks.epuise_label')} ${epuises.map(p => `<strong>${p.nom}</strong>`).join(', ')}`;
     } else {
       banner.style.display = 'none';
     }
@@ -2567,7 +2566,7 @@ async function saveStocksPlats() {
     }
   });
 
-  if (plats.length === 0) { toast('Aucune donnée à enregistrer', 'warning'); return; }
+  if (plats.length === 0) { toast(t('stocks.aucune_donnee_save'), 'warning'); return; }
   showLoader();
   const res = await api('/api/stocks/plats', { method: 'POST', body: JSON.stringify({ plats, date }) });
   hideLoader();
@@ -2575,7 +2574,7 @@ async function saveStocksPlats() {
     toast(res.message, 'success');
     loadStocksPlats();
   } else {
-    toast(res?.error || 'Erreur', 'error');
+    toast(res?.error || t('common.error'), 'error');
   }
 }
 
@@ -2586,7 +2585,7 @@ async function loadStocks() {
 window.editStock = (id) => {
   const s = state.stocks.find(x => x.id === id);
   if (!s) return;
-  document.getElementById('modal-stock-title').textContent = 'Modifier le stock';
+  document.getElementById('modal-stock-title').textContent = t('stocks.modifier_titre');
   document.getElementById('stock-id').value       = s.id;
   document.getElementById('stock-nom').value      = s.nom;
   document.getElementById('stock-categorie').value= s.categorie;
@@ -2597,7 +2596,7 @@ window.editStock = (id) => {
 };
 
 function openNewStock() {
-  document.getElementById('modal-stock-title').textContent = 'Nouvel article de stock';
+  document.getElementById('modal-stock-title').textContent = t('stocks.nouveau_titre');
   document.getElementById('form-stock').reset();
   document.getElementById('stock-id').value    = '';
   document.getElementById('stock-unite').value = 'kg';
@@ -2613,7 +2612,7 @@ async function saveStock() {
     minimum:   Number(document.getElementById('stock-minimum').value),
     unite:     document.getElementById('stock-unite').value.trim(),
   };
-  if (!body.nom) { toast('Nom requis', 'warning'); return; }
+  if (!body.nom) { toast(t('stocks.nom_requis'), 'warning'); return; }
 
   showLoader();
   const res = id
@@ -2622,21 +2621,21 @@ async function saveStock() {
   hideLoader();
 
   if (res?.id || res?.nom) {
-    toast(id ? 'Stock mis à jour' : 'Article ajouté', 'success');
+    toast(id ? t('stocks.maj') : t('stocks.ajoute'), 'success');
     closeModal('stock');
     loadStocks();
   } else {
-    toast(res?.error || 'Erreur', 'error');
+    toast(res?.error || t('common.error'), 'error');
   }
 }
 
 async function seedStocks() {
-  if (!(await confirmDialog('Initialiser les stocks avec les ingrédients par défaut ?'))) return;
+  if (!(await confirmDialog(t('stocks.init_confirm')))) return;
   showLoader();
   const res = await api('/api/stocks/seed', { method: 'POST', body: '{}' });
   hideLoader();
   if (res?.message) { toast(res.message, 'success'); loadStocks(); }
-  else toast(res?.error || 'Erreur', 'error');
+  else toast(res?.error || t('common.error'), 'error');
 }
 
 // ─── RAPPORTS ──────────────────────────────────────────
@@ -2667,7 +2666,7 @@ async function loadRapport() {
   const previousChoice = catSelect.value;
 
   if (cats.length === 0) {
-    catSelect.innerHTML = '<option value="">Aucune donnée</option>';
+    catSelect.innerHTML = `<option value="">${t('rapports.aucune_donnee')}</option>`;
     catQteEl.textContent = '—';
   } else {
     catSelect.innerHTML = cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
@@ -2678,9 +2677,9 @@ async function loadRapport() {
 
   // Par statut
   document.getElementById('rapp-par-statut').innerHTML = `
-    <li><span>✅ Payées</span><strong>${data.parStatut?.payee || 0}</strong></li>
-    <li><span>⚠️ Partielles</span><strong>${data.parStatut?.partielle || 0}</strong></li>
-    <li><span>Ticket moyen</span><strong>${fmt(data.moyenne)}</strong></li>
+    <li><span>${t('rapports.payees')}</span><strong>${data.parStatut?.payee || 0}</strong></li>
+    <li><span>${t('rapports.partielles')}</span><strong>${data.parStatut?.partielle || 0}</strong></li>
+    <li><span>${t('rapports.ticket_moyen')}</span><strong>${fmt(data.moyenne)}</strong></li>
   `;
 
   // Par mode de paiement
@@ -2688,7 +2687,7 @@ async function loadRapport() {
   document.getElementById('rapp-par-mode').innerHTML =
     Object.entries(parMode).map(([mode, total]) =>
       `<li><span>${mode}</span><strong>${fmt(total)}</strong></li>`
-    ).join('') || '<li><span>Aucune donnée</span></li>';
+    ).join('') || `<li><span>${t('rapports.aucune_donnee')}</span></li>`;
 
   // Plats & boissons vendus (quantités)
   document.getElementById('rapp-total-plats-qte').textContent    = data.totalPlatsQte ?? '—';
@@ -2696,8 +2695,8 @@ async function loadRapport() {
 
   // Top plats / Top boissons — article précis, quantité vendue et CA généré
   const renderTop = (items) => (items || []).map(p =>
-    `<li><span>${escapeHtml(p.nom)}</span><strong>${p.quantite} vendus — ${fmt(p.total)}</strong></li>`
-  ).join('') || '<li><span>Aucune donnée</span></li>';
+    `<li><span>${escapeHtml(p.nom)}</span><strong>${t('rapports.top_vendus_montant', { quantite: p.quantite, total: fmt(p.total) })}</strong></li>`
+  ).join('') || `<li><span>${t('rapports.aucune_donnee')}</span></li>`;
 
   document.getElementById('rapp-top-plats').innerHTML    = renderTop(data.topPlats);
   document.getElementById('rapp-top-boissons').innerHTML = renderTop(data.topBoissons);
@@ -2707,45 +2706,48 @@ async function loadRapport() {
   document.getElementById('rapp-par-categorie').innerHTML =
     Object.entries(parCat).sort((a, b) => b[1] - a[1]).map(([cat, total]) =>
       `<li><span>${cat}</span><strong>${fmt(total)}</strong></li>`
-    ).join('') || '<li><span>Aucune donnée</span></li>';
+    ).join('') || `<li><span>${t('rapports.aucune_donnee')}</span></li>`;
 
   // Détail complet des ventes par article, toutes catégories — pas seulement un top 5.
   const ventesTbody = document.getElementById('rapport-ventes-tbody');
   if (!data.ventesDetail || data.ventesDetail.length === 0) {
-    ventesTbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--gray)">Aucune vente pour cette période</td></tr>';
+    ventesTbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--gray)">${t('rapports.aucune_vente')}</td></tr>`;
   } else {
     ventesTbody.innerHTML = data.ventesDetail.map(v => `
       <tr>
-        <td data-label="Article"><strong>${escapeHtml(v.nom)}</strong></td>
-        <td data-label="Catégorie" style="font-size:.82rem;color:var(--gray)">${escapeHtml(v.categorie)}</td>
-        <td data-label="Quantité vendue">${v.quantite}</td>
-        <td data-label="CA généré"><strong>${fmt(v.total)}</strong></td>
+        <td data-label="${t('rapports.th_article')}"><strong>${escapeHtml(v.nom)}</strong></td>
+        <td data-label="${t('stocks.th_categorie')}" style="font-size:.82rem;color:var(--gray)">${escapeHtml(v.categorie)}</td>
+        <td data-label="${t('rapports.th_qte_vendue')}">${v.quantite}</td>
+        <td data-label="${t('rapports.th_ca_genere')}"><strong>${fmt(v.total)}</strong></td>
       </tr>`).join('');
   }
 
   // Tableau détail
   const tbody = document.getElementById('rapport-factures-tbody');
   if (!data.factures || data.factures.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--gray)">Aucune facture pour cette période</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--gray)">${t('rapports.aucune_facture')}</td></tr>`;
     return;
   }
   tbody.innerHTML = data.factures.map(f => `
     <tr>
-      <td data-label="N°"><strong>${f.numero}</strong></td>
-      <td data-label="Date" style="font-size:.8rem">${fmtDateOnly(f.date)}</td>
-      <td data-label="Commande" style="font-size:.82rem;color:var(--gray)">${f.commandeNumero || '—'}</td>
-      <td data-label="Articles" style="font-size:.82rem">${(f.items || []).length} article(s)</td>
-      <td data-label="Total"><strong>${fmt(f.total)}</strong></td>
-      <td data-label="Paiement" style="font-size:.82rem;color:var(--gray)">${f.modePaiement || '—'}</td>
-      <td data-label="Statut">${badgeStatus(f.statut)}</td>
+      <td data-label="${t('common.num')}"><strong>${f.numero}</strong></td>
+      <td data-label="${t('common.date')}" style="font-size:.8rem">${fmtDateOnly(f.date)}</td>
+      <td data-label="${t('facturation.th_commande')}" style="font-size:.82rem;color:var(--gray)">${f.commandeNumero || '—'}</td>
+      <td data-label="${t('commandes.th_articles')}" style="font-size:.82rem">${(f.items || []).length} article(s)</td>
+      <td data-label="${t('commandes.th_total')}"><strong>${fmt(f.total)}</strong></td>
+      <td data-label="${t('facturation.dl_paiement')}" style="font-size:.82rem;color:var(--gray)">${f.modePaiement || '—'}</td>
+      <td data-label="${t('common.status')}">${badgeStatus(f.statut)}</td>
     </tr>`).join('');
 }
 
 function exportCSV() {
   const tbody = document.getElementById('rapport-factures-tbody');
-  if (!tbody || !tbody.querySelectorAll('tr').length) { toast('Générez d\'abord le rapport', 'warning'); return; }
+  if (!tbody || !tbody.querySelectorAll('tr').length) { toast(t('rapports.generer_dabord'), 'warning'); return; }
 
-  const rows = [['N° Facture', 'Date', 'Commande', 'Articles', `Total ${SITE.currency.label}`, 'Mode', 'Statut']];
+  const rows = [[
+    t('rapports.csv_numero_facture'), t('rapports.csv_date'), t('rapports.csv_commande'), t('rapports.csv_articles'),
+    `${t('rapports.csv_total_label')} ${SITE.currency.label}`, t('rapports.csv_mode'), t('rapports.csv_statut'),
+  ]];
   tbody.querySelectorAll('tr').forEach(tr => {
     rows.push(Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim()));
   });
@@ -2766,24 +2768,26 @@ async function loadUtilisateurs() {
   if (!users) return;
   state.utilisateurs = users;
 
-  const roleLabels = { admin: 'Admin', caissiere: 'Caissière', 'caissier-en-ligne': 'Caissier en ligne', serveur: 'Serveur', cuisiniere: 'Cuisinière', barman: 'Barman' };
+  // Version courte (juste "Admin", pas "Administrateur") pour cette colonne étroite —
+  // sinon mêmes libellés que ROLE_LABELS (voir en tête de fichier).
+  const roleLabels = { admin: 'Admin', caissiere: t('utilisateurs.role_caissiere'), 'caissier-en-ligne': t('utilisateurs.role_caissier_en_ligne'), serveur: t('utilisateurs.role_serveur'), cuisiniere: t('utilisateurs.role_cuisiniere'), barman: t('utilisateurs.role_barman') };
   const roleColors = { admin: '#8B1A1A', caissiere: '#2C5F2E', 'caissier-en-ligne': '#00897B', serveur: '#9C27B0', cuisiniere: '#D4891A', barman: '#1565C0' };
 
   const tbody = document.getElementById('utilisateurs-tbody');
   if (users.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--gray)">Aucun utilisateur</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--gray)">${t('utilisateurs.aucun')}</td></tr>`;
     return;
   }
 
   tbody.innerHTML = users.map(u => `
     <tr style="${!u.actif ? 'opacity:.5' : ''}">
-      <td data-label="Prénom">${u.prenom || '—'}</td>
-      <td data-label="Nom"><strong>${u.nom}</strong></td>
-      <td data-label="Identifiant" style="font-size:.82rem;color:var(--gray)">${u.username}</td>
-      <td data-label="Rôle"><span style="color:${roleColors[u.role] || '#666'};font-weight:700;font-size:.82rem">${roleLabels[u.role] || u.role}</span></td>
-      <td data-label="Statut"><span class="badge-status ${u.actif ? 'disponible' : 'annulee'}">${u.actif ? '✅ Actif' : '❌ Inactif'}</span></td>
-      <td data-label="Connexion" style="font-size:.78rem;color:var(--gray)">${u.lastLogin ? fmtDate(u.lastLogin) : 'Jamais'}</td>
-      <td data-label="Actions">
+      <td data-label="${t('utilisateurs.th_prenom')}">${u.prenom || '—'}</td>
+      <td data-label="${t('utilisateurs.th_nom')}"><strong>${u.nom}</strong></td>
+      <td data-label="${t('utilisateurs.th_identifiant')}" style="font-size:.82rem;color:var(--gray)">${u.username}</td>
+      <td data-label="${t('utilisateurs.th_role')}"><span style="color:${roleColors[u.role] || '#666'};font-weight:700;font-size:.82rem">${roleLabels[u.role] || u.role}</span></td>
+      <td data-label="${t('common.status')}"><span class="badge-status ${u.actif ? 'disponible' : 'annulee'}">${u.actif ? t('utilisateurs.actif') : t('utilisateurs.inactif')}</span></td>
+      <td data-label="${t('utilisateurs.dl_connexion')}" style="font-size:.78rem;color:var(--gray)">${u.lastLogin ? fmtDate(u.lastLogin) : t('utilisateurs.jamais')}</td>
+      <td data-label="${t('common.actions')}">
         <button class="btn btn-secondary btn-sm" onclick="editUtilisateur('${u.id}')">
           <i class="fas fa-edit"></i>
         </button>
@@ -2791,18 +2795,18 @@ async function loadUtilisateurs() {
         <button class="btn btn-${u.actif ? 'danger' : 'success'} btn-sm"
           onclick="toggleUtilisateur('${u.id}',${u.actif})">
           <i class="fas fa-${u.actif ? 'user-slash' : 'user-check'}"></i>
-        </button>` : '<span style="font-size:.72rem;color:var(--gray);padding:5px">(vous)</span>'}
+        </button>` : `<span style="font-size:.72rem;color:var(--gray);padding:5px">${t('utilisateurs.vous')}</span>`}
       </td>
     </tr>`).join('');
 }
 
 function openNewUtilisateur() {
-  document.getElementById('modal-utilisateur-title').textContent = 'Nouvel utilisateur';
+  document.getElementById('modal-utilisateur-title').textContent = t('modal.util_new_title');
   document.getElementById('form-utilisateur').reset();
   document.getElementById('utilisateur-id').value = '';
   document.getElementById('utilisateur-username').disabled = false;
   document.getElementById('utilisateur-password').required = true;
-  document.getElementById('utilisateur-password-label').textContent = 'Mot de passe *';
+  document.getElementById('utilisateur-password-label').textContent = t('utilisateurs.password_label');
   document.getElementById('utilisateur-password-hint').style.display = 'none';
   document.getElementById('utilisateur-actif-group').style.display = 'none';
   openModal('utilisateur');
@@ -2811,7 +2815,7 @@ function openNewUtilisateur() {
 window.editUtilisateur = (id) => {
   const u = state.utilisateurs.find(x => x.id === id);
   if (!u) return;
-  document.getElementById('modal-utilisateur-title').textContent = 'Modifier l\'utilisateur';
+  document.getElementById('modal-utilisateur-title').textContent = t('utilisateurs.modifier_titre');
   document.getElementById('utilisateur-id').value      = u.id;
   document.getElementById('utilisateur-prenom').value  = u.prenom || '';
   document.getElementById('utilisateur-nom').value     = u.nom;
@@ -2820,7 +2824,7 @@ window.editUtilisateur = (id) => {
   document.getElementById('utilisateur-role').value    = u.role;
   document.getElementById('utilisateur-password').value   = '';
   document.getElementById('utilisateur-password').required = false;
-  document.getElementById('utilisateur-password-label').textContent = 'Nouveau mot de passe';
+  document.getElementById('utilisateur-password-label').textContent = t('utilisateurs.nouveau_password_label');
   document.getElementById('utilisateur-password-hint').style.display = 'block';
   document.getElementById('utilisateur-actif-group').style.display = 'block';
   document.getElementById('utilisateur-actif').value = String(u.actif !== false);
@@ -2836,8 +2840,8 @@ async function saveUtilisateur() {
   const password = document.getElementById('utilisateur-password').value;
   const actif    = document.getElementById('utilisateur-actif').value;
 
-  if (!nom) { toast('Le nom est requis', 'warning'); return; }
-  if (!id && (!username || !password)) { toast('Identifiant et mot de passe requis', 'warning'); return; }
+  if (!nom) { toast(t('utilisateurs.nom_requis'), 'warning'); return; }
+  if (!id && (!username || !password)) { toast(t('utilisateurs.id_pwd_requis'), 'warning'); return; }
 
   showLoader();
   let res;
@@ -2854,19 +2858,20 @@ async function saveUtilisateur() {
   hideLoader();
 
   if (res?.message || res?.id) {
-    toast(id ? 'Utilisateur mis à jour' : 'Utilisateur créé', 'success');
+    toast(id ? t('utilisateurs.maj') : t('utilisateurs.cree'), 'success');
     closeModal('utilisateur');
     loadUtilisateurs();
   } else {
-    toast(res?.error || 'Erreur', 'error');
+    toast(res?.error || t('common.error'), 'error');
   }
 }
 
 window.toggleUtilisateur = async (id, currentActif) => {
   const newActif = !currentActif;
   const u = state.utilisateurs.find(x => x.id === id);
-  const label = newActif ? 'réactiver' : 'désactiver';
-  if (!(await confirmDialog(`${label.charAt(0).toUpperCase() + label.slice(1)} ${u?.nom || ''} ?`))) return;
+  const label = newActif ? t('utilisateurs.reactiver') : t('utilisateurs.desactiver');
+  const action = label.charAt(0).toUpperCase() + label.slice(1);
+  if (!(await confirmDialog(t('utilisateurs.reactiver_desactiver_confirm', { action, nom: u?.nom || '' })))) return;
   showLoader();
   const res = await api(`/api/auth/utilisateurs/${id}`, {
     method: 'PUT',
@@ -2874,10 +2879,10 @@ window.toggleUtilisateur = async (id, currentActif) => {
   });
   hideLoader();
   if (res?.message) {
-    toast(`Utilisateur ${newActif ? 'réactivé' : 'désactivé'}`, newActif ? 'success' : 'warning');
+    toast(t('utilisateurs.reactive_desactive', { action: newActif ? t('utilisateurs.reactiver') : t('utilisateurs.desactiver') }), newActif ? 'success' : 'warning');
     loadUtilisateurs();
   } else {
-    toast(res?.error || 'Erreur', 'error');
+    toast(res?.error || t('common.error'), 'error');
   }
 };
 
@@ -2894,12 +2899,12 @@ async function loadWifiConfig() {
   if (!toggle || !status || !currentIpEl || !listEl) return;
 
   toggle.checked = data.enabled;
-  status.textContent = data.enabled ? 'Activée' : 'Désactivée';
+  status.textContent = data.enabled ? t('utilisateurs.wifi_activee') : t('utilisateurs.wifi_desactivee');
   status.style.color = data.enabled ? 'var(--success)' : 'var(--gray)';
   currentIpEl.textContent = data.currentIp || '—';
 
   if (!data.allowedIps || data.allowedIps.length === 0) {
-    listEl.innerHTML = '<li style="color:var(--gray);font-size:.83rem">Aucune adresse enregistrée</li>';
+    listEl.innerHTML = `<li style="color:var(--gray);font-size:.83rem">${t('utilisateurs.wifi_aucune_adresse')}</li>`;
   } else {
     listEl.innerHTML = data.allowedIps.map(ip => `
       <li style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
@@ -2917,7 +2922,7 @@ async function toggleWifiRestriction() {
     toast(res.message, res.enabled ? 'success' : 'warning');
     loadWifiConfig();
   } else {
-    toast(res?.error || 'Erreur', 'error');
+    toast(res?.error || t('common.error'), 'error');
     loadWifiConfig(); // remettre l'état du toggle
   }
 }
@@ -2925,28 +2930,28 @@ async function toggleWifiRestriction() {
 async function addCurrentWifiIp() {
   const res = await api('/api/wifi-config/add', { method: 'POST', body: '{}' });
   if (res?.message) { toast(res.message, 'success'); loadWifiConfig(); }
-  else toast(res?.error || 'Erreur', 'error');
+  else toast(res?.error || t('common.error'), 'error');
 }
 
 async function addManualWifiIp() {
   const input = document.getElementById('wifi-manual-ip');
   const ip = input?.value.trim();
-  if (!ip) { toast('Saisissez une adresse IP', 'warning'); return; }
+  if (!ip) { toast(t('utilisateurs.wifi_ip_requise'), 'warning'); return; }
   const res = await api('/api/wifi-config/add', { method: 'POST', body: JSON.stringify({ ip }) });
   if (res?.message) {
-    toast(`${ip} ajoutée`, 'success');
+    toast(t('utilisateurs.wifi_ip_ajoutee', { ip }), 'success');
     if (input) input.value = '';
     loadWifiConfig();
   } else {
-    toast(res?.error || 'Erreur', 'error');
+    toast(res?.error || t('common.error'), 'error');
   }
 }
 
 window.removeWifiIp = async (ip) => {
-  if (!(await confirmDialog(`Supprimer ${ip} de la liste ?`, { danger: true }))) return;
+  if (!(await confirmDialog(t('utilisateurs.wifi_supprimer_confirm', { ip }), { danger: true }))) return;
   const res = await api('/api/wifi-config/remove', { method: 'DELETE', body: JSON.stringify({ ip }) });
-  if (res?.message) { toast('Adresse supprimée', 'warning'); loadWifiConfig(); }
-  else toast(res?.error || 'Erreur', 'error');
+  if (res?.message) { toast(t('utilisateurs.wifi_adresse_supprimee'), 'warning'); loadWifiConfig(); }
+  else toast(res?.error || t('common.error'), 'error');
 };
 
 // ─── CODE DE BAISSE DE PRIX (OTP temporaire) ───────────
@@ -2970,7 +2975,7 @@ function renderDiscountOtpStatus(expiresAt, revealedCode) {
   clearInterval(_discountOtpCountdown);
 
   if (!expiresAt || new Date(expiresAt).getTime() <= Date.now()) {
-    el.innerHTML = 'Aucun code actif';
+    el.innerHTML = t('utilisateurs.discount_aucun_code');
     el.style.color = 'var(--gray)';
     return;
   }
@@ -2983,13 +2988,13 @@ function renderDiscountOtpStatus(expiresAt, revealedCode) {
     const remainingMs = new Date(expiresAt).getTime() - Date.now();
     if (remainingMs <= 0) {
       clearInterval(_discountOtpCountdown);
-      el.innerHTML = 'Code expiré';
+      el.innerHTML = t('utilisateurs.discount_code_expire');
       el.style.color = 'var(--gray)';
       return;
     }
     const m = Math.floor(remainingMs / 60000);
     const s = Math.floor((remainingMs % 60000) / 1000);
-    el.innerHTML = `${codeLine}Expire dans ${m}:${String(s).padStart(2, '0')}`;
+    el.innerHTML = `${codeLine}${t('utilisateurs.discount_expire_dans', { mmss: `${m}:${String(s).padStart(2, '0')}` })}`;
     el.style.color = 'var(--success)';
   };
   tick();
@@ -2998,21 +3003,21 @@ function renderDiscountOtpStatus(expiresAt, revealedCode) {
 
 async function generateDiscountOtp() {
   const res = await api('/api/discount-pin/generate', { method: 'POST' });
-  if (!res?.code) { toast(res?.error || 'Erreur', 'error'); return; }
+  if (!res?.code) { toast(res?.error || t('common.error'), 'error'); return; }
   renderDiscountOtpStatus(res.expiresAt, res.code);
-  toast('Code généré — communiquez-le à la caissière', 'success');
+  toast(t('utilisateurs.discount_code_genere'), 'success');
 }
 
 async function saveDiscountOtpWindow() {
   const input = document.getElementById('discount-otp-window');
   const minutes = parseInt(input?.value, 10);
   if (!Number.isInteger(minutes) || minutes < 1 || minutes > 60) {
-    toast('La durée doit être un nombre entier entre 1 et 60 minutes', 'warning');
+    toast(t('utilisateurs.discount_duree_invalide'), 'warning');
     return;
   }
   const res = await api('/api/discount-pin/config', { method: 'PUT', body: JSON.stringify({ windowMinutes: minutes }) });
   if (res?.message) toast(res.message, 'success');
-  else toast(res?.error || 'Erreur', 'error');
+  else toast(res?.error || t('common.error'), 'error');
 }
 
 // ─── SESSIONS ──────────────────────────────────────────
@@ -3048,24 +3053,24 @@ async function loadSessions() {
 
   const tbody = document.getElementById('sessions-tbody');
   if (sessions.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--gray)">Aucune session</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--gray)">${t('sessions.aucune')}</td></tr>`;
     return;
   }
 
   const roleColors = { admin: '#8B1A1A', caissiere: '#2C5F2E', serveur: '#9C27B0', cuisiniere: '#D4891A', barman: '#1565C0' };
   tbody.innerHTML = sessions.map(s => `
     <tr>
-      <td data-label="Date" style="font-size:.8rem">${fmtDate(s.timestamp)}</td>
-      <td data-label="Identifiant"><strong>${s.username}</strong></td>
-      <td data-label="Nom" style="font-size:.85rem">${s.nom || '—'}</td>
-      <td data-label="Rôle"><span style="color:${roleColors[s.role] || '#666'};font-weight:700;font-size:.82rem">${s.role}</span></td>
-      <td data-label="Action">
+      <td data-label="${t('sessions.dl_date')}" style="font-size:.8rem">${fmtDate(s.timestamp)}</td>
+      <td data-label="${t('sessions.dl_identifiant')}"><strong>${s.username}</strong></td>
+      <td data-label="${t('sessions.th_nom')}" style="font-size:.85rem">${s.nom || '—'}</td>
+      <td data-label="${t('sessions.th_role')}"><span style="color:${roleColors[s.role] || '#666'};font-weight:700;font-size:.82rem">${s.role}</span></td>
+      <td data-label="${t('sessions.th_action')}">
         <span style="display:inline-flex;align-items:center;gap:5px;font-size:.82rem;font-weight:600;color:${s.action === 'login' ? 'var(--success)' : 'var(--gray)'}">
           <i class="fas fa-${s.action === 'login' ? 'sign-in-alt' : 'sign-out-alt'}"></i>
-          ${s.action === 'login' ? 'Connexion' : 'Déconnexion'}
+          ${s.action === 'login' ? t('sessions.connexion') : t('sessions.deconnexion')}
         </span>
       </td>
-      <td data-label="IP" style="font-size:.78rem;color:var(--gray)">${s.ip || '—'}</td>
+      <td data-label="${t('sessions.dl_ip')}" style="font-size:.78rem;color:var(--gray)">${s.ip || '—'}</td>
     </tr>`).join('');
 }
 
@@ -3074,9 +3079,9 @@ async function loadSessions() {
 function fmtRelative(iso) {
   if (!iso) return '';
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (diff < 60)   return 'À l\'instant';
-  if (diff < 3600) return `il y a ${Math.floor(diff / 60)} min`;
-  if (diff < 86400) return `il y a ${Math.floor(diff / 3600)} h`;
+  if (diff < 60)   return t('sessions.a_linstant');
+  if (diff < 3600) return t('sessions.il_y_a_min', { n: Math.floor(diff / 60) });
+  if (diff < 86400) return t('sessions.il_y_a_h', { n: Math.floor(diff / 3600) });
   return fmtDateOnly(iso);
 }
 
@@ -3194,10 +3199,10 @@ function showCopyLinkDialog(message, link) {
   document.getElementById('copy-link-btn-copy').onclick = async () => {
     try {
       await navigator.clipboard.writeText(link);
-      toast('Lien copié !', 'success');
+      toast(t('modal.link_copied'), 'success');
     } catch {
       input.select();
-      toast('Sélectionnez le champ et copiez avec Ctrl+C', 'warning');
+      toast(t('modal.select_and_copy'), 'warning');
     }
   };
   openModal('copy-link');
@@ -3381,9 +3386,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const lien = `${window.location.origin}/commander`;
     try {
       await navigator.clipboard.writeText(lien);
-      toast('Lien client copié — partagez-le au client', 'success');
+      toast(t('cmdligne.copied'), 'success');
     } catch {
-      showCopyLinkDialog('Copiez ce lien à partager au client :', lien);
+      showCopyLinkDialog(t('cmdligne.copy_dialog_hint'), lien);
     }
   });
 
