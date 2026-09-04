@@ -360,7 +360,13 @@ body {
 /* ── Table ─────────────────────────────────────── */
 .table-wrapper {
   background: var(--white); border-radius: var(--radius);
-  border: 1px solid var(--border); overflow: hidden;
+  border: 1px solid var(--border);
+  /* Horizontal seulement : un tableau plus large que son conteneur reste
+     accessible par défilement plutôt que d'avoir ses dernières colonnes
+     (souvent Statut/Actions) invisibles sans le moindre indice — filet de
+     sécurité valable à N'IMPORTE QUELLE largeur, y compris entre les points
+     de bascule ci-dessous vers la mise en page "cartes". */
+  overflow-x: auto; overflow-y: hidden;
   box-shadow: var(--shadow);
 }
 .data-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
@@ -765,20 +771,19 @@ mark.search-hl {
 }
 .sidebar-overlay.visible { display: block; }
 
-/* ── Responsive 768px ──────────────────────────── */
+/* ── Responsive tablette/mobile (≤ 768px) ───────
+   Un seul point de bascule pour toute la mise en page "compacte" — tiroir de
+   navigation, tableaux en cartes, formulaires empilés. Avant, le tiroir/les
+   cartes ne s'activaient qu'à 600px alors que les grilles (stats, dashboard,
+   rapports) basculaient déjà à 768px : entre les deux (601-768px — tablette
+   en portrait, téléphone en paysage), la barre latérale fixe grignotait la
+   largeur mais les tableaux restaient en mode desktop, ce qui poussait les
+   colonnes Statut/Actions hors champ, invisibles (voir aussi le filet de
+   sécurité overflow-x sur .table-wrapper juste au-dessus). */
 @media (max-width: 768px) {
   :root { --sidebar-w: 220px; }
   .content-area { padding: 16px; }
-  .stats-grid   { grid-template-columns: 1fr 1fr; }
-  .form-row     { grid-template-columns: 1fr; }
-  .modal-box    { max-width: 100%; }
-  .cuisine-grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
-  .dashboard-grid { grid-template-columns: 1fr; }
-  .rapports-grid  { grid-template-columns: 1fr 1fr; }
-}
 
-/* ── Responsive 600px — Pixel 4 (393px) ───────── */
-@media (max-width: 600px) {
   /* Hamburger visible */
   .hamburger-btn { display: flex; }
 
