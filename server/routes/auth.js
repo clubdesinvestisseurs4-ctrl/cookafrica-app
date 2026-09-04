@@ -6,9 +6,15 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 const { pushNotification } = require('../utils/notifications');
 
 const { isAllowedIp, getClientIp } = require('../utils/wifi');
-const { verifySwitchToken } = require('../utils/directory');
+const { verifySwitchToken, signVouchToken, lookupDirectorySites } = require('../utils/directory');
 
 const router = express.Router();
+
+// Même valeur que HOME_API_URL côté client (client/app.js) — pas un secret, juste
+// l'adresse publique du backend qui héberge l'annuaire multi-site (déjà visible dans
+// le bundle JS de chaque site). Utilisée uniquement par GET /directory-sites ci-dessous
+// quand CE site n'est pas lui-même le site maison.
+const HOME_DIRECTORY_URL = 'https://cookafrica-api-667992371198.us-central1.run.app';
 
 // Normalise les anciens noms de rôles vers les nouveaux
 const ROLE_MIGRATION = {
@@ -133,6 +139,41 @@ router.post('/exchange-switch-token', async (req, res) => {
     res.json({ token, user: { id: userDoc.id, username: user.username, nom: nomComplet, role: effectiveRole } });
   } catch (err) {
     console.error('Exchange switch token error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// GET /api/auth/directory-sites — bascule vers un autre site sans redemander de mot
+// de passe, depuis N'IMPORTE QUEL site (contrairement à GET /api/directory/my-sites,
+// qui ne marche que depuis le site maison). Ce site vérifie d'abord l'admin
+// localement, avec son propre JWT_SECRET (authenticateToken ci-dessous) ; ensuite :
+//   - si CE site est le site maison, court-circuit local (même base, même processus) ;
+//   - sinon, aller-retour serveur-à-serveur vers le site maison avec un jeton de
+//     caution de 30s (voir signVouchToken) — jamais un mot de passe, jamais un secret
+//     transmis au navigateur, jamais le JWT_SECRET de ce site.
+router.get('/directory-sites', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    if (process.env.DIRECTORY_ENABLED === 'true') {
+      const result = await lookupDirectorySites(req.user.username);
+      if (!result) return res.status(404).json({ error: 'Aucun accès multi-site pour ce compte' });
+      return res.json(result);
+    }
+
+    if (!process.env.DIRECTORY_VOUCH_SECRET) {
+      return res.status(404).json({ error: 'Bascule multi-site non configurée sur ce site' });
+    }
+
+    const vouchToken = signVouchToken(req.user.username);
+    const resp = await fetch(`${HOME_DIRECTORY_URL}/api/directory/vouch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vouchToken }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) return res.status(resp.status).json(data);
+    res.json(data);
+  } catch (err) {
+    console.error('Directory sites error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });

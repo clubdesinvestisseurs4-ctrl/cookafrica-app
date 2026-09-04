@@ -11,6 +11,7 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 const {
   signDirectorySession, verifyDirectorySession,
   signSwitchToken,
+  verifyVouchToken, lookupDirectorySites,
 } = require('../utils/directory');
 
 const router = express.Router();
@@ -22,21 +23,43 @@ const router = express.Router();
 // une seconde fois pour lister les autres sites auxquels il a accès.
 router.get('/my-sites', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
-    const dirSnapshot = await db.collection('admin_directory')
-      .where('username', '==', req.user.username)
-      .limit(1).get();
-    if (dirSnapshot.empty) {
+    const result = await lookupDirectorySites(req.user.username);
+    if (!result) {
       return res.status(404).json({ error: 'Aucun accès multi-site pour ce compte' });
     }
-    const doc = dirSnapshot.docs[0];
-    const account = doc.data();
-
-    res.json({
-      directoryToken: signDirectorySession(doc.id),
-      sites: (account.sites || []).map(s => ({ siteId: s.siteId, label: s.label })),
-    });
+    res.json(result);
   } catch (err) {
     console.error('Directory my-sites error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// POST /api/directory/vouch — équivalent de /my-sites pour un admin connecté sur un
+// site SECONDAIRE (Dubaï, etc.) : appelé uniquement backend-à-backend par
+// GET /api/auth/directory-sites sur ce site-là, jamais directement par un navigateur.
+// La confiance vient du jeton de caution (voir signVouchToken) — jamais d'un mot de
+// passe ni d'un JWT_SECRET partagé entre sites.
+router.post('/vouch', async (req, res) => {
+  try {
+    const { vouchToken } = req.body;
+    if (!vouchToken) {
+      return res.status(400).json({ error: 'vouchToken requis' });
+    }
+
+    let payload;
+    try {
+      payload = verifyVouchToken(vouchToken);
+    } catch {
+      return res.status(401).json({ error: 'Jeton de caution invalide ou expiré' });
+    }
+
+    const result = await lookupDirectorySites(payload.username);
+    if (!result) {
+      return res.status(404).json({ error: 'Aucun accès multi-site pour ce compte' });
+    }
+    res.json(result);
+  } catch (err) {
+    console.error('Directory vouch error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });

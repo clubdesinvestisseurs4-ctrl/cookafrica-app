@@ -613,15 +613,17 @@ window.openSwitchSite = async () => {
     return;
   }
 
-  // Sur le site maison, la session déjà active suffit à prouver l'identité de
-  // l'admin (voir GET /api/directory/my-sites, vérifié avec le JWT_SECRET de ce
-  // même backend) — inutile de redemander un mot de passe. Ce raccourci n'existe
-  // que dans ce sens : un site secondaire ne peut pas vérifier ce jeton, chacun
-  // gardant son propre secret par conception (voir HOME_API_URL en tête de fichier).
-  if (API === HOME_API_URL && state.token) {
+  // La session déjà active sur CE site suffit à prouver l'identité de l'admin —
+  // inutile de redemander un mot de passe, quel que soit le site où l'on se trouve.
+  // Marche dans les deux sens : chaque site vérifie son propre jeton localement
+  // (son propre JWT_SECRET), puis va chercher la liste des sites accessibles auprès
+  // du site maison — directement s'il L'EST, sinon via un aller-retour serveur-à-
+  // serveur protégé par un secret que le navigateur ne voit jamais (voir
+  // GET /api/auth/directory-sites côté serveur).
+  if (state.token) {
     showLoader();
     try {
-      const res = await fetch(`${HOME_API_URL}/api/directory/my-sites`, {
+      const res = await fetch(`${API}/api/auth/directory-sites`, {
         headers: { Authorization: `Bearer ${state.token}` },
       });
       if (res.ok) {
