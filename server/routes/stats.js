@@ -59,7 +59,13 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       totalPlats,
       totalBoissons,
       commandesParStatut,
-      commandesRecentes: commandesJour.slice(-5).reverse(),
+      // Toutes les commandes actives (en-attente/en-preparation), pas seulement celles
+      // du jour : une commande bloquée depuis hier (personne ne l'a envoyée en cuisine
+      // ni annulée) doit continuer à apparaître ici — sinon elle reste comptée dans
+      // commandesActives ci-dessus sans jamais réapparaître dans cette liste dès que la
+      // date change, ce qui donne l'impression d'un total fantôme qu'actualiser ne
+      // résout jamais.
+      commandesRecentes: commandesActives.slice(-5).reverse(),
     };
 
     cache.set('stats:dashboard', result, 60_000);
