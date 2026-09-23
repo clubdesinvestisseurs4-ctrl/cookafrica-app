@@ -1159,13 +1159,25 @@ async function saveEditCommande() {
   if (state.editCommandeItems.length === 0) { toast('La commande doit contenir au moins un article', 'warning'); return; }
   const id = document.getElementById('editcmd-id').value;
 
+  // Cet écran ne propose aujourd'hui que quantité/ajout/suppression (prix toujours au
+  // tarif catalogue), donc `discounted` est normalement vide ici — mais le serveur applique
+  // la même règle que pour une facture (voir routes/commandes.js), donc on reste cohérent
+  // au cas où un prix modifié atteindrait un jour cet appel.
+  const discounted = findDiscountedItems(state.editCommandeItems);
+  let discountPin;
+  if (discounted.length > 0) {
+    discountPin = await askDiscountPin(discounted);
+    if (discountPin === null) return;
+  }
+
   showLoader();
   const res = await api(`/api/commandes/${id}/items`, {
     method: 'PUT',
-    body: JSON.stringify({ items: state.editCommandeItems }),
+    body: JSON.stringify({ items: state.editCommandeItems, discountPin }),
   });
   hideLoader();
 
+  if (discounted.length > 0) trackDiscountOtp(discountPin, res);
   if (!res?.id) { toast(res?.error || 'Erreur lors de la modification', 'error'); return; }
   toast('Commande modifiée', 'success');
   closeModal('edit-commande');

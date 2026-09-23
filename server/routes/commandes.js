@@ -7,6 +7,7 @@ const eventBus = require('../utils/eventBus');
 const { buildCommandeUpdate } = require('../utils/commandeUpdate');
 const { getNextNumero, decrementStocksForItems } = require('../utils/commandes');
 const { createFactureFromCommande } = require('../utils/factures');
+const { findDiscountedItems, verifyDiscountPin } = require('../utils/discountPin');
 const { formatMontant } = require('../utils/currency');
 
 const router = express.Router();
@@ -176,9 +177,13 @@ router.put('/:id/envoyer', authenticateToken, requireRole('admin', 'serveur'), a
 // PUT /api/commandes/:id/items — modification libre des articles d'une commande, tant
 // qu'aucune facture n'a encore été générée. Le serveur ne peut plus modifier une commande
 // une fois envoyée à la facturation : elle appartient alors à la caissière.
+// Baisser un prix sous le tarif catalogue requiert le code admin (discountPin) — même règle
+// que /api/factures/:id/edit-items. Avant ce correctif (2026-09-22), cette route acceptait le
+// prix envoyé par le client sans aucune vérification : n'importe quel rôle autorisé à modifier
+// une commande pouvait donc facturer un article moins cher que le menu sans code.
 router.put('/:id/items', authenticateToken, requireRole('admin', 'serveur', 'caissiere', 'caissier-en-ligne'), async (req, res) => {
   try {
-    const { items } = req.body;
+    const { items, discountPin } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'La commande doit contenir au moins un article' });
     }
@@ -209,6 +214,20 @@ router.put('/:id/items', authenticateToken, requireRole('admin', 'serveur', 'cai
       sousTotal: Number(i.prix) * Number(i.quantite),
       categorie: i.categorie || '',
     }));
+
+    const discounted = await findDiscountedItems(db, mappedItems);
+    let discountValidUntil = null;
+    if (discounted.length > 0) {
+      const { valid, expiresAt } = await verifyDiscountPin(discountPin);
+      if (!valid) {
+        return res.status(403).json({
+          error: 'Code admin requis pour baisser un prix sous le tarif normal',
+          requiresDiscountPin: true,
+        });
+      }
+      discountValidUntil = expiresAt;
+    }
+
     const total = mappedItems.reduce((s, i) => s + i.sousTotal, 0);
     const now = new Date();
 
@@ -232,7 +251,10 @@ router.put('/:id/items', authenticateToken, requireRole('admin', 'serveur', 'cai
       createdBy: req.user.username,
     });
 
-    res.json({ id: req.params.id, ...existing, ...update });
+    res.json({
+      id: req.params.id, ...existing, ...update,
+      ...(discountValidUntil ? { discountValidUntil } : {}),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
