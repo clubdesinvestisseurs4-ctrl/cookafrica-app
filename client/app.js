@@ -1159,25 +1159,13 @@ async function saveEditCommande() {
   if (state.editCommandeItems.length === 0) { toast('La commande doit contenir au moins un article', 'warning'); return; }
   const id = document.getElementById('editcmd-id').value;
 
-  // Cet écran ne propose aujourd'hui que quantité/ajout/suppression (prix toujours au
-  // tarif catalogue), donc `discounted` est normalement vide ici — mais le serveur applique
-  // la même règle que pour une facture (voir routes/commandes.js), donc on reste cohérent
-  // au cas où un prix modifié atteindrait un jour cet appel.
-  const discounted = findDiscountedItems(state.editCommandeItems);
-  let discountPin;
-  if (discounted.length > 0) {
-    discountPin = await askDiscountPin(discounted);
-    if (discountPin === null) return;
-  }
-
   showLoader();
   const res = await api(`/api/commandes/${id}/items`, {
     method: 'PUT',
-    body: JSON.stringify({ items: state.editCommandeItems, discountPin }),
+    body: JSON.stringify({ items: state.editCommandeItems }),
   });
   hideLoader();
 
-  if (discounted.length > 0) trackDiscountOtp(discountPin, res);
   if (!res?.id) { toast(res?.error || 'Erreur lors de la modification', 'error'); return; }
   toast('Commande modifiée', 'success');
   closeModal('edit-commande');
@@ -1685,21 +1673,13 @@ async function saveEditFacture() {
   if (state.editFactureItems.length === 0) { toast('La facture doit contenir au moins un article', 'warning'); return; }
   const factureId = document.getElementById('editfact-facture-id').value;
 
-  const discounted = findDiscountedItems(state.editFactureItems);
-  let discountPin;
-  if (discounted.length > 0) {
-    discountPin = await askDiscountPin(discounted);
-    if (discountPin === null) return;
-  }
-
   showLoader();
   const res = await api(`/api/factures/${factureId}/edit-items`, {
     method: 'POST',
-    body: JSON.stringify({ items: state.editFactureItems, discountPin }),
+    body: JSON.stringify({ items: state.editFactureItems }),
   });
   hideLoader();
 
-  if (discounted.length > 0) trackDiscountOtp(discountPin, res);
   if (!res?.id) { toast(res?.error || 'Erreur lors de la modification', 'error'); return; }
   toast('Facture modifiée', 'success');
   closeModal('edit-facture');
@@ -1789,21 +1769,13 @@ async function savePayFacturePrices() {
   if (!state.payFactureItems || state.payFactureItems.length === 0) return;
   const id = document.getElementById('pay-facture-id').value;
 
-  const discounted = findDiscountedItems(state.payFactureItems);
-  let discountPin;
-  if (discounted.length > 0) {
-    discountPin = await askDiscountPin(discounted);
-    if (discountPin === null) return;
-  }
-
   showLoader();
   const res = await api(`/api/factures/${id}/edit-items`, {
     method: 'POST',
-    body: JSON.stringify({ items: state.payFactureItems, discountPin }),
+    body: JSON.stringify({ items: state.payFactureItems }),
   });
   hideLoader();
 
-  if (discounted.length > 0) trackDiscountOtp(discountPin, res);
   if (!res?.id) { toast(res?.error || 'Erreur lors de l\'enregistrement du prix', 'error'); return; }
 
   state.factures = state.factures.filter(f => f.id !== id).concat(res);
@@ -1846,14 +1818,7 @@ async function confirmPayFacture() {
   const mode = document.getElementById('pay-facture-mode').value;
   const body = { modePaiement: mode };
 
-  let discounted = [];
   if (state.payFactureItems) {
-    discounted = findDiscountedItems(state.payFactureItems);
-    if (discounted.length > 0) {
-      const discountPin = await askDiscountPin(discounted);
-      if (discountPin === null) return;
-      body.discountPin = discountPin;
-    }
     body.items = state.payFactureItems;
   }
 
@@ -1863,7 +1828,6 @@ async function confirmPayFacture() {
     body: JSON.stringify(body),
   });
   hideLoader();
-  if (discounted.length > 0) trackDiscountOtp(body.discountPin, res);
   if (res?.statut === 'payee') {
     toast('Paiement enregistré !', 'success');
     closeModal('pay-facture');

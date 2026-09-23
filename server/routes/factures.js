@@ -5,7 +5,6 @@ const { pushNotification } = require('../utils/notifications');
 const cache    = require('../utils/cache');
 const eventBus = require('../utils/eventBus');
 const { createFactureFromCommande } = require('../utils/factures');
-const { findDiscountedItems, verifyDiscountPin } = require('../utils/discountPin');
 const { formatMontant } = require('../utils/currency');
 
 const router = express.Router();
@@ -136,11 +135,11 @@ router.post('/', authenticateToken, requireRole('admin', 'caissiere', 'caissier-
 });
 
 // PUT /api/factures/:id/pay — enregistrer le paiement
-// La caissière (ou l'admin) peut ajuster le prix de chaque article. Baisser un
-// prix sous le tarif catalogue (menu) requiert le code admin (discountPin).
+// La caissière (ou l'admin) peut ajuster librement le prix de chaque article, y compris
+// sous le tarif catalogue (menu) — pas de code admin requis (décision du 2026-09-23).
 router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere', 'caissier-en-ligne'), async (req, res) => {
   try {
-    const { modePaiement, items, discountPin } = req.body;
+    const { modePaiement, items } = req.body;
     const docRef = db.collection('factures').doc(req.params.id);
     const doc = await docRef.get();
     if (!doc.exists) return res.status(404).json({ error: 'Facture introuvable' });
@@ -158,7 +157,6 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere', 'cai
     };
 
     let finalItems = facture.items || [];
-    let discountValidUntil = null;
 
     if (Array.isArray(items) && items.length > 0) {
       const mappedItems = items.map(i => ({
@@ -169,18 +167,6 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere', 'cai
         sousTotal: Number(i.prix) * Number(i.quantite),
         categorie: i.categorie || '',
       }));
-
-      const discounted = await findDiscountedItems(db, mappedItems);
-      if (discounted.length > 0) {
-        const { valid, expiresAt } = await verifyDiscountPin(discountPin);
-        if (!valid) {
-          return res.status(403).json({
-            error: 'Code admin requis pour baisser un prix sous le tarif normal',
-            requiresDiscountPin: true,
-          });
-        }
-        discountValidUntil = expiresAt;
-      }
 
       finalItems = mappedItems;
       update.items = mappedItems;
@@ -228,21 +214,18 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere', 'cai
       createdBy: req.user.username,
     });
 
-    res.json({
-      id: req.params.id, ...facture, ...update, items: finalItems, total: finalTotal,
-      ...(discountValidUntil ? { discountValidUntil } : {}),
-    });
+    res.json({ id: req.params.id, ...facture, ...update, items: finalItems, total: finalTotal });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // POST /api/factures/:id/edit-items — caissière (ou admin) : modifie librement les articles
-// d'une facture non encore payée (prix, quantités, ajout/suppression). Baisser un prix
-// sous le tarif catalogue requiert le code admin (voir utils/discountPin.js).
+// d'une facture non encore payée (prix, quantités, ajout/suppression), y compris sous le
+// tarif catalogue — pas de code admin requis (décision du 2026-09-23).
 router.post('/:id/edit-items', authenticateToken, requireRole('admin', 'caissiere', 'caissier-en-ligne'), async (req, res) => {
   try {
-    const { items, discountPin } = req.body;
+    const { items } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'La facture doit contenir au moins un article' });
     }
@@ -264,19 +247,6 @@ router.post('/:id/edit-items', authenticateToken, requireRole('admin', 'caissier
       sousTotal: Number(i.prix) * Number(i.quantite),
       categorie: i.categorie || '',
     }));
-
-    const discounted = await findDiscountedItems(db, mappedItems);
-    let discountValidUntil = null;
-    if (discounted.length > 0) {
-      const { valid, expiresAt } = await verifyDiscountPin(discountPin);
-      if (!valid) {
-        return res.status(403).json({
-          error: 'Code admin requis pour baisser un prix sous le tarif normal',
-          requiresDiscountPin: true,
-        });
-      }
-      discountValidUntil = expiresAt;
-    }
 
     const total = mappedItems.reduce((s, i) => s + i.sousTotal, 0);
     const now = new Date();
@@ -302,10 +272,7 @@ router.post('/:id/edit-items', authenticateToken, requireRole('admin', 'caissier
       createdBy: req.user.username,
     });
 
-    res.json({
-      id: req.params.id, ...facture, ...update,
-      ...(discountValidUntil ? { discountValidUntil } : {}),
-    });
+    res.json({ id: req.params.id, ...facture, ...update });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
