@@ -1,4 +1,4 @@
-name: Backend — CI/CD (Cloud Run)
+name: Backend — CI/CD (Render + Cloud Run)
 
 on:
   push:
@@ -31,7 +31,23 @@ jobs:
       - run: npm ci
       - run: npm test
 
-  deploy:
+  deploy-render:
+    name: Deploy sur Render (Côte d'Ivoire)
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Déclenche le déploiement via le Deploy Hook Render
+        run: |
+          status=$(curl -s -o /tmp/render_deploy.json -w "%{http_code}" \
+            "${{ secrets.RENDER_DEPLOY_HOOK_URL }}")
+          cat /tmp/render_deploy.json
+          if [ "$status" != "200" ]; then
+            echo "Échec du déclenchement Render (HTTP $status)" >&2
+            exit 1
+          fi
+
+  deploy-cloudrun:
     name: Deploy sur Cloud Run
     needs: test
     if: github.event_name != 'pull_request'
