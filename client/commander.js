@@ -106,7 +106,7 @@ function toast(message, type = 'info') {
   toastTimer = setTimeout(() => el.classList.remove('is-visible'), 3200);
 }
 
-async function apiCall(path, opts = {}) {
+async function apiCall(path, opts = {}, _retry = false) {
   try {
     const ctrl = new AbortController();
     const tid = setTimeout(() => ctrl.abort(), 15000);
@@ -119,7 +119,16 @@ async function apiCall(path, opts = {}) {
     const data = await res.json().catch(() => null);
     if (!res.ok) return { error: data?.error || t('pub.erreur_statut', { status: res.status }) };
     return data;
-  } catch {
+  } catch (err) {
+    // Abandon par notre propre timeout (15s) : très probablement un redémarrage à
+    // froid du serveur (offre gratuite Render) qui n'a pas eu le temps de répondre,
+    // pas une vraie coupure réseau. On laisse le temps de démarrer puis on retente
+    // une seule fois, plutôt que de renvoyer tout de suite une erreur au client en
+    // plein milieu d'une commande.
+    if (!_retry && err.name === 'AbortError') {
+      await new Promise((r) => setTimeout(r, 3000));
+      return apiCall(path, opts, true);
+    }
     return { error: 'network' };
   }
 }

@@ -287,7 +287,17 @@ async function api(path, opts = {}, _retry = false) {
     const data = await res.json();
     if (method === 'GET') setReadCache(path, data);
     return data;
-  } catch {
+  } catch (err) {
+    // Abandon par notre propre timeout (15s) : très probablement un redémarrage à
+    // froid du serveur (offre gratuite Render) qui n'a pas eu le temps de répondre,
+    // pas une vraie coupure réseau. Ce cas n'était traité que pour un 503 explicite
+    // (ci-dessus) ; un timeout tombait directement ici et semblait "hors ligne" même
+    // avec une connexion parfaite, y compris en pleine session (pas seulement au
+    // premier chargement, déjà couvert par wakeUpServer() au démarrage).
+    if (!_retry && err.name === 'AbortError') {
+      await wakeUpServer();
+      return api(path, opts, true);
+    }
     if (method !== 'GET') {
       let body = null;
       try { body = opts.body ? JSON.parse(opts.body) : null; } catch {}
@@ -3258,9 +3268,12 @@ document.getElementById('sidebar-logo')?.addEventListener('click', async () => {
 
 if ('serviceWorker' in navigator) {
   const forceSkip = worker => worker.postMessage('SKIP_WAITING');
+  let swReg = null;
 
   navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
     .then(reg => {
+      swReg = reg;
+
       // Si un nouveau SW est déjà en attente, le forcer à s'activer immédiatement
       if (reg.waiting) forceSkip(reg.waiting);
 
@@ -3277,6 +3290,14 @@ if ('serviceWorker' in navigator) {
       return reg.update();
     })
     .catch(() => {});
+
+  // Une PWA installée reste souvent "suspendue" en arrière-plan sans jamais
+  // recharger la page, donc sans jamais ré-exécuter le code ci-dessus : sans ça,
+  // elle continue de tourner sur l'ancien code même longtemps après un nouveau
+  // déploiement. On revérifie donc aussi à chaque retour au premier plan.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && swReg) swReg.update().catch(() => {});
+  });
 
   // Quand le nouveau SW prend le contrôle, recharger pour avoir la dernière version
   navigator.serviceWorker.addEventListener('controllerchange', () => {
