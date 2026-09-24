@@ -14,7 +14,7 @@ const router = express.Router();
 // l'adresse publique du backend qui héberge l'annuaire multi-site (déjà visible dans
 // le bundle JS de chaque site). Utilisée uniquement par GET /directory-sites ci-dessous
 // quand CE site n'est pas lui-même le site maison.
-const HOME_DIRECTORY_URL = 'https://cookafrica-api-667992371198.us-central1.run.app';
+const HOME_DIRECTORY_URL = 'https://cookafrica-api.onrender.com';
 
 // Normalise les anciens noms de rôles vers les nouveaux
 const ROLE_MIGRATION = {

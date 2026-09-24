@@ -10,9 +10,9 @@
 // backend "maison" — HOME_API_URL — mais le CORS de ce backend autorise déjà l'origine
 // de chaque site (voir server/config/corsOrigins.js), donc "Gérer un autre site" appelle
 // l'annuaire directement depuis n'importe quel site, sans détour par une reconnexion.
-const HOME_API_URL = 'https://cookafrica-api-667992371198.us-central1.run.app';
+const HOME_API_URL = 'https://cookafrica-api.onrender.com';
 const SITE_DEFAULT = {
-  apiUrl:   HOME_API_URL, // Cloud Run (us-central1)
+  apiUrl:   HOME_API_URL, // Render (bascule temporaire — Cloud Run us-central1 en panne le 24/09)
   currency: { label: 'FCFA', locale: 'fr-FR' },
   siteId:   'cote-divoire',
 };

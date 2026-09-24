@@ -6,7 +6,7 @@
 // Configuration par site (multi-restaurant) — même table que client/app.js, à garder
 // synchronisée (pas de module partagé entre les deux, aucun n'a de build step).
 const SITE_DEFAULT = {
-  apiUrl:   'https://cookafrica-api-667992371198.us-central1.run.app', // Cloud Run (us-central1)
+  apiUrl:   'https://cookafrica-api.onrender.com', // Render (bascule temporaire — Cloud Run us-central1 en panne le 24/09)
   currency: { label: 'FCFA', locale: 'fr-FR' },
   siteId:   'cote-divoire',
 };
