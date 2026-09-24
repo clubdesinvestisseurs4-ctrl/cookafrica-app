@@ -5,7 +5,7 @@ services:
     region: frankfurt
     plan: free
     rootDir: server
-    buildCommand: npm install && npm test
+    buildCommand: npm install
     startCommand: node server.js
     healthCheckPath: /health
     envVars:
@@ -15,8 +15,28 @@ services:
         generateValue: true
       - key: PORT
         value: 10000
-      # Remplir manuellement dans le dashboard Render :
+      - key: CURRENCY_LABEL
+        value: FCFA
+      - key: CURRENCY_LOCALE
+        value: fr-FR
+      # IMPORTANT : réutiliser les identifiants Firebase EXISTANTS (le même projet
+      # que celui utilisé par le service Cloud Run cookafrica-api), pas en créer un
+      # nouveau — sinon ce déploiement pointe vers une base Firestore vide et le
+      # problème "les données ne s'affichent plus" reviendrait, juste pour une autre
+      # raison. Les récupérer dans la console Firebase du projet existant : Paramètres
+      # du projet > Comptes de service > Générer une nouvelle clé privée (ça ajoute une
+      # clé de plus au même compte de service, ça ne révoque pas celle utilisée par Cloud
+      # Run). Remplir manuellement dans le dashboard Render :
       # - key: FIREBASE_PROJECT_ID
       # - key: FIREBASE_CLIENT_EMAIL
       # - key: FIREBASE_PRIVATE_KEY
       # - key: CLIENT_URL
+      #
+      # Optionnels (site "Côte d'Ivoire" = le backend "maison") — copier les mêmes
+      # valeurs que sur le service Cloud Run cookafrica-api si le multi-site Dubaï
+      # doit continuer à fonctionner immédiatement, sinon laisser vide pour l'instant :
+      # - key: DIRECTORY_ENABLED
+      # - key: DIRECTORY_SESSION_SECRET
+      # - key: DIRECTORY_SWITCH_SECRET
+      # - key: DIRECTORY_VOUCH_SECRET
+      # - key: FIRESTORE_DATABASE_ID
