@@ -950,10 +950,15 @@ function startPolling() {
     if (state.currentPage === 'facturation') checkFacturationReady(true);
   }, 4 * 60_000);
 
-  // Notifications — admin seulement
+  // Notifications — admin seulement. Le SSE déclenche déjà loadNotifBadge() en
+  // temps réel à chaque notification (voir handleSSEEvent, type 'notifications') :
+  // secours si SSE down uniquement, comme les autres intervalles ci-dessus — avant,
+  // ce polling tournait sans condition, en double du SSE, toute la journée.
   if (role === 'admin') {
     loadNotifBadge();
-    state.notifInterval = setInterval(loadNotifBadge, 60_000);
+    state.notifInterval = setInterval(() => {
+      if (!state.sseConnected) loadNotifBadge();
+    }, 60_000);
   }
 
   // Vérification Wi-Fi — non-admin seulement (admin peut se connecter depuis n'importe où)
