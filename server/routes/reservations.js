@@ -20,16 +20,37 @@ function round2(n) {
 // Numérotation séquentielle des réservations (RESA-0001…), pour le reçu imprimé au moment
 // de la réservation — indépendante de la numérotation des factures (FACT-xxxx), qui elle
 // n'est attribuée que lors de la génération de la facture du jour J.
+//
+// Compteur dédié (counters/reservations) au lieu de rescanner jusqu'à 200 réservations à
+// chaque création — même correctif, même raison que getNextNumeroFacture (utils/factures.js) :
+// 1 lecture + 1 écriture par réservation, quel que soit l'historique, au lieu d'un coût qui
+// grossit avec le nombre de réservations déjà créées.
 async function getNextNumeroReservation(db) {
-  const snap = await db.collection('reservations').orderBy('createdAt', 'desc').limit(200).get();
-  let maxNum = 0;
-  snap.docs.forEach(doc => {
-    const { numero } = doc.data();
-    if (!numero || !numero.startsWith('RESA-')) return;
-    const n = parseInt(numero.slice(5), 10);
-    if (!isNaN(n) && n > maxNum) maxNum = n;
+  const counterRef = db.collection('counters').doc('reservations');
+  const counterSnap = await counterRef.get();
+
+  if (!counterSnap.exists) {
+    const snap = await db.collection('reservations').orderBy('createdAt', 'desc').limit(200).get();
+    let maxNum = 0;
+    snap.docs.forEach(doc => {
+      const { numero } = doc.data();
+      if (!numero || !numero.startsWith('RESA-')) return;
+      const n = parseInt(numero.slice(5), 10);
+      if (!isNaN(n) && n > maxNum) maxNum = n;
+    });
+    try {
+      await counterRef.create({ value: maxNum });
+    } catch { /* déjà initialisé par un appel concurrent */ }
+  }
+
+  const numero = await db.runTransaction(async (tx) => {
+    const doc = await tx.get(counterRef);
+    const next = (doc.data()?.value || 0) + 1;
+    tx.update(counterRef, { value: next });
+    return next;
   });
-  return `RESA-${String(maxNum + 1).padStart(4, '0')}`;
+
+  return `RESA-${String(numero).padStart(4, '0')}`;
 }
 
 // GET /api/reservations

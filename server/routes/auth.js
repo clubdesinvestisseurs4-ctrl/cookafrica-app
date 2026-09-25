@@ -7,6 +7,7 @@ const { pushNotification } = require('../utils/notifications');
 
 const { isAllowedIp, getClientIp } = require('../utils/wifi');
 const { verifySwitchToken, signVouchToken, lookupDirectorySites } = require('../utils/directory');
+const cache = require('../utils/cache');
 
 const router = express.Router();
 
@@ -188,12 +189,22 @@ router.post('/logout', authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/auth/sessions
+// GET /api/auth/sessions — journal d'audit consulté à la demande (pas de vue live à
+// rafraîchir en continu) : cache 2 min, un seul jeu de 500 documents partagé par tous
+// les filtres (debut/fin/username s'appliquent en mémoire sur ce même lot, comme
+// /api/commandes), plutôt que de relire Firestore à chaque changement de filtre.
 router.get('/sessions', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const { debut, fin, username } = req.query;
-    const snap = await db.collection('sessions').orderBy('timestamp', 'desc').limit(500).get();
-    let sessions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    let all = cache.get('sessions:list');
+    if (!all) {
+      const snap = await db.collection('sessions').orderBy('timestamp', 'desc').limit(500).get();
+      all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      cache.set('sessions:list', all, 2 * 60_000);
+    }
+
+    let sessions = all;
     if (debut)    sessions = sessions.filter(s => s.timestamp >= debut);
     if (fin)      sessions = sessions.filter(s => s.timestamp <= fin + 'T23:59:59');
     if (username) sessions = sessions.filter(s => s.username === username);
