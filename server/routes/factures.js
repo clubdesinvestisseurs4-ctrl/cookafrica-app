@@ -88,6 +88,17 @@ router.post('/repair-numeros', authenticateToken, requireRole('admin'), async (r
       details.push({ id: item.id, ancien: item.oldNumero, nouveau: newNumero });
     }
     await batch.commit();
+
+    // Resynchronise le compteur (utils/factures.js) sur ce nouveau maximum : sinon la
+    // prochaine facture normale pourrait reprendre un numéro qu'on vient d'attribuer
+    // ici, ce scan ayant tourné indépendamment du compteur.
+    const counterRef = db.collection('counters').doc('factures');
+    await db.runTransaction(async (tx) => {
+      const doc = await tx.get(counterRef);
+      const current = doc.data()?.value || 0;
+      if (maxNum > current) tx.set(counterRef, { value: maxNum }, { merge: true });
+    });
+
     invalidate();
 
     res.json({ message: `${broken.length} facture(s) réparée(s)`, details });

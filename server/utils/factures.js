@@ -2,19 +2,45 @@
 // et la génération automatique dès qu'une commande arrive en caisse
 // (routes/commandes.js PUT /:id/envoyer).
 
+// Compteur dédié (collection counters, doc "factures") au lieu de rescanner les
+// factures à chaque appel : avant, CHAQUE facture créée (auto à l'envoi d'une
+// commande, ou manuelle) relisait jusqu'à 200 documents pour retrouver le numéro
+// FACT le plus élevé — coût énorme et qui grossit avec l'historique. Désormais 1
+// lecture + 1 écriture par facture, quel que soit le nombre de factures déjà créées.
 async function getNextNumeroFacture(db) {
-  // Scan les 200 derniers documents et trouve le numéro FACT le plus élevé.
-  // Évite le bug où un bon cuisine/bar (CUI-CMD-0001, BAR-CMD-0001) est le
-  // document le plus récent, ce qui faisait parseInt("CMD", 10) → NaN → "FACT-0NaN".
-  const snap = await db.collection('factures').orderBy('createdAt', 'desc').limit(200).get();
-  let maxNum = 0;
-  snap.docs.forEach(doc => {
-    const { numero } = doc.data();
-    if (!numero || !numero.startsWith('FACT-')) return;
-    const n = parseInt(numero.slice(5), 10); // slice(5) = après "FACT-"
-    if (!isNaN(n) && n > maxNum) maxNum = n;
+  const counterRef = db.collection('counters').doc('factures');
+  const counterSnap = await counterRef.get();
+
+  if (!counterSnap.exists) {
+    // Tout premier appel depuis l'ajout de ce compteur : initialise sa valeur à
+    // partir du numéro FACT le plus élevé existant (même scan qu'avant l'ancien
+    // fonctionnement), mais une seule fois pour toujours — pas à chaque facture.
+    // Même parade qu'avant pour les bons cuisine/bar (CUI-CMD-0001, BAR-CMD-0001)
+    // qui vivent dans la même collection : ignorés via le préfixe "FACT-".
+    const snap = await db.collection('factures').orderBy('createdAt', 'desc').limit(200).get();
+    let maxNum = 0;
+    snap.docs.forEach(doc => {
+      const { numero } = doc.data();
+      if (!numero || !numero.startsWith('FACT-')) return;
+      const n = parseInt(numero.slice(5), 10); // slice(5) = après "FACT-"
+      if (!isNaN(n) && n > maxNum) maxNum = n;
+    });
+    try {
+      // create() échoue si le doc existe déjà : deux factures créées en même temps
+      // pendant ce tout premier appel ne l'initialisent pas deux fois en écrasant
+      // l'une l'autre — la seconde retombe simplement sur la valeur déjà posée.
+      await counterRef.create({ value: maxNum });
+    } catch { /* déjà initialisé par un appel concurrent, on repart de sa valeur */ }
+  }
+
+  const numero = await db.runTransaction(async (tx) => {
+    const doc = await tx.get(counterRef);
+    const next = (doc.data()?.value || 0) + 1;
+    tx.update(counterRef, { value: next });
+    return next;
   });
-  return `FACT-${String(maxNum + 1).padStart(4, '0')}`;
+
+  return `FACT-${String(numero).padStart(4, '0')}`;
 }
 
 // Crée la facture (statut 'partielle', reste = total) associée à une commande

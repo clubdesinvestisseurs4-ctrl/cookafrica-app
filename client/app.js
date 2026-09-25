@@ -865,6 +865,13 @@ function handleSSEEvent(type) {
       reservations: loadReservations,
     };
     reloaders[page]?.();
+    // Le badge notifications n'est pas lié à une page précise (visible partout pour
+    // l'admin) : une notification manquée pendant la coupure ne serait jamais
+    // rattrapée par les reloaders ci-dessus, qui ne resynchronisent que la page
+    // affichée. Un seul appel ponctuel à la reconnexion, pas un polling récurrent —
+    // coût quota négligeable (une notification tient dans le cache serveur 60s de
+    // toute façon, donc souvent déjà à zéro lecture Firestore).
+    if (state.user?.role === 'admin') loadNotifBadge();
     return;
   }
 
