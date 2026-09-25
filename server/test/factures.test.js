@@ -6,9 +6,13 @@ const assert = require('node:assert');
 const { getNextNumeroFacture, createFactureFromCommande } = require('../utils/factures');
 
 // Faux Firestore minimal : supporte collection().orderBy/where/limit().get()
-// et collection().add(), assez pour ce que utils/factures.js utilise réellement.
+// et collection().add() pour "factures", plus collection('counters').doc(id)
+// (get/create/update/set) et runTransaction(), pour le compteur de numérotation
+// dans utils/factures.js. Pas de vraie isolation transactionnelle : suffisant
+// pour ces tests séquentiels, pas conçu pour simuler de la concurrence réelle.
 function makeFakeDb(seedFactures = []) {
   const factures = [...seedFactures];
+  const counters = {};
 
   function query(filters = []) {
     return {
@@ -22,8 +26,31 @@ function makeFakeDb(seedFactures = []) {
     };
   }
 
+  function makeCounterRef(id) {
+    return {
+      id,
+      async get() {
+        return {
+          exists: Object.prototype.hasOwnProperty.call(counters, id),
+          data: () => counters[id],
+        };
+      },
+      async create(data) {
+        if (Object.prototype.hasOwnProperty.call(counters, id)) throw new Error('ALREADY_EXISTS');
+        counters[id] = { ...data };
+      },
+      async update(data) {
+        counters[id] = { ...(counters[id] || {}), ...data };
+      },
+      async set(data, opts) {
+        counters[id] = opts && opts.merge ? { ...(counters[id] || {}), ...data } : { ...data };
+      },
+    };
+  }
+
   return {
     collection(name) {
+      if (name === 'counters') return { doc: (id) => makeCounterRef(id) };
       if (name !== 'factures') throw new Error('collection inattendue dans ce test : ' + name);
       return {
         ...query(),
@@ -33,6 +60,14 @@ function makeFakeDb(seedFactures = []) {
           return { id };
         },
       };
+    },
+    async runTransaction(fn) {
+      const tx = {
+        get: (ref) => ref.get(),
+        update: (ref, data) => { ref.update(data); },
+        set: (ref, data, opts) => { ref.set(data, opts); },
+      };
+      return fn(tx);
     },
   };
 }
@@ -57,6 +92,25 @@ test('getNextNumeroFacture — incrémente après le plus grand numéro FACT exi
     { id: 'b', numero: 'FACT-0001', createdAt: '2026-01-02' },
   ]);
   assert.strictEqual(await getNextNumeroFacture(db), 'FACT-0004');
+});
+
+test('getNextNumeroFacture — appels successifs incrémentent depuis le compteur, pas un rescan', async () => {
+  const db = makeFakeDb([{ id: 'a', numero: 'FACT-0003', createdAt: '2026-01-01' }]);
+  assert.strictEqual(await getNextNumeroFacture(db), 'FACT-0004');
+  // Le compteur vaut maintenant 4 en mémoire ; même si aucune facture FACT-0004
+  // n'a réellement été ajoutée à la collection (le scan, lui, verrait toujours
+  // 3 comme maximum), l'appel suivant doit repartir de la valeur du compteur.
+  assert.strictEqual(await getNextNumeroFacture(db), 'FACT-0005');
+});
+
+test('getNextNumeroFacture — n\'initialise le compteur qu\'une seule fois (pas de rescan après)', async () => {
+  const db = makeFakeDb([{ id: 'a', numero: 'FACT-0003', createdAt: '2026-01-01' }]);
+  await getNextNumeroFacture(db); // initialise le compteur à 3, retourne FACT-0004
+  const counterDoc = await db.collection('counters').doc('factures').get();
+  assert.strictEqual(counterDoc.data().value, 4);
+  await getNextNumeroFacture(db);
+  const counterDocAfter = await db.collection('counters').doc('factures').get();
+  assert.strictEqual(counterDocAfter.data().value, 5);
 });
 
 test('getNextNumeroFacture — ignore les numéros non-FACT (bons cuisine/bar)', async () => {
