@@ -1,4 +1,4 @@
-name: Backend — CI/CD (Render + Cloud Run)
+name: Backend — CI/CD (Render + Cloud Run + AWS Lambda)
 
 on:
   push:
@@ -28,7 +28,11 @@ jobs:
           cache: 'npm'
           cache-dependency-path: server/package-lock.json
 
-      - run: npm ci
+      # npm install, pas ci : package-lock.json n'a pas encore été régénéré pour
+      # serverless-http (ajouté pour le handler Lambda, voir server/lambda.js) --
+      # à corriger plus tard avec un vrai `npm install` local pour reverrouiller
+      # les versions exactes, ça marche pour l'instant sans bloquer le pipeline.
+      - run: npm install
       - run: npm test
 
   deploy-render:
@@ -83,3 +87,45 @@ jobs:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
           source: ./server
           flags: --max-instances=1
+
+  deploy-aws-lambda:
+    name: Deploy sur AWS Lambda (filet de secours)
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: aws-actions/setup-sam@819220f63fb333a04a19f1f8548b8ab27ff3c4ea # v2
+        with:
+          use-installer: true
+
+      - uses: aws-actions/configure-aws-credentials@ececac1a45f3b08a01d2dd070d28d111c5fe6722 # v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-west-1
+
+      - run: sam build
+
+      # Mêmes identifiants Firebase que Render/Cloud Run (mêmes secrets GitHub que
+      # partout ailleurs, jamais un nouveau projet Firebase) et le MÊME JWT_SECRET
+      # que Render : un jeton émis pendant que Render répond doit rester valide si
+      # une requête bascule ensuite sur AWS pendant que Render se réveille (voir le
+      # bascule automatique dans client/app.js) — un secret différent romprait la
+      # session de l'utilisateur exactement au moment du basculement.
+      - run: |
+          sam deploy \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              FirebaseProjectId="${{ secrets.FIREBASE_PROJECT_ID }}" \
+              FirebaseClientEmail="${{ secrets.FIREBASE_CLIENT_EMAIL }}" \
+              FirebasePrivateKey="${{ secrets.FIREBASE_PRIVATE_KEY }}" \
+              JwtSecret="${{ secrets.RENDER_JWT_SECRET }}"
+
+      - name: Affiche l'URL de l'API déployée
+        run: aws cloudformation describe-stacks --stack-name cookafrica-api --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" --output text

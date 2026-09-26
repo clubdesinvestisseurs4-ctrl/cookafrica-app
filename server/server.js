@@ -50,6 +50,17 @@ const authLimiter = rateLimit({
 // ─── SSE — temps réel (avant rate-limiter global) ─────────────────────────────
 // Token JWT transmis en query string car EventSource ne supporte pas les headers.
 // Les événements ne transportent que le TYPE (ex. "commandes"), jamais de données.
+//
+// Sur Lambda (voir lambda.js), une fonction ne peut pas garder une connexion
+// ouverte indéfiniment comme ici (API Gateway coupe la requête, il n'y a pas de
+// "processus" qui tourne entre deux invocations) : on ferme proprement tout de
+// suite après le message 'connected' plutôt que de laisser Lambda couper
+// brutalement. Le client (voir startEventSource dans app.js) considère alors le
+// SSE indisponible et retombe sur son sondage de secours existant pour chaque
+// page — dégradation propre, pas une panne, juste pas de temps réel sur ce
+// déploiement précis.
+const IS_LAMBDA = !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+
 app.get('/api/events', (req, res) => {
   const token = req.query.token;
   if (!token) return res.status(401).end();
@@ -62,6 +73,9 @@ app.get('/api/events', (req, res) => {
   res.flushHeaders();
 
   res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
+
+  if (IS_LAMBDA) { res.end(); return; }
+
   eventBus.addClient(res);
 
   // Heartbeat toutes les 25 s — garde la connexion vivante (Render, proxies)
@@ -114,8 +128,15 @@ app.use((err, _req, res, _next) => {
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
+// require.main === module : uniquement quand ce fichier est lancé directement
+// (node server.js — Render, Cloud Run, local). lambda.js fait require('./server')
+// pour récupérer `app` sans jamais passer par ici : API Gateway/Lambda gère
+// lui-même l'écoute réseau, un second app.listen() ferait doublon pour rien.
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`✅  Cook Africa API démarrée sur le port ${PORT}`);
+    console.log(`📌  Health check : http://localhost:${PORT}/health`);
+  });
+}
 
-app.listen(PORT, () => {
-  console.log(`✅  Cook Africa API démarrée sur le port ${PORT}`);
-  console.log(`📌  Health check : http://localhost:${PORT}/health`);
-});
+module.exports = app;

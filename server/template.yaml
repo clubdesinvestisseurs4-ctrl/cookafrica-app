@@ -1,0 +1,61 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Cook Africa API — filet de secours AWS Lambda pendant qu'un Render endormi se
+  réveille (voir startEventSource / bascule automatique dans client/app.js).
+  Même base Firestore que Render/Cloud Run (identifiants passés en paramètres,
+  jamais committés) — pas une base de test séparée.
+
+Parameters:
+  FirebaseProjectId:
+    Type: String
+  FirebaseClientEmail:
+    Type: String
+  FirebasePrivateKey:
+    Type: String
+    NoEcho: true
+  JwtSecret:
+    Type: String
+    NoEcho: true
+  ClientUrl:
+    Type: String
+    Default: https://cookafrica-app.vercel.app
+
+Globals:
+  Function:
+    Timeout: 15
+    MemorySize: 512
+    Runtime: nodejs22.x
+
+Resources:
+  CookAfricaApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: lambda.handler
+      Environment:
+        Variables:
+          NODE_ENV: production
+          FIREBASE_PROJECT_ID: !Ref FirebaseProjectId
+          FIREBASE_CLIENT_EMAIL: !Ref FirebaseClientEmail
+          FIREBASE_PRIVATE_KEY: !Ref FirebasePrivateKey
+          JWT_SECRET: !Ref JwtSecret
+          CLIENT_URL: !Ref ClientUrl
+          CURRENCY_LABEL: FCFA
+          CURRENCY_LOCALE: fr-FR
+      Events:
+        RootApi:
+          Type: HttpApi
+          Properties:
+            Path: /
+            Method: ANY
+        ProxyApi:
+          Type: HttpApi
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+
+Outputs:
+  ApiUrl:
+    Description: URL de base de l'API (à mettre dans client/app.js + commander.js comme repli AWS)
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
