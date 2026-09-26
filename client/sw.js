@@ -15,7 +15,7 @@
 // privée, toujours rechargé intégralement, avait la dernière version. Corrigé en
 // forçant la vérification de mise à jour au retour au premier plan, pas seulement
 // à l'exécution initiale du script.)
-const SW_VERSION = 'cookafrica-v3.4.0';
+const SW_VERSION = 'cookafrica-v3.5.0';
 const SHELL_CACHE = `cookafrica-shell-${SW_VERSION}`;
 
 // App shell : ce qui ne change pas à chaque commande, précaché pour un premier
