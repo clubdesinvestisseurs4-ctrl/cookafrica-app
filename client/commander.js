@@ -5,8 +5,14 @@
 
 // Configuration par site (multi-restaurant) — même table que client/app.js, à garder
 // synchronisée (pas de module partagé entre les deux, aucun n'a de build step).
+// Filet de secours AWS Lambda — toujours chaud, pris le temps que Render se réveille.
+// Voir client/app.js (même architecture) — ici, pas de SSE ni de session à rebasculer :
+// chaque commande publique repart de zéro sur Render, et n'escalade sur AWS que si
+// Render ne répond pas pendant CETTE commande.
+const AWS_API_URL = 'https://xqlp5poieg.execute-api.eu-north-1.amazonaws.com';
 const SITE_DEFAULT = {
-  apiUrl:   'https://cookafrica-api.onrender.com', // Render (bascule temporaire — Cloud Run us-central1 en panne le 24/09)
+  apiUrl:        'https://cookafrica-api.onrender.com', // Render (bascule temporaire — Cloud Run us-central1 en panne le 24/09)
+  awsFallbackUrl: AWS_API_URL,
   currency: { label: 'FCFA', locale: 'fr-FR' },
   siteId:   'cote-divoire',
 };
@@ -20,7 +26,7 @@ const SITE_CONFIG = {
   },
 };
 const SITE = SITE_CONFIG[window.location.hostname] || SITE_DEFAULT;
-const API = SITE.apiUrl;
+let API = SITE.apiUrl; // mutable : bascule vers SITE.awsFallbackUrl si Render ne répond pas (voir apiCall)
 document.documentElement.lang = SITE.siteId === 'dubai' ? 'en' : 'fr';
 document.documentElement.dataset.site = SITE.siteId;
 setI18nLang(SITE.siteId === 'dubai' ? 'en' : 'fr');
@@ -116,17 +122,25 @@ async function apiCall(path, opts = {}, _retry = false) {
       headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
     });
     clearTimeout(tid);
+    if (res.status === 503 && !_retry && SITE.awsFallbackUrl && API !== SITE.awsFallbackUrl) {
+      API = SITE.awsFallbackUrl;
+      return apiCall(path, opts, true);
+    }
     const data = await res.json().catch(() => null);
     if (!res.ok) return { error: data?.error || t('pub.erreur_statut', { status: res.status }) };
     return data;
   } catch (err) {
     // Abandon par notre propre timeout (15s) : très probablement un redémarrage à
     // froid du serveur (offre gratuite Render) qui n'a pas eu le temps de répondre,
-    // pas une vraie coupure réseau. On laisse le temps de démarrer puis on retente
-    // une seule fois, plutôt que de renvoyer tout de suite une erreur au client en
-    // plein milieu d'une commande.
+    // pas une vraie coupure réseau. Avec un filet de secours AWS (toujours chaud), on
+    // bascule dessus immédiatement plutôt que d'attendre que Render se réveille — sans
+    // filet de secours, on laisse le temps de démarrer puis on retente une seule fois.
     if (!_retry && err.name === 'AbortError') {
-      await new Promise((r) => setTimeout(r, 3000));
+      if (SITE.awsFallbackUrl && API !== SITE.awsFallbackUrl) {
+        API = SITE.awsFallbackUrl;
+      } else {
+        await new Promise((r) => setTimeout(r, 3000));
+      }
       return apiCall(path, opts, true);
     }
     return { error: 'network' };

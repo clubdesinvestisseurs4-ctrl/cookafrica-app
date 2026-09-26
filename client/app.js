@@ -11,8 +11,13 @@
 // de chaque site (voir server/config/corsOrigins.js), donc "Gérer un autre site" appelle
 // l'annuaire directement depuis n'importe quel site, sans détour par une reconnexion.
 const HOME_API_URL = 'https://cookafrica-api.onrender.com';
+// Filet de secours AWS Lambda — toujours chaud (voir server/template.yaml), pris le
+// temps que Render se réveille. N'existe QUE pour le site par défaut (Côte d'Ivoire) :
+// Dubaï reste sur Cloud Run seul, et localhost n'a pas besoin de secours.
+const AWS_API_URL = 'https://xqlp5poieg.execute-api.eu-north-1.amazonaws.com';
 const SITE_DEFAULT = {
-  apiUrl:   HOME_API_URL, // Render (bascule temporaire — Cloud Run us-central1 en panne le 24/09)
+  apiUrl:        HOME_API_URL, // Render (bascule temporaire — Cloud Run us-central1 en panne le 24/09)
+  awsFallbackUrl: AWS_API_URL,
   currency: { label: 'FCFA', locale: 'fr-FR' },
   siteId:   'cote-divoire',
 };
@@ -29,7 +34,11 @@ const SITE_CONFIG = {
   },
 };
 const SITE = SITE_CONFIG[window.location.hostname] || SITE_DEFAULT;
-const API = SITE.apiUrl;
+// Mutable : bascule vers SITE.awsFallbackUrl quand Render dort, revient sur SITE.apiUrl
+// dès qu'il se réveille (voir initBackend, api(), startEventSource). Le temps réel (SSE)
+// n'utilise JAMAIS cette variable, toujours SITE.apiUrl directement — AWS Lambda ne
+// supporte pas les connexions persistantes (voir IS_LAMBDA côté serveur).
+let API = SITE.apiUrl;
 // Active le thème visuel du site (voir styles.css, [data-site="dubai"]) — posé au
 // plus tôt pour que le tout premier rendu (splash screen) soit déjà dans la bonne
 // couleur, pas seulement après un rafraîchissement.
@@ -38,6 +47,8 @@ setI18nLang(SITE.siteId === 'dubai' ? 'en' : 'fr'); // voir i18n.js, chargé ava
 
 // Cloud Run peut redémarrer à froid après une période d'inactivité → ping /health avec backoff exponentiel
 // Max 6 tentatives : ~4s, 6s, 9s, 14s, 20s = 6 requêtes sur ~55s
+// N'est plus utilisé que pour les sites SANS filet de secours AWS (Dubaï, localhost) —
+// voir initBackend() pour le site par défaut, qui bascule sur AWS au lieu d'attendre.
 async function wakeUpServer() {
   if (API.includes('localhost')) return;
   const statusEl = document.getElementById('splash-status');
@@ -53,6 +64,28 @@ async function wakeUpServer() {
     } catch { /* réseau ou timeout */ }
     if (statusEl) statusEl.textContent = t('splash.server_waking');
   }
+  if (statusEl) statusEl.textContent = '';
+}
+
+// Démarrage : sur le site avec filet de secours (Render + AWS Lambda), un seul ping
+// court suffit — si Render ne répond pas sous 4s, on bascule direct sur AWS (toujours
+// chaud, jamais de redémarrage à froid) au lieu de bloquer l'écran de démarrage avec
+// l'ancien backoff de ~55s. Le retour automatique sur Render se fait ensuite tout seul
+// via le SSE (voir startEventSource) dès qu'il se reconnecte — voir directive du 26/09 :
+// « le moment où Render dort, c'est AWS qui prend le relais, et quand Render se réveille,
+// il switch automatiquement dessus » — le temps réel doit toujours rester sur Render.
+async function initBackend() {
+  if (API.includes('localhost')) return;
+  if (!SITE.awsFallbackUrl) { await wakeUpServer(); return; }
+  const statusEl = document.getElementById('splash-status');
+  try {
+    const ctrl = new AbortController();
+    const tid  = setTimeout(() => ctrl.abort(), 4000);
+    const res  = await fetch(SITE.apiUrl + '/health', { signal: ctrl.signal });
+    clearTimeout(tid);
+    if (res.ok) { if (statusEl) statusEl.textContent = ''; return; }
+  } catch { /* Render dort encore — bascule ci-dessous */ }
+  API = SITE.awsFallbackUrl;
   if (statusEl) statusEl.textContent = '';
 }
 
@@ -258,6 +291,15 @@ function removePendingCommande(queueId) {
   localStorage.setItem(PENDING_COMMANDES_KEY, JSON.stringify(list));
 }
 
+// Appelée quand une requête REST échoue (503 ou timeout). Site avec filet de secours :
+// bascule immédiate sur AWS plutôt que d'attendre que Render se réveille — le retour
+// automatique se fait via le SSE (voir startEventSource), jamais ici. Sans filet de
+// secours (Dubaï, localhost) : comportement inchangé, on attend Render.
+async function handleBackendDown() {
+  if (SITE.awsFallbackUrl) { API = SITE.awsFallbackUrl; return; }
+  await wakeUpServer();
+}
+
 async function api(path, opts = {}, _retry = false) {
   const method = (opts.method || 'GET').toUpperCase();
   try {
@@ -276,7 +318,7 @@ async function api(path, opts = {}, _retry = false) {
       return null;
     }
     if (res.status === 503 && !_retry) {
-      await wakeUpServer();
+      await handleBackendDown();
       return api(path, opts, true);
     }
     if (res.status === 429) {
@@ -295,7 +337,7 @@ async function api(path, opts = {}, _retry = false) {
     // avec une connexion parfaite, y compris en pleine session (pas seulement au
     // premier chargement, déjà couvert par wakeUpServer() au démarrage).
     if (!_retry && err.name === 'AbortError') {
-      await wakeUpServer();
+      await handleBackendDown();
       return api(path, opts, true);
     }
     if (method !== 'GET') {
@@ -898,7 +940,10 @@ function handleSSEEvent(type) {
 
 function startEventSource() {
   if (!state.token || state.eventSource) return;
-  const es = new EventSource(`${API}/api/events?token=${encodeURIComponent(state.token)}`);
+  // Toujours SITE.apiUrl (Render), jamais la variable API (qui peut pointer sur AWS) :
+  // AWS Lambda ferme /api/events immédiatement (voir IS_LAMBDA côté serveur), le temps
+  // réel doit rester sur Render en permanence — voir directive du 26/09.
+  const es = new EventSource(`${SITE.apiUrl}/api/events?token=${encodeURIComponent(state.token)}`);
   state.eventSource = es;
 
   es.onmessage = (e) => {
@@ -907,13 +952,20 @@ function startEventSource() {
       if (type === 'connected') {
         if (state.sseConnected) handleSSEEvent('_reconnect'); // reconnexion
         state.sseConnected = true;
+        // Render s'est réveillé (ou n'a jamais dormi) : on y rebascule les appels REST.
+        if (SITE.awsFallbackUrl && API !== SITE.apiUrl) API = SITE.apiUrl;
         return;
       }
       handleSSEEvent(type);
     } catch {}
   };
 
-  es.onerror = () => { state.sseConnected = false; };
+  es.onerror = () => {
+    state.sseConnected = false;
+    // Render vient de tomber (ou de s'endormir) : bascule immédiate des appels REST sur
+    // AWS, sans attendre un 503/timeout de l'appel suivant.
+    if (SITE.awsFallbackUrl && API !== SITE.awsFallbackUrl) API = SITE.awsFallbackUrl;
+  };
   // EventSource se reconnecte automatiquement — pas besoin de logique manuelle
 }
 
@@ -3338,7 +3390,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('label-resa-avance').textContent = t('modal.resa_avance_label', { devise: SITE.currency.label });
 
   updateOfflineBadge();
-  await wakeUpServer();
+  await initBackend();
 
   // Login
   document.getElementById('login-form').addEventListener('submit', async e => {
