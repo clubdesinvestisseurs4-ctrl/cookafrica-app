@@ -7,16 +7,6 @@ Description: >
   jamais committés) — pas une base de test séparée.
 
 Parameters:
-  FirebaseProjectId:
-    Type: String
-  FirebaseClientEmail:
-    Type: String
-  FirebasePrivateKey:
-    Type: String
-    NoEcho: true
-  JwtSecret:
-    Type: String
-    NoEcho: true
   ClientUrl:
     Type: String
     Default: https://cookafrica-app.vercel.app
@@ -31,15 +21,19 @@ Resources:
   CookAfricaApiFunction:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: cookafrica-api
       CodeUri: .
       Handler: lambda.handler
       Environment:
         Variables:
           NODE_ENV: production
-          FIREBASE_PROJECT_ID: !Ref FirebaseProjectId
-          FIREBASE_CLIENT_EMAIL: !Ref FirebaseClientEmail
-          FIREBASE_PRIVATE_KEY: !Ref FirebasePrivateKey
-          JWT_SECRET: !Ref JwtSecret
+          # FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY / JWT_SECRET
+          # ne passent pas par les paramètres CloudFormation : une clé privée multi-lignes
+          # survit mal à un `sam deploy --parameter-overrides` (échappement shell/CLI, testé
+          # et confirmé cassé — voir le commit qui a introduit ce commentaire). Posées juste
+          # après, dans le workflow, via `aws lambda update-function-configuration` avec un
+          # JSON construit par jq depuis de vraies variables d'environnement du job, qui ne
+          # repasse jamais par un parsing shell/CLI intermédiaire.
           CLIENT_URL: !Ref ClientUrl
           CURRENCY_LABEL: FCFA
           CURRENCY_LOCALE: fr-FR
