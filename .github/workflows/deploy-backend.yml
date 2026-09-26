@@ -133,12 +133,14 @@ jobs:
           FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
           FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
           JWT_SECRET: ${{ secrets.RENDER_JWT_SECRET }}
+          QUOTA_MONITOR_KEY: ${{ secrets.QUOTA_MONITOR_KEY }}
         run: |
           jq -n \
             --arg projectId "$FIREBASE_PROJECT_ID" \
             --arg clientEmail "$FIREBASE_CLIENT_EMAIL" \
             --arg privateKey "$FIREBASE_PRIVATE_KEY" \
             --arg jwtSecret "$JWT_SECRET" \
+            --arg quotaKey "$QUOTA_MONITOR_KEY" \
             '{Variables: {
               NODE_ENV: "production",
               CLIENT_URL: "https://cookafrica-app.vercel.app",
@@ -147,7 +149,8 @@ jobs:
               FIREBASE_PROJECT_ID: $projectId,
               FIREBASE_CLIENT_EMAIL: $clientEmail,
               FIREBASE_PRIVATE_KEY: $privateKey,
-              JWT_SECRET: $jwtSecret
+              JWT_SECRET: $jwtSecret,
+              QUOTA_MONITOR_KEY: $quotaKey
             }}' > /tmp/lambda-env.json
           aws lambda update-function-configuration \
             --function-name cookafrica-api \

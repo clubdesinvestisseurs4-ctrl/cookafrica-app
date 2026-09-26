@@ -102,6 +102,7 @@ app.use('/api/discount-pin',  require('./routes/discount-pin'));
 app.use('/api/integration',   require('./routes/integration'));
 app.use('/api/reservations',  require('./routes/reservations'));
 app.use('/api/public',        require('./routes/commande-publique'));
+app.use('/api/admin/quota',   require('./routes/quota'));
 
 // Annuaire multi-site — uniquement sur le backend désigné comme site "maison"
 // (DIRECTORY_ENABLED=true dans son .env). Absent des autres sites : ceux-ci
