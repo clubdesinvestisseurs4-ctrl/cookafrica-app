@@ -10,8 +10,16 @@ const { formatMontant } = require('../utils/currency');
 
 const router = express.Router();
 
+// `factures:list:<aujourd'hui>` + `commandes:list:<aujourd'hui>` en plus des clés
+// globales, même logique que commandes.js : c'est la vue du jour (facturation, comme
+// commandes) qui doit rester instantanément fraîche, les autres jours suivent leur TTL.
 function invalidate() {
-  cache.del('factures:list', 'commandes:list', 'stats:dashboard', 'stats:notifications');
+  const today = new Date().toISOString().split('T')[0];
+  cache.del(
+    'factures:list', `factures:list:${today}`,
+    'commandes:list', `commandes:list:${today}`,
+    'stats:dashboard', 'stats:notifications',
+  );
 }
 
 // GET /api/factures
@@ -19,11 +27,27 @@ router.get('/', authenticateToken, async (req, res) => {
   try {
     const { debut, fin, statut } = req.query;
 
-    let all = cache.get('factures:list');
-    if (!all) {
-      const snap = await db.collection('factures').orderBy('createdAt', 'desc').limit(300).get();
-      all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      cache.set('factures:list', all, 60_000);
+    let all;
+    if (debut && fin && debut === fin) {
+      // Cas le plus fréquent (vue "Facturation" par défaut sur aujourd'hui, relue à
+      // chaque événement SSE pendant le service) : filtre Firestore directement sur ce
+      // jour plutôt que de rescanner les 300 dernières factures TOUS jours confondus —
+      // même optimisation que commandes.js, pour la même raison (voir pics de lecture
+      // Firestore du 26/09 corrélés aux heures de repas).
+      const cacheKey = `factures:list:${debut}`;
+      all = cache.get(cacheKey);
+      if (!all) {
+        const snap = await db.collection('factures').where('date', '==', debut).get();
+        all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        cache.set(cacheKey, all, 15_000);
+      }
+    } else {
+      all = cache.get('factures:list');
+      if (!all) {
+        const snap = await db.collection('factures').orderBy('createdAt', 'desc').limit(300).get();
+        all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        cache.set('factures:list', all, 60_000);
+      }
     }
 
     let factures = all.filter(f => !f.type || f.type === 'facture');
