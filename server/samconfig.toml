@@ -2,7 +2,7 @@ version = 0.1
 
 [default.deploy.parameters]
 stack_name = "cookafrica-api"
-region = "us-east-1"
+region = "eu-north-1"
 capabilities = "CAPABILITY_IAM"
 resolve_s3 = true
 confirm_changeset = false
