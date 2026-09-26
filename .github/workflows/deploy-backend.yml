@@ -109,6 +109,8 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-north-1
 
+      - run: sam build
+
       - run: sam deploy --no-confirm-changeset --no-fail-on-empty-changeset
 
       # Mêmes identifiants Firebase que Render/Cloud Run (mêmes secrets GitHub que
