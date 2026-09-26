@@ -129,3 +129,6 @@ jobs:
 
       - name: Affiche l'URL de l'API déployée
         run: aws cloudformation describe-stacks --stack-name cookafrica-api --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" --output text
+
+      - name: Logs récents de la fonction (diagnostic)
+        run: sam logs -n CookAfricaApiFunction --stack-name cookafrica-api --region eu-north-1 --start-time '10min ago' || true
