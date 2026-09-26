@@ -938,6 +938,33 @@ function handleSSEEvent(type) {
   }
 }
 
+// Le SSE peut se reconnecter dès que Render répond à N'IMPORTE QUELLE requête, y
+// compris pendant les tout premiers instants d'un réveil à froid — mais un rebascule
+// "à l'aveugle" sur ce seul signal a déjà laissé l'app sans accès aux données un court
+// instant (Render accepte la connexion SSE avant que le reste ne soit vraiment prêt à
+// servir des lectures). On confirme donc par un vrai /health avant de rebasculer les
+// appels REST, avec quelques tentatives rapprochées ; si ça ne confirme pas, on reste
+// sur AWS et on retentera à la prochaine reconnexion SSE plutôt que de forcer un trou.
+let _confirmingRender = false;
+async function confirmRenderReadyThenSwitch() {
+  if (_confirmingRender || API === SITE.apiUrl) return;
+  _confirmingRender = true;
+  try {
+    for (let i = 0; i < 3; i++) {
+      try {
+        const ctrl = new AbortController();
+        const tid  = setTimeout(() => ctrl.abort(), 3000);
+        const res  = await fetch(SITE.apiUrl + '/health', { signal: ctrl.signal });
+        clearTimeout(tid);
+        if (res.ok) { API = SITE.apiUrl; return; }
+      } catch { /* pas encore prêt, on retente */ }
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  } finally {
+    _confirmingRender = false;
+  }
+}
+
 function startEventSource() {
   if (!state.token || state.eventSource) return;
   // Toujours SITE.apiUrl (Render), jamais la variable API (qui peut pointer sur AWS) :
@@ -952,8 +979,9 @@ function startEventSource() {
       if (type === 'connected') {
         if (state.sseConnected) handleSSEEvent('_reconnect'); // reconnexion
         state.sseConnected = true;
-        // Render s'est réveillé (ou n'a jamais dormi) : on y rebascule les appels REST.
-        if (SITE.awsFallbackUrl && API !== SITE.apiUrl) API = SITE.apiUrl;
+        // Render s'est réveillé (ou n'a jamais dormi) : on rebascule les appels REST
+        // dessus, mais seulement une fois confirmé (voir confirmRenderReadyThenSwitch).
+        if (SITE.awsFallbackUrl) confirmRenderReadyThenSwitch();
         return;
       }
       handleSSEEvent(type);

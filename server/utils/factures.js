@@ -71,7 +71,12 @@ async function createFactureFromCommande(db, commande, commandeId, { modePaiemen
     statut: 'partielle',
     serveurNom: commande.createdByNom || commande.createdBy || '',
     caissiereName: caissiereName || '',
-    date: now.toISOString().split('T')[0],
+    // La facture doit être comptabilisée le jour où la COMMANDE a été créée, pas le jour
+    // où elle est validée/envoyée en caisse — sinon une commande prise hier mais facturée
+    // aujourd'hui (ex. quota Firestore dépassé hier, validation reportée) se retrouve
+    // comptée dans le chiffre d'affaires du mauvais jour. `commande.date` est fixé une
+    // seule fois à la création (voir routes/commandes.js) et ne change jamais ensuite.
+    date: commande.date || now.toISOString().split('T')[0],
     createdBy: createdBy || 'system',
     createdAt: now.toISOString(),
   };
