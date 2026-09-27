@@ -22,14 +22,14 @@
     <img src="logo-cookafrica.png" class="pub-loading-logo" alt="Cook Africa" onerror="this.style.display='none'">
     <h1 class="pub-loading-title">COOK AFRICA</h1>
     <div class="spinner" style="margin:18px auto"></div>
-    <p id="pub-loading-status" class="pub-loading-status">Chargement du menu…</p>
+    <p id="pub-loading-status" class="pub-loading-status" data-i18n="pub.chargement_menu">Chargement du menu…</p>
   </div>
 
   <!-- ── Erreur de chargement ───────────────────── -->
   <div id="pub-error" class="pub-error" style="display:none">
     <i class="fas fa-triangle-exclamation"></i>
-    <p id="pub-error-msg">Impossible de charger le menu pour le moment.</p>
-    <button class="btn btn-primary" id="pub-retry-btn"><i class="fas fa-rotate-right"></i> Réessayer</button>
+    <p id="pub-error-msg" data-i18n="pub.erreur_chargement_court">Impossible de charger le menu pour le moment.</p>
+    <button class="btn btn-primary" id="pub-retry-btn"><i class="fas fa-rotate-right"></i> <span data-i18n="pub.reessayer">Réessayer</span></button>
   </div>
 
   <!-- ── Écran menu ─────────────────────────────── -->
@@ -38,13 +38,13 @@
       <img src="logo-cookafrica.png" class="pub-header-logo" alt="" onerror="this.style.display='none'">
       <div class="pub-header-text">
         <h1>Cook Africa</h1>
-        <p>Commandez en ligne — c'est simple et rapide</p>
+        <p data-i18n="pub.header_sub">Commandez en ligne — c'est simple et rapide</p>
       </div>
     </header>
 
     <div class="pub-search-wrap">
       <i class="fas fa-search"></i>
-      <input type="search" id="pub-search" class="pub-search-input" placeholder="Rechercher un autre plat…">
+      <input type="search" id="pub-search" class="pub-search-input" placeholder="Rechercher un autre plat…" data-i18n-placeholder="pub.search_placeholder">
     </div>
     <p class="pub-menu-status" id="pub-menu-status"></p>
 
@@ -55,7 +55,7 @@
     <div class="pub-cart-bar" id="pub-cart-bar">
       <button id="pub-cart-bar-btn" class="pub-cart-bar-btn">
         <span class="pub-cart-bar-count" id="pub-cart-count">0</span>
-        <span class="pub-cart-bar-label"><i class="fas fa-bag-shopping"></i> Voir mon panier</span>
+        <span class="pub-cart-bar-label"><i class="fas fa-bag-shopping"></i> <span data-i18n="pub.voir_panier">Voir mon panier</span></span>
         <span class="pub-cart-bar-total" id="pub-cart-total">0</span>
       </button>
     </div>
@@ -65,7 +65,7 @@
   <div id="pub-screen-cart" class="pub-screen pub-sheet" style="display:none">
     <header class="pub-sheet-header">
       <button class="pub-icon-btn" id="pub-cart-back" aria-label="Retour"><i class="fas fa-arrow-left"></i></button>
-      <h2>Mon panier</h2>
+      <h2 data-i18n="pub.mon_panier">Mon panier</h2>
     </header>
 
     <div class="pub-cart-body">
@@ -74,23 +74,23 @@
       <div class="pub-cart-form">
         <div class="pub-field-row">
           <label class="pub-field">
-            <span>Prénom <em class="pub-required">*</em></span>
-            <input type="text" id="pub-cart-prenom" placeholder="Ex : Awa" maxlength="60" required>
+            <span><span data-i18n="pub.prenom_label">Prénom</span> <em class="pub-required">*</em></span>
+            <input type="text" id="pub-cart-prenom" placeholder="Ex : Awa" maxlength="60" required data-i18n-placeholder="pub.prenom_placeholder">
           </label>
           <label class="pub-field">
-            <span>Nom <em class="pub-required">*</em></span>
-            <input type="text" id="pub-cart-nom" placeholder="Ex : Koné" maxlength="60" required>
+            <span><span data-i18n="pub.nom_label">Nom</span> <em class="pub-required">*</em></span>
+            <input type="text" id="pub-cart-nom" placeholder="Ex : Koné" maxlength="60" required data-i18n-placeholder="pub.nom_placeholder">
           </label>
         </div>
         <label class="pub-field">
-          <span>Numéro de téléphone <em class="pub-required">*</em></span>
-          <input type="tel" id="pub-cart-tel" placeholder="Ex : 07 00 00 00 00" maxlength="30" required>
+          <span><span data-i18n="pub.tel_label">Numéro de téléphone</span> <em class="pub-required">*</em></span>
+          <input type="tel" id="pub-cart-tel" placeholder="Ex : 07 00 00 00 00" maxlength="30" required data-i18n-placeholder="pub.tel_placeholder">
         </label>
         <div class="pub-field">
-          <span>Localisation de livraison <em class="pub-required">*</em></span>
+          <span><span data-i18n="pub.localisation_label">Localisation de livraison</span> <em class="pub-required">*</em></span>
           <button type="button" class="pub-geoloc-btn" id="pub-geoloc-btn">
             <i class="fas fa-location-crosshairs"></i>
-            <span id="pub-geoloc-btn-label">Partager ma position</span>
+            <span id="pub-geoloc-btn-label" data-i18n="pub.partager_position">Partager ma position</span>
           </button>
           <p class="pub-geoloc-status" id="pub-geoloc-status"></p>
         </div>
@@ -99,11 +99,11 @@
 
     <div class="pub-cart-footer">
       <div class="pub-cart-footer-total">
-        <span>Total</span>
+        <span data-i18n="pub.total">Total</span>
         <strong id="pub-cart-footer-total-val">0</strong>
       </div>
       <button class="btn btn-primary pub-btn-lg" id="pub-submit-btn" disabled>
-        <i class="fas fa-paper-plane"></i> Envoyer ma commande
+        <i class="fas fa-paper-plane"></i> <span data-i18n="pub.envoyer_commande">Envoyer ma commande</span>
       </button>
     </div>
   </div>
@@ -112,15 +112,15 @@
   <div id="pub-screen-confirm" class="pub-screen" style="display:none">
     <div class="pub-confirm">
       <div class="pub-confirm-check"><i class="fas fa-check"></i></div>
-      <h2>Commande envoyée !</h2>
+      <h2 data-i18n="pub.commande_envoyee_titre">Commande envoyée !</h2>
       <p class="pub-confirm-numero" id="pub-confirm-numero">CMD-0000</p>
-      <p class="pub-confirm-sub">Merci — la caisse a bien reçu votre commande.</p>
+      <p class="pub-confirm-sub" data-i18n="pub.confirm_sub">Merci — la caisse a bien reçu votre commande.</p>
 
-      <a href="https://pay.wave.com/m/M_leExO2sttnvX/c/ci/" target="_blank" rel="noopener noreferrer" class="pub-wave-pay">
+      <a id="pub-wave-pay" href="https://pay.wave.com/m/M_leExO2sttnvX/c/ci/" target="_blank" rel="noopener noreferrer" class="pub-wave-pay">
         <img src="wave-icon.jpg" alt="Wave" class="pub-wave-pay-logo">
         <span class="pub-wave-pay-text">
-          <strong>Payer avec Wave</strong>
-          <small>Confirme votre commande — parmi les premiers servis !</small>
+          <strong data-i18n="pub.wave_payer">Payer avec Wave</strong>
+          <small data-i18n="pub.wave_confirm_sub">Confirme votre commande — parmi les premiers servis !</small>
         </span>
         <i class="fas fa-arrow-right"></i>
       </a>
@@ -128,22 +128,22 @@
       <div class="pub-status-track" id="pub-status-track">
         <div class="pub-status-step is-active" data-statut="en-preparation">
           <span class="pub-status-dot"><i class="fas fa-receipt"></i></span>
-          <span>Reçue</span>
+          <span data-i18n="pub.statut_recue">Reçue</span>
         </div>
         <div class="pub-status-step" data-statut="servie">
           <span class="pub-status-dot"><i class="fas fa-concierge-bell"></i></span>
-          <span>Servie</span>
+          <span data-i18n="pub.statut_servie">Servie</span>
         </div>
       </div>
       <p class="pub-status-cancelled" id="pub-status-cancelled" style="display:none">
-        <i class="fas fa-circle-xmark"></i> Cette commande a été annulée. Adressez-vous à la caisse.
+        <i class="fas fa-circle-xmark"></i> <span data-i18n="pub.commande_annulee">Cette commande a été annulée. Adressez-vous à la caisse.</span>
       </p>
 
       <div class="pub-confirm-items" id="pub-confirm-items"></div>
       <div class="pub-confirm-total" id="pub-confirm-total"></div>
 
       <button class="btn btn-secondary" id="pub-new-order-btn">
-        <i class="fas fa-plus"></i> Passer une nouvelle commande
+        <i class="fas fa-plus"></i> <span data-i18n="pub.nouvelle_commande">Passer une nouvelle commande</span>
       </button>
     </div>
   </div>
@@ -151,6 +151,7 @@
   <div class="pub-toast" id="pub-toast"></div>
 </div>
 
+<script src="i18n.js"></script>
 <script src="commander.js"></script>
 </body>
 </html>

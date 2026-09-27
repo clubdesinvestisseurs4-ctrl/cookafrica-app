@@ -1,14 +1,24 @@
 const express = require('express');
 const { db } = require('../firebase-admin');
 const { authenticateToken, requireRole } = require('../middleware/auth');
+const cache = require('../utils/cache');
 
 const router = express.Router();
+
+// Le menu ne change quasiment jamais dans la journée (contrairement aux commandes) :
+// TTL large, invalidé explicitement à chaque écriture ci-dessous.
+function invalidate() { cache.del('menu:list'); }
 
 // GET /api/menu
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const snap = await db.collection('menu').orderBy('categorie').get();
-    res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    let menu = cache.get('menu:list');
+    if (!menu) {
+      const snap = await db.collection('menu').orderBy('categorie').get();
+      menu = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      cache.set('menu:list', menu, 5 * 60_000);
+    }
+    res.json(menu);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -34,6 +44,7 @@ router.post('/', authenticateToken, requireRole('admin'), async (req, res) => {
       updatedAt: new Date().toISOString(),
     };
     const ref = await db.collection('menu').add(data);
+    invalidate();
     res.status(201).json({ id: ref.id, ...data });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -47,6 +58,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), async (req, res) => 
     delete update.id;
     if (update.prix !== undefined) update.prix = Number(update.prix);
     await db.collection('menu').doc(req.params.id).update(update);
+    invalidate();
     res.json({ id: req.params.id, ...update });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -57,6 +69,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), async (req, res) => 
 router.delete('/:id', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     await db.collection('menu').doc(req.params.id).delete();
+    invalidate();
     res.json({ message: 'Plat supprimé' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -92,6 +105,7 @@ router.post('/seed', authenticateToken, requireRole('admin'), async (req, res) =
       batch.set(ref, { ...p, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     }
     await batch.commit();
+    invalidate();
     res.json({ message: `${plats.length} plats créés` });
   } catch (err) {
     res.status(500).json({ error: err.message });

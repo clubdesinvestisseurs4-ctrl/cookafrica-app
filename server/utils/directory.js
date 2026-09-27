@@ -3,6 +3,7 @@
 // Volontairement signés avec des secrets distincts de JWT_SECRET : ni l'un ni l'autre
 // n'est un jeton de session valide sur authenticateToken, même s'il était intercepté.
 const jwt = require('jsonwebtoken');
+const { db } = require('../firebase-admin');
 
 // Jeton de session d'annuaire : prouve qu'un admin multi-site a passé la vérification
 // de mot de passe de l'annuaire. Même durée que la session normale d'un site (12h) —
@@ -28,4 +29,41 @@ function verifySwitchToken(token) {
   return jwt.verify(token, process.env.DIRECTORY_SWITCH_SECRET);
 }
 
-module.exports = { signDirectorySession, verifyDirectorySession, signSwitchToken, verifySwitchToken };
+// Jeton de "caution" inter-sites : un site SECONDAIRE (pas le site maison) le signe
+// pour certifier "j'ai vérifié moi-même, avec mon propre JWT_SECRET, que cet
+// utilisateur est un admin authentifié chez moi" — sans jamais transmettre ce
+// JWT_SECRET au site maison. Signé avec un troisième secret, partagé cette fois entre
+// TOUS les backends (comme DIRECTORY_SWITCH_SECRET, dans l'autre sens), mais qui ne
+// sert qu'à interroger l'annuaire pour un username donné — jamais à agir sur des
+// données métier. Durée de vie très courte : juste l'aller-retour serveur-à-serveur,
+// jamais transmis au navigateur (voir GET /api/auth/directory-sites).
+function signVouchToken(username) {
+  return jwt.sign({ username }, process.env.DIRECTORY_VOUCH_SECRET, { expiresIn: '30s' });
+}
+function verifyVouchToken(token) {
+  return jwt.verify(token, process.env.DIRECTORY_VOUCH_SECRET);
+}
+
+// Recherche partagée par POST /api/directory/my-sites (site maison, jeton normal) et
+// POST /api/directory/vouch (site secondaire, jeton de caution) — même résultat,
+// seule la façon de prouver l'identité diffère. Ne vit que dans la base du site
+// maison, où réside l'annuaire (voir DIRECTORY_ENABLED).
+async function lookupDirectorySites(username) {
+  const dirSnapshot = await db.collection('admin_directory')
+    .where('username', '==', username.toLowerCase().trim())
+    .limit(1).get();
+  if (dirSnapshot.empty) return null;
+  const doc = dirSnapshot.docs[0];
+  const account = doc.data();
+  return {
+    directoryToken: signDirectorySession(doc.id),
+    sites: (account.sites || []).map(s => ({ siteId: s.siteId, label: s.label })),
+  };
+}
+
+module.exports = {
+  signDirectorySession, verifyDirectorySession,
+  signSwitchToken, verifySwitchToken,
+  signVouchToken, verifyVouchToken,
+  lookupDirectorySites,
+};

@@ -213,35 +213,35 @@
         <div class="stats-grid">
           <div class="stat-card">
             <div class="stat-icon red"><i class="fas fa-list-alt"></i></div>
-            <div><div class="stat-value" id="stat-commandes-jour">—</div><div class="stat-label">Commandes du jour</div></div>
+            <div><div class="stat-value" id="stat-commandes-jour">—</div><div class="stat-label" data-i18n="dashboard.stat_commandes_jour">Commandes du jour</div></div>
           </div>
           <div class="stat-card">
             <div class="stat-icon orange"><i class="fas fa-fire"></i></div>
-            <div><div class="stat-value" id="stat-commandes-actives">—</div><div class="stat-label">En cours</div></div>
+            <div><div class="stat-value" id="stat-commandes-actives">—</div><div class="stat-label" data-i18n="dashboard.stat_en_cours">En cours</div></div>
           </div>
           <div class="stat-card">
             <div class="stat-icon green"><i class="fas fa-money-bill-wave"></i></div>
-            <div><div class="stat-value" id="stat-revenus-jour">—</div><div class="stat-label">Revenus du jour</div></div>
+            <div><div class="stat-value" id="stat-revenus-jour">—</div><div class="stat-label" data-i18n="dashboard.stat_revenus_jour">Revenus du jour</div></div>
           </div>
           <div class="stat-card">
             <div class="stat-icon orange"><i class="fas fa-utensils"></i></div>
-            <div><div class="stat-value" id="stat-total-plats">—</div><div class="stat-label">Total plats</div></div>
+            <div><div class="stat-value" id="stat-total-plats">—</div><div class="stat-label" data-i18n="dashboard.stat_total_plats">Total plats</div></div>
           </div>
           <div class="stat-card">
             <div class="stat-icon blue"><i class="fas fa-wine-glass-alt"></i></div>
-            <div><div class="stat-value" id="stat-total-boissons">—</div><div class="stat-label">Total boissons</div></div>
+            <div><div class="stat-value" id="stat-total-boissons">—</div><div class="stat-label" data-i18n="dashboard.stat_total_boissons">Total boissons</div></div>
           </div>
         </div>
 
         <div class="dashboard-grid">
           <div class="card">
-            <div class="card-title"><i class="fas fa-fire"></i> Commandes en cours</div>
+            <div class="card-title"><i class="fas fa-fire"></i> <span data-i18n="dashboard.commandes_en_cours">Commandes en cours</span></div>
             <div class="list-scroll" id="dash-commandes-actives">
-              <div class="empty-state"><i class="fas fa-check-circle"></i><p>Aucune commande en cours</p></div>
+              <div class="empty-state"><i class="fas fa-check-circle"></i><p data-i18n="dashboard.aucune_commande">Aucune commande en cours</p></div>
             </div>
           </div>
           <div class="card">
-            <div class="card-title"><i class="fas fa-clock"></i> Activité récente</div>
+            <div class="card-title"><i class="fas fa-clock"></i> <span data-i18n="dashboard.activite_recente">Activité récente</span></div>
             <div class="list-scroll" id="dash-activite"></div>
           </div>
         </div>
@@ -251,25 +251,25 @@
       <section id="page-commandes" class="page">
         <div class="page-actions">
           <button class="btn btn-primary" id="btn-new-commande">
-            <i class="fas fa-plus"></i> Nouvelle commande
+            <i class="fas fa-plus"></i> <span data-i18n="commandes.new">Nouvelle commande</span>
           </button>
         </div>
         <div class="filters">
           <select id="filter-cmd-statut">
-            <option value="">Tous les statuts</option>
-            <option value="en-attente">En cours (serveur)</option>
-            <option value="en-preparation">Envoyée à la caisse</option>
-            <option value="servie">Servie</option>
-            <option value="annulee">Annulée</option>
+            <option value="" data-i18n="commandes.filter_all">Tous les statuts</option>
+            <option value="en-attente" data-i18n="commandes.filter_en_attente">En cours (serveur)</option>
+            <option value="en-preparation" data-i18n="commandes.filter_en_preparation">Envoyée à la caisse</option>
+            <option value="servie" data-i18n="commandes.filter_servie">Servie</option>
+            <option value="annulee" data-i18n="commandes.filter_annulee">Annulée</option>
           </select>
           <input type="date" id="filter-cmd-date">
-          <button class="btn btn-secondary" id="btn-filter-cmd"><i class="fas fa-filter"></i> Filtrer</button>
+          <button class="btn btn-secondary" id="btn-filter-cmd"><i class="fas fa-filter"></i> <span data-i18n="common.filter">Filtrer</span></button>
         </div>
         <div class="table-wrapper">
           <table class="data-table">
             <thead><tr>
-              <th>N° Commande</th><th>Heure</th><th>Articles</th>
-              <th>Total</th><th>Table</th><th>Statut</th><th>Actions</th>
+              <th data-i18n="commandes.th_numero">N° Commande</th><th data-i18n="commandes.th_heure">Heure</th><th data-i18n="commandes.th_articles">Articles</th>
+              <th data-i18n="commandes.th_total">Total</th><th data-i18n="commandes.th_table">Table</th><th data-i18n="common.status">Statut</th><th data-i18n="common.actions">Actions</th>
             </tr></thead>
             <tbody id="commandes-tbody"></tbody>
           </table>
@@ -282,17 +282,17 @@
           <input type="date" id="filter-fact-start">
           <input type="date" id="filter-fact-end">
           <select id="filter-fact-statut">
-            <option value="">Tous statuts</option>
-            <option value="payee">Payée</option>
-            <option value="partielle">Partielle</option>
+            <option value="" data-i18n="facturation.filter_all">Tous statuts</option>
+            <option value="payee" data-i18n="facturation.filter_payee">Payée</option>
+            <option value="partielle" data-i18n="facturation.filter_partielle">Partielle</option>
           </select>
-          <button class="btn btn-secondary" id="btn-filter-fact"><i class="fas fa-filter"></i> Filtrer</button>
-          <button class="btn btn-primary" id="btn-new-facture"><i class="fas fa-plus"></i> Nouvelle facture</button>
+          <button class="btn btn-secondary" id="btn-filter-fact"><i class="fas fa-filter"></i> <span data-i18n="common.filter">Filtrer</span></button>
+          <button class="btn btn-primary" id="btn-new-facture"><i class="fas fa-plus"></i> <span data-i18n="facturation.new">Nouvelle facture</span></button>
           <button class="btn btn-accent btn-sm" id="btn-sound-facturation">
-            <i class="fas fa-volume-mute"></i> Activer le son
+            <i class="fas fa-volume-mute"></i> <span data-i18n="facturation.enable_sound">Activer le son</span>
           </button>
-          <button class="btn btn-secondary btn-sm" id="btn-play-facturation" title="Entendre les factures prêtes">
-            <i class="fas fa-play"></i> Lire
+          <button class="btn btn-secondary btn-sm" id="btn-play-facturation" title="Entendre les factures prêtes" data-i18n-title="facturation.sound_title">
+            <i class="fas fa-play"></i> <span data-i18n="facturation.play">Lire</span>
           </button>
           <!-- <button class="btn btn-danger btn-sm" id="btn-repair-numeros" title="Répare les N° FACT-0NaN en base" style="display:none">
             <i class="fas fa-wrench"></i> Réparer N°
@@ -301,8 +301,8 @@
         <div class="table-wrapper">
           <table class="data-table">
             <thead><tr>
-              <th>N° Facture</th><th>Date</th><th>Commande</th>
-              <th>Articles</th><th>Total</th><th>Reste</th><th>Mode</th><th>Statut</th><th>Actions</th>
+              <th data-i18n="facturation.th_numero">N° Facture</th><th data-i18n="common.date">Date</th><th data-i18n="facturation.th_commande">Commande</th>
+              <th data-i18n="commandes.th_articles">Articles</th><th data-i18n="commandes.th_total">Total</th><th data-i18n="facturation.th_reste">Reste</th><th data-i18n="facturation.th_mode">Mode</th><th data-i18n="common.status">Statut</th><th data-i18n="common.actions">Actions</th>
             </tr></thead>
             <tbody id="factures-tbody"></tbody>
           </table>
@@ -314,19 +314,19 @@
         <div class="page-actions">
           <input type="date" id="filter-cmdligne-start">
           <input type="date" id="filter-cmdligne-end">
-          <button class="btn btn-secondary" id="btn-filter-cmdligne"><i class="fas fa-filter"></i> Filtrer</button>
-          <button class="btn btn-primary" id="btn-new-commande-ligne"><i class="fas fa-plus"></i> Nouvelle commande en ligne</button>
-          <button class="btn btn-secondary" id="btn-copy-lien-client" title="Copier le lien à partager au client">
-            <i class="fas fa-link"></i> Copier le lien client
+          <button class="btn btn-secondary" id="btn-filter-cmdligne"><i class="fas fa-filter"></i> <span data-i18n="common.filter">Filtrer</span></button>
+          <button class="btn btn-primary" id="btn-new-commande-ligne"><i class="fas fa-plus"></i> <span data-i18n="cmdligne.new">Nouvelle commande en ligne</span></button>
+          <button class="btn btn-secondary" id="btn-copy-lien-client" title="Copier le lien à partager au client" data-i18n-title="cmdligne.share_title">
+            <i class="fas fa-link"></i> <span data-i18n="cmdligne.share_btn">Copier le lien client</span>
           </button>
           <span style="font-size:.8rem;color:var(--gray);margin-left:8px">
-            <i class="fas fa-info-circle"></i> Le client peut commander lui-même via ce lien — sa commande arrive ici, et y reste visible (payée ou non) pour la période filtrée.
+            <i class="fas fa-info-circle"></i> <span data-i18n="cmdligne.help">Le client peut commander lui-même via ce lien — sa commande arrive ici, et y reste visible (payée ou non) pour la période filtrée.</span>
           </span>
         </div>
         <div class="table-wrapper">
           <table class="data-table">
             <thead><tr>
-              <th>N°</th><th>Date</th><th>Client</th><th>Articles</th><th>Total</th><th>Statut</th><th>Actions</th>
+              <th data-i18n="cmdligne.th_numero">N°</th><th data-i18n="common.date">Date</th><th data-i18n="cmdligne.th_client">Client</th><th data-i18n="commandes.th_articles">Articles</th><th data-i18n="commandes.th_total">Total</th><th data-i18n="common.status">Statut</th><th data-i18n="common.actions">Actions</th>
             </tr></thead>
             <tbody id="commandes-ligne-tbody"></tbody>
           </table>
@@ -336,14 +336,14 @@
       <!-- ── MENU ──────────────────────────────── -->
       <section id="page-menu" class="page">
         <div class="page-actions">
-          <button class="btn btn-primary" id="btn-new-plat"><i class="fas fa-plus"></i> Nouveau plat</button>
-          <button class="btn btn-secondary" id="btn-seed-menu"><i class="fas fa-layer-group"></i> Initialiser le menu</button>
+          <button class="btn btn-primary" id="btn-new-plat"><i class="fas fa-plus"></i> <span data-i18n="menu.new_plat">Nouveau plat</span></button>
+          <button class="btn btn-secondary" id="btn-seed-menu"><i class="fas fa-layer-group"></i> <span data-i18n="menu.init">Initialiser le menu</span></button>
           <select id="filter-menu-cat" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem">
-            <option value="">Toutes les catégories</option>
+            <option value="" data-i18n="menu.all_categories">Toutes les catégories</option>
           </select>
           <div class="menu-search-wrap">
             <i class="fas fa-search"></i>
-            <input type="search" id="filter-menu-recherche" placeholder="Rechercher un plat, une boisson…">
+            <input type="search" id="filter-menu-recherche" placeholder="Rechercher un plat, une boisson…" data-i18n-placeholder="menu.search_placeholder">
           </div>
         </div>
         <div class="menu-grid" id="menu-grid"></div>
@@ -353,14 +353,14 @@
       <section id="page-reservations" class="page">
         <div class="page-actions">
           <button class="btn btn-primary" id="btn-new-reservation">
-            <i class="fas fa-plus"></i> Nouvelle réservation
+            <i class="fas fa-plus"></i> <span data-i18n="reservations.new">Nouvelle réservation</span>
           </button>
         </div>
         <div class="table-wrapper">
           <table class="data-table">
             <thead><tr>
-              <th>Événement</th><th>Client</th><th>Salle</th><th>Jour J</th>
-              <th>Montant global</th><th>Avance</th><th>Reste</th><th>Statut</th><th>Actions</th>
+              <th data-i18n="reservations.th_evenement">Événement</th><th data-i18n="reservations.th_client">Client</th><th data-i18n="reservations.th_salle">Salle</th><th data-i18n="reservations.th_jourj">Jour J</th>
+              <th data-i18n="reservations.th_montant">Montant global</th><th data-i18n="reservations.th_avance">Avance</th><th data-i18n="reservations.th_reste">Reste</th><th data-i18n="common.status">Statut</th><th data-i18n="common.actions">Actions</th>
             </tr></thead>
             <tbody id="reservations-tbody"></tbody>
           </table>
@@ -374,26 +374,26 @@
         <div id="stock-subtab-plats-jour">
           <div class="stocks-header">
             <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-              <label style="font-weight:600"><i class="fas fa-calendar-day"></i> Date :</label>
+              <label style="font-weight:600"><i class="fas fa-calendar-day"></i> <span data-i18n="stocks.date_label">Date :</span></label>
               <input type="date" id="plats-date" class="form-input" style="width:170px">
               <button class="btn btn-secondary btn-sm" onclick="loadStocksPlats()">
-                <i class="fas fa-sync"></i> Actualiser
+                <i class="fas fa-sync"></i> <span data-i18n="stocks.refresh">Actualiser</span>
               </button>
             </div>
             <button class="btn btn-primary" id="btn-save-plats-jour">
-              <i class="fas fa-save"></i> Enregistrer les quantités
+              <i class="fas fa-save"></i> <span data-i18n="stocks.save_qty">Enregistrer les quantités</span>
             </button>
           </div>
           <p style="color:var(--gray);font-size:.85rem;margin-bottom:12px">
             <i class="fas fa-info-circle"></i>
-            Entrez le nombre de portions préparées pour chaque plat. Les commandes déduiront automatiquement du stock. Les Boissons sont reportées d'un jour à l'autre.
+            <span data-i18n="stocks.help">Entrez le nombre de portions préparées pour chaque plat. Les commandes déduiront automatiquement du stock. Les Boissons sont reportées d'un jour à l'autre.</span>
           </p>
           <div id="plats-alert-banner" style="display:none;background:var(--danger);color:#fff;padding:10px 16px;border-radius:8px;margin-bottom:12px;font-weight:600;font-size:.9rem"></div>
           <div class="table-wrapper">
             <table class="data-table">
               <thead><tr>
-                <th>Plat</th><th>Catégorie</th>
-                <th>Portions préparées</th><th>Portions restantes</th><th>État</th>
+                <th data-i18n="stocks.th_plat">Plat</th><th data-i18n="stocks.th_categorie">Catégorie</th>
+                <th data-i18n="stocks.th_portions_prep">Portions préparées</th><th data-i18n="stocks.th_portions_restantes">Portions restantes</th><th data-i18n="stocks.th_etat">État</th>
               </tr></thead>
               <tbody id="plats-jour-tbody"></tbody>
             </table>
@@ -408,76 +408,76 @@
           <input type="date" id="rapp-start">
           <span style="color:var(--gray)">–</span>
           <input type="date" id="rapp-end">
-          <button class="btn btn-primary" id="btn-load-rapport"><i class="fas fa-chart-line"></i> Générer</button>
-          <button class="btn btn-secondary" id="btn-export-csv"><i class="fas fa-download"></i> Export CSV</button>
+          <button class="btn btn-primary" id="btn-load-rapport"><i class="fas fa-chart-line"></i> <span data-i18n="rapports.generer">Générer</span></button>
+          <button class="btn btn-secondary" id="btn-export-csv"><i class="fas fa-download"></i> <span data-i18n="rapports.export_csv">Export CSV</span></button>
         </div>
         <div class="rapports-grid">
           <div class="rapport-card">
-            <h3><i class="fas fa-receipt"></i> Ventes</h3>
+            <h3><i class="fas fa-receipt"></i> <span data-i18n="rapports.ventes">Ventes</span></h3>
             <div class="kpi-value-big" id="rapp-nombre">—</div>
-            <div class="kpi-label-sm">Factures émises</div>
+            <div class="kpi-label-sm" data-i18n="rapports.factures_emises">Factures émises</div>
             <ul class="kpi-list" id="rapp-par-statut" style="margin-top:12px"></ul>
           </div>
           <div class="rapport-card">
-            <h3><i class="fas fa-globe"></i> Commandes en ligne</h3>
+            <h3><i class="fas fa-globe"></i> <span data-i18n="rapports.commandes_en_ligne">Commandes en ligne</span></h3>
             <div class="kpi-value-big" id="rapp-commandes-ligne">—</div>
-            <div class="kpi-label-sm">Client + Caisse confondus, hors annulées</div>
+            <div class="kpi-label-sm" data-i18n="rapports.client_caisse_hors_annulees">Client + Caisse confondus, hors annulées</div>
           </div>
           <div class="rapport-card">
-            <h3><i class="fas fa-money-bill-wave"></i> Chiffre d'affaires</h3>
+            <h3><i class="fas fa-money-bill-wave"></i> <span data-i18n="rapports.ca">Chiffre d'affaires</span></h3>
             <div class="kpi-value-big" id="rapp-ca">—</div>
-            <div class="kpi-label-sm">Total</div>
+            <div class="kpi-label-sm" data-i18n="rapports.total">Total</div>
             <ul class="kpi-list" id="rapp-par-mode" style="margin-top:12px"></ul>
           </div>
           <div class="rapport-card">
-            <h3><i class="fas fa-utensils"></i> Plats &amp; boissons vendus</h3>
+            <h3><i class="fas fa-utensils"></i> <span data-i18n="rapports.plats_boissons_vendus">Plats &amp; boissons vendus</span></h3>
             <div class="kpi-value-big" id="rapp-total-plats-qte">—</div>
-            <div class="kpi-label-sm">Plats vendus</div>
+            <div class="kpi-label-sm" data-i18n="rapports.plats_vendus">Plats vendus</div>
             <div class="kpi-value-big" id="rapp-total-boissons-qte" style="margin-top:10px">—</div>
-            <div class="kpi-label-sm">Boissons vendues</div>
+            <div class="kpi-label-sm" data-i18n="rapports.boissons_vendues">Boissons vendues</div>
           </div>
           <div class="rapport-card">
-            <h3><i class="fas fa-tags"></i> Ventes par catégorie</h3>
+            <h3><i class="fas fa-tags"></i> <span data-i18n="rapports.ventes_par_categorie">Ventes par catégorie</span></h3>
             <ul class="kpi-list" id="rapp-par-categorie"></ul>
           </div>
           <div class="rapport-card">
-            <h3><i class="fas fa-filter"></i> Quantité vendue par catégorie</h3>
+            <h3><i class="fas fa-filter"></i> <span data-i18n="rapports.qte_vendue_par_categorie">Quantité vendue par catégorie</span></h3>
             <select id="rapp-cat-select" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem;margin-bottom:10px"></select>
             <div class="kpi-value-big" id="rapp-cat-qte">—</div>
-            <div class="kpi-label-sm">Unités vendues sur la période</div>
+            <div class="kpi-label-sm" data-i18n="rapports.unites_vendues">Unités vendues sur la période</div>
           </div>
           <div class="rapport-card">
-            <h3><i class="fas fa-star"></i> Top Plats</h3>
+            <h3><i class="fas fa-star"></i> <span data-i18n="rapports.top_plats">Top Plats</span></h3>
             <ul class="kpi-list" id="rapp-top-plats"></ul>
           </div>
           <div class="rapport-card">
-            <h3><i class="fas fa-wine-glass-alt"></i> Top Boissons</h3>
+            <h3><i class="fas fa-wine-glass-alt"></i> <span data-i18n="rapports.top_boissons">Top Boissons</span></h3>
             <ul class="kpi-list" id="rapp-top-boissons"></ul>
           </div>
         </div>
         <div class="table-wrapper" style="margin-top:24px">
           <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)">
-            <h3 style="font-size:.95rem;font-weight:700;color:var(--dark)"><i class="fas fa-utensils"></i> Détail des plats vendus (toutes catégories, période complète)</h3>
+            <h3 style="font-size:.95rem;font-weight:700;color:var(--dark)"><i class="fas fa-utensils"></i> <span data-i18n="rapports.detail_plats">Détail des plats vendus (toutes catégories, période complète)</span></h3>
           </div>
           <table class="data-table">
             <thead><tr>
-              <th>Article</th><th>Catégorie</th><th>Quantité vendue</th><th>CA généré</th>
+              <th data-i18n="rapports.th_article">Article</th><th data-i18n="stocks.th_categorie">Catégorie</th><th data-i18n="rapports.th_qte_vendue">Quantité vendue</th><th data-i18n="rapports.th_ca_genere">CA généré</th>
             </tr></thead>
             <tbody id="rapport-ventes-tbody">
-              <tr><td colspan="4" style="text-align:center;color:var(--gray);padding:24px">Cliquez sur "Générer" pour afficher les données</td></tr>
+              <tr><td colspan="4" style="text-align:center;color:var(--gray);padding:24px" data-i18n="rapports.generer_hint">Cliquez sur "Générer" pour afficher les données</td></tr>
             </tbody>
           </table>
         </div>
         <div class="table-wrapper" style="margin-top:24px">
           <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)">
-            <h3 style="font-size:.95rem;font-weight:700;color:var(--dark)"><i class="fas fa-list"></i> Détail des factures</h3>
+            <h3 style="font-size:.95rem;font-weight:700;color:var(--dark)"><i class="fas fa-list"></i> <span data-i18n="rapports.detail_factures">Détail des factures</span></h3>
           </div>
           <table class="data-table">
             <thead><tr>
-              <th>N° Facture</th><th>Date</th><th>Commande</th><th>Articles</th><th>Total</th><th>Mode</th><th>Statut</th>
+              <th data-i18n="facturation.th_numero">N° Facture</th><th data-i18n="common.date">Date</th><th data-i18n="facturation.th_commande">Commande</th><th data-i18n="commandes.th_articles">Articles</th><th data-i18n="commandes.th_total">Total</th><th data-i18n="facturation.th_mode">Mode</th><th data-i18n="common.status">Statut</th>
             </tr></thead>
             <tbody id="rapport-factures-tbody">
-              <tr><td colspan="7" style="text-align:center;color:var(--gray);padding:24px">Cliquez sur "Générer" pour afficher les données</td></tr>
+              <tr><td colspan="7" style="text-align:center;color:var(--gray);padding:24px" data-i18n="rapports.generer_hint">Cliquez sur "Générer" pour afficher les données</td></tr>
             </tbody>
           </table>
         </div>
@@ -489,28 +489,28 @@
           <input type="date" id="filter-sess-start">
           <input type="date" id="filter-sess-end">
           <select id="filter-sess-user">
-            <option value="">Tous les utilisateurs</option>
+            <option value="" data-i18n="sessions.tous_utilisateurs">Tous les utilisateurs</option>
           </select>
-          <button class="btn btn-secondary" id="btn-filter-sessions"><i class="fas fa-filter"></i> Filtrer</button>
+          <button class="btn btn-secondary" id="btn-filter-sessions"><i class="fas fa-filter"></i> <span data-i18n="common.filter">Filtrer</span></button>
         </div>
         <div class="stats-grid" style="margin-bottom:20px">
           <div class="stat-card">
             <div class="stat-icon blue"><i class="fas fa-sign-in-alt"></i></div>
-            <div><div class="stat-value" id="sess-count-login">—</div><div class="stat-label">Connexions</div></div>
+            <div><div class="stat-value" id="sess-count-login">—</div><div class="stat-label" data-i18n="sessions.connexions">Connexions</div></div>
           </div>
           <div class="stat-card">
             <div class="stat-icon red"><i class="fas fa-sign-out-alt"></i></div>
-            <div><div class="stat-value" id="sess-count-logout">—</div><div class="stat-label">Déconnexions</div></div>
+            <div><div class="stat-value" id="sess-count-logout">—</div><div class="stat-label" data-i18n="sessions.deconnexions">Déconnexions</div></div>
           </div>
           <div class="stat-card">
             <div class="stat-icon purple"><i class="fas fa-users"></i></div>
-            <div><div class="stat-value" id="sess-count-users">—</div><div class="stat-label">Utilisateurs actifs</div></div>
+            <div><div class="stat-value" id="sess-count-users">—</div><div class="stat-label" data-i18n="sessions.utilisateurs_actifs">Utilisateurs actifs</div></div>
           </div>
         </div>
         <div class="table-wrapper">
           <table class="data-table">
             <thead><tr>
-              <th>Date &amp; Heure</th><th>Utilisateur</th><th>Nom</th><th>Rôle</th><th>Action</th><th>IP</th>
+              <th data-i18n="sessions.th_date_heure">Date &amp; Heure</th><th data-i18n="sessions.th_utilisateur">Utilisateur</th><th data-i18n="sessions.th_nom">Nom</th><th data-i18n="sessions.th_role">Rôle</th><th data-i18n="sessions.th_action">Action</th><th>IP</th>
             </tr></thead>
             <tbody id="sessions-tbody"></tbody>
           </table>
@@ -521,13 +521,13 @@
       <section id="page-utilisateurs" class="page">
         <div class="page-actions">
           <button class="btn btn-primary" id="btn-new-utilisateur">
-            <i class="fas fa-user-plus"></i> Nouvel utilisateur
+            <i class="fas fa-user-plus"></i> <span data-i18n="utilisateurs.new">Nouvel utilisateur</span>
           </button>
         </div>
         <div class="table-wrapper">
           <table class="data-table">
             <thead><tr>
-              <th>Prénom</th><th>Nom</th><th>Identifiant</th><th>Rôle</th><th>Statut</th><th>Dernière connexion</th><th>Actions</th>
+              <th data-i18n="utilisateurs.th_prenom">Prénom</th><th data-i18n="utilisateurs.th_nom">Nom</th><th data-i18n="utilisateurs.th_identifiant">Identifiant</th><th data-i18n="utilisateurs.th_role">Rôle</th><th data-i18n="common.status">Statut</th><th data-i18n="utilisateurs.th_derniere_connexion">Dernière connexion</th><th data-i18n="common.actions">Actions</th>
             </tr></thead>
             <tbody id="utilisateurs-tbody"></tbody>
           </table>
@@ -537,7 +537,7 @@
         <div style="margin-top:28px;background:var(--white);border-radius:12px;border:1.5px solid var(--border);padding:20px 24px;max-width:560px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
             <h3 style="margin:0;font-size:1rem;display:flex;align-items:center;gap:8px">
-              <i class="fas fa-wifi" style="color:var(--primary)"></i> Restriction Wi-Fi
+              <i class="fas fa-wifi" style="color:var(--primary)"></i> <span data-i18n="utilisateurs.wifi_titre">Restriction Wi-Fi</span>
             </h3>
             <div style="display:flex;align-items:center;gap:10px">
               <span id="wifi-status" style="font-size:.83rem;font-weight:600">—</span>
@@ -548,26 +548,26 @@
               </label>
             </div>
           </div>
-          <p style="font-size:.82rem;color:var(--gray);margin:0 0 14px">
+          <p style="font-size:.82rem;color:var(--gray);margin:0 0 14px" data-i18n="utilisateurs.wifi_help">
             Quand activée, seuls les appareils dont l'adresse IP est dans la liste peuvent se connecter (sauf l'admin).
           </p>
           <div style="background:var(--light);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:.83rem">
-            <span style="color:var(--gray)">Votre IP actuelle :</span>
+            <span style="color:var(--gray)" data-i18n="utilisateurs.wifi_ip_actuelle">Votre IP actuelle :</span>
             <strong id="wifi-current-ip" style="font-family:monospace;margin-left:6px">—</strong>
           </div>
           <div style="margin-bottom:14px">
-            <p style="font-size:.82rem;font-weight:600;margin:0 0 8px">Adresses autorisées</p>
+            <p style="font-size:.82rem;font-weight:600;margin:0 0 8px" data-i18n="utilisateurs.wifi_adresses">Adresses autorisées</p>
             <ul id="wifi-ips-list" style="list-style:none;margin:0;padding:0;max-height:180px;overflow-y:auto"></ul>
           </div>
           <button class="btn btn-secondary" id="btn-add-wifi-ip" style="width:100%">
-            <i class="fas fa-plus-circle"></i> Enregistrer ce réseau (IP actuelle)
+            <i class="fas fa-plus-circle"></i> <span data-i18n="utilisateurs.wifi_enregistrer_reseau">Enregistrer ce réseau (IP actuelle)</span>
           </button>
           <div style="margin-top:10px;display:flex;gap:8px">
             <input type="text" id="wifi-manual-ip"
-              placeholder="Saisir une IP manuellement  ex: 203.0.113.42"
+              placeholder="Saisir une IP manuellement  ex: 203.0.113.42" data-i18n-placeholder="utilisateurs.wifi_ip_placeholder"
               style="flex:1;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem;font-family:monospace">
             <button class="btn btn-primary" id="btn-add-wifi-manual-ip">
-              <i class="fas fa-plus"></i> Ajouter
+              <i class="fas fa-plus"></i> <span data-i18n="utilisateurs.wifi_ajouter">Ajouter</span>
             </button>
           </div>
         </div>
@@ -575,30 +575,30 @@
         <!-- Carte code de baisse de prix (OTP temporaire) -->
         <div style="margin-top:20px;background:var(--white);border-radius:12px;border:1.5px solid var(--border);padding:20px 24px;max-width:560px">
           <h3 style="margin:0 0 8px;font-size:1rem;display:flex;align-items:center;gap:8px">
-            <i class="fas fa-key" style="color:var(--primary)"></i> Code de baisse de prix
+            <i class="fas fa-key" style="color:var(--primary)"></i> <span data-i18n="utilisateurs.discount_titre">Code de baisse de prix</span>
           </h3>
-          <p style="font-size:.82rem;color:var(--gray);margin:0 0 14px">
+          <p style="font-size:.82rem;color:var(--gray);margin:0 0 14px" data-i18n="utilisateurs.discount_help">
             Générez un code temporaire quand une caissière doit baisser le prix d'un article sous
             son tarif catalogue, et communiquez-le-lui à l'oral. Il reste valable — pour plusieurs
             baisses de prix — pendant la durée ci-dessous, puis expire automatiquement.
           </p>
 
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-            <label for="discount-otp-window" style="font-size:.83rem;color:var(--gray);white-space:nowrap">Durée de la fenêtre</label>
+            <label for="discount-otp-window" style="font-size:.83rem;color:var(--gray);white-space:nowrap" data-i18n="utilisateurs.discount_duree_label">Durée de la fenêtre</label>
             <input type="number" id="discount-otp-window" min="1" max="60" value="5"
               style="width:70px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:.85rem">
-            <span style="font-size:.83rem;color:var(--gray)">min</span>
+            <span style="font-size:.83rem;color:var(--gray)" data-i18n="utilisateurs.discount_min">min</span>
             <button class="btn btn-secondary btn-sm" id="btn-save-discount-otp-window">
-              <i class="fas fa-save"></i> Enregistrer
+              <i class="fas fa-save"></i> <span data-i18n="common.save">Enregistrer</span>
             </button>
           </div>
 
           <div style="background:var(--light);border-radius:8px;padding:14px;margin-bottom:14px;font-size:.83rem" id="discount-otp-status">
-            Aucun code actif
+            <span data-i18n="utilisateurs.discount_aucun_code">Aucun code actif</span>
           </div>
 
           <button class="btn btn-primary" id="btn-generate-discount-otp">
-            <i class="fas fa-bolt"></i> Générer un code
+            <i class="fas fa-bolt"></i> <span data-i18n="utilisateurs.discount_generer">Générer un code</span>
           </button>
         </div>
       </section>
@@ -613,17 +613,17 @@
 <div class="modal-overlay hidden" id="modal-edit-commande">
   <div class="modal-box" style="max-width:480px">
     <div class="modal-header">
-      <h2>Modifier la commande <span id="editcmd-numero"></span></h2>
+      <h2><span data-i18n="modal.editcmd_title">Modifier la commande</span> <span id="editcmd-numero"></span></h2>
       <button class="modal-close" data-modal="edit-commande">&times;</button>
     </div>
     <div class="modal-body">
       <input type="hidden" id="editcmd-id">
       <div class="form-group">
-        <label>Ajouter un article</label>
+        <label data-i18n="modal.editcmd_add_article">Ajouter un article</label>
         <div class="menu-search-wrapper" id="editcmd-search-wrapper">
           <div class="menu-search-input-row">
             <i class="fas fa-search menu-search-icon"></i>
-            <input type="text" id="editcmd-menu-search" placeholder="Rechercher un plat ou une boisson…" autocomplete="off">
+            <input type="text" id="editcmd-menu-search" placeholder="Rechercher un plat ou une boisson…" data-i18n-placeholder="modal.editcmd_search_placeholder" autocomplete="off">
             <button type="button" class="menu-search-clear" id="editcmd-menu-clear" style="display:none" tabindex="-1">
               <i class="fas fa-times"></i>
             </button>
@@ -635,9 +635,9 @@
       <div style="text-align:right;font-weight:800;margin-top:10px;font-size:1.05rem" id="editcmd-total"></div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" data-modal="edit-commande">Annuler</button>
+      <button class="btn btn-secondary" data-modal="edit-commande" data-i18n="modal.cancel">Annuler</button>
       <button class="btn btn-primary" id="btn-editcmd-save">
-        <i class="fas fa-save"></i> Enregistrer
+        <i class="fas fa-save"></i> <span data-i18n="modal.save">Enregistrer</span>
       </button>
     </div>
   </div>
@@ -647,16 +647,16 @@
 <div class="modal-overlay hidden" id="modal-commande">
   <div class="modal-box" style="max-width:680px">
     <div class="modal-header">
-      <h2 id="modal-commande-title">Nouvelle commande</h2>
+      <h2 id="modal-commande-title" data-i18n="modal.newcmd_title">Nouvelle commande</h2>
       <button class="modal-close" data-modal="commande">&times;</button>
     </div>
     <div class="modal-body">
       <div class="form-group">
-        <label>Sélectionner un article <small style="color:var(--gray);font-weight:400">(ajout automatique au panier)</small></label>
+        <label><span data-i18n="modal.newcmd_select_article">Sélectionner un article</span> <small style="color:var(--gray);font-weight:400" data-i18n="modal.newcmd_auto_add">(ajout automatique au panier)</small></label>
         <div class="menu-search-wrapper" id="menu-search-wrapper">
           <div class="menu-search-input-row">
             <i class="fas fa-search menu-search-icon"></i>
-            <input type="text" id="cmd-menu-search" placeholder="Rechercher un plat ou une boisson…" autocomplete="off">
+            <input type="text" id="cmd-menu-search" placeholder="Rechercher un plat ou une boisson…" data-i18n-placeholder="modal.newcmd_search_placeholder" autocomplete="off">
             <button type="button" class="menu-search-clear" id="cmd-menu-clear" style="display:none" tabindex="-1">
               <i class="fas fa-times"></i>
             </button>
@@ -667,19 +667,19 @@
 
       <div class="panier-section">
         <div style="font-weight:700;font-size:.9rem;margin-bottom:8px;color:var(--dark)">
-          <i class="fas fa-shopping-cart"></i> Panier
+          <i class="fas fa-shopping-cart"></i> <span data-i18n="modal.newcmd_panier">Panier</span>
         </div>
         <div id="panier-items"></div>
         <div class="panier-total" id="panier-total" style="display:none">
-          <span>Total commande</span>
+          <span data-i18n="modal.newcmd_total">Total commande</span>
           <span id="panier-total-val">0</span>
         </div>
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" data-modal="commande">Annuler</button>
+      <button class="btn btn-secondary" data-modal="commande" data-i18n="modal.cancel">Annuler</button>
       <button class="btn btn-primary" id="btn-save-commande">
-        <i class="fas fa-check"></i> Créer la commande
+        <i class="fas fa-check"></i> <span data-i18n="modal.newcmd_create">Créer la commande</span>
       </button>
     </div>
   </div>
@@ -689,30 +689,30 @@
 <div class="modal-overlay hidden" id="modal-new-facture">
   <div class="modal-box" style="max-width:440px">
     <div class="modal-header">
-      <h2>Générer une facture</h2>
+      <h2 data-i18n="modal.newfacture_title">Générer une facture</h2>
       <button class="modal-close" data-modal="new-facture">&times;</button>
     </div>
     <div class="modal-body">
       <div class="form-group">
-        <label>Commande *</label>
+        <label data-i18n="modal.newfacture_commande">Commande *</label>
         <select id="new-facture-commande" style="width:100%">
-          <option value="">Sélectionner une commande…</option>
+          <option value="" data-i18n="modal.newfacture_select">Sélectionner une commande…</option>
         </select>
       </div>
       <div class="form-group">
-        <label>Mode de paiement</label>
+        <label data-i18n="modal.mode_paiement">Mode de paiement</label>
         <select id="new-facture-mode">
-          <option value="especes">Espèces</option>
-          <option value="carte">Carte bancaire</option>
-          <option value="mobile">Mobile Money</option>
-          <option value="virement">Virement</option>
+          <option value="especes" data-i18n="modal.mode_especes">Espèces</option>
+          <option value="carte" data-i18n="modal.mode_carte">Carte bancaire</option>
+          <option value="mobile" data-i18n="modal.mode_mobile">Mobile Money</option>
+          <option value="virement" data-i18n="modal.mode_virement">Virement</option>
         </select>
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" data-modal="new-facture">Annuler</button>
+      <button class="btn btn-secondary" data-modal="new-facture" data-i18n="modal.cancel">Annuler</button>
       <button class="btn btn-primary" id="btn-save-new-facture">
-        <i class="fas fa-receipt"></i> Générer &amp; Imprimer
+        <i class="fas fa-receipt"></i> <span data-i18n="modal.newfacture_generer">Générer &amp; Imprimer</span>
       </button>
     </div>
   </div>
@@ -722,7 +722,7 @@
 <div class="modal-overlay hidden" id="modal-pay-facture">
   <div class="modal-box" style="max-width:380px">
     <div class="modal-header">
-      <h2>Enregistrer paiement</h2>
+      <h2 data-i18n="modal.payfacture_title">Enregistrer paiement</h2>
       <button class="modal-close" data-modal="pay-facture">&times;</button>
     </div>
     <div class="modal-body">
@@ -730,7 +730,7 @@
       <p id="pay-facture-info" style="margin-bottom:16px;color:var(--gray);font-size:.9rem"></p>
 
       <button type="button" id="btn-toggle-pay-prices" style="background:none;border:none;color:var(--primary);font-size:.82rem;cursor:pointer;padding:0;margin-bottom:12px">
-        <i class="fas fa-tag"></i> Modifier un prix…
+        <i class="fas fa-tag"></i> <span data-i18n="modal.payfacture_modifier_prix">Modifier un prix…</span>
       </button>
 
       <div id="pay-facture-prices" style="display:none;margin-bottom:14px">
@@ -739,22 +739,22 @@
       </div>
 
       <div class="form-group">
-        <label>Mode de paiement</label>
+        <label data-i18n="modal.mode_paiement">Mode de paiement</label>
         <select id="pay-facture-mode">
-          <option value="especes">Espèces</option>
-          <option value="carte">Carte bancaire</option>
-          <option value="mobile">Mobile Money</option>
-          <option value="virement">Virement</option>
+          <option value="especes" data-i18n="modal.mode_especes">Espèces</option>
+          <option value="carte" data-i18n="modal.mode_carte">Carte bancaire</option>
+          <option value="mobile" data-i18n="modal.mode_mobile">Mobile Money</option>
+          <option value="virement" data-i18n="modal.mode_virement">Virement</option>
         </select>
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" data-modal="pay-facture">Annuler</button>
+      <button class="btn btn-secondary" data-modal="pay-facture" data-i18n="modal.cancel">Annuler</button>
       <button class="btn btn-primary" id="btn-save-pay-facture-prices" style="display:none">
-        <i class="fas fa-save"></i> Enregistrer
+        <i class="fas fa-save"></i> <span data-i18n="modal.save">Enregistrer</span>
       </button>
       <button class="btn btn-success" id="btn-confirm-pay-facture">
-        <i class="fas fa-check"></i> Marquer payée
+        <i class="fas fa-check"></i> <span data-i18n="modal.payfacture_marquer_payee">Marquer payée</span>
       </button>
     </div>
   </div>
@@ -764,18 +764,18 @@
 <div class="modal-overlay hidden" id="modal-edit-facture">
   <div class="modal-box" style="max-width:480px">
     <div class="modal-header">
-      <h2>Modifier la facture <span id="editfact-numero"></span></h2>
+      <h2><span data-i18n="modal.editfacture_title">Modifier la facture</span> <span id="editfact-numero"></span></h2>
       <button class="modal-close" data-modal="edit-facture">&times;</button>
     </div>
     <div class="modal-body">
       <input type="hidden" id="editfact-facture-id">
       <div id="editfact-items-step">
         <div class="form-group">
-          <label>Ajouter un article</label>
+          <label data-i18n="modal.editfacture_add_article">Ajouter un article</label>
           <div class="menu-search-wrapper" id="editfact-search-wrapper">
             <div class="menu-search-input-row">
               <i class="fas fa-search menu-search-icon"></i>
-              <input type="text" id="editfact-menu-search" placeholder="Rechercher un plat ou une boisson…" autocomplete="off">
+              <input type="text" id="editfact-menu-search" placeholder="Rechercher un plat ou une boisson…" data-i18n-placeholder="modal.editcmd_search_placeholder" autocomplete="off">
               <button type="button" class="menu-search-clear" id="editfact-menu-clear" style="display:none" tabindex="-1">
                 <i class="fas fa-times"></i>
               </button>
@@ -788,9 +788,9 @@
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" data-modal="edit-facture">Annuler</button>
+      <button class="btn btn-secondary" data-modal="edit-facture" data-i18n="modal.cancel">Annuler</button>
       <button class="btn btn-primary" id="btn-editfact-save">
-        <i class="fas fa-save"></i> Enregistrer
+        <i class="fas fa-save"></i> <span data-i18n="modal.save">Enregistrer</span>
       </button>
     </div>
   </div>
@@ -800,34 +800,34 @@
 <div class="modal-overlay hidden" id="modal-switch-site">
   <div class="modal-box" style="max-width:380px">
     <div class="modal-header">
-      <h2>Gérer un autre site</h2>
+      <h2 data-i18n="modal.switch_title">Gérer un autre site</h2>
       <button class="modal-close" data-modal="switch-site">&times;</button>
     </div>
     <div class="modal-body">
       <div id="switch-site-step-login">
-        <p style="margin-bottom:14px;color:var(--gray);font-size:.88rem">
-          Identifiants distincts de votre compte sur ce site.
+        <p style="margin-bottom:14px;color:var(--gray);font-size:.88rem" data-i18n="modal.switch_creds_hint">
+          Identifiants du site que vous gérez déjà.
         </p>
         <div class="form-group">
-          <label>Identifiant</label>
+          <label data-i18n="login.username_label">Identifiant</label>
           <input type="text" id="switch-site-username" autocomplete="off">
         </div>
         <div class="form-group">
-          <label>Mot de passe</label>
+          <label data-i18n="login.password_label">Mot de passe</label>
           <input type="password" id="switch-site-password" autocomplete="off">
         </div>
         <div id="switch-site-login-error" class="form-error" style="display:none"></div>
       </div>
       <div id="switch-site-step-pick" style="display:none">
-        <p style="margin-bottom:14px;color:var(--gray);font-size:.88rem">Choisissez le site à gérer :</p>
+        <p style="margin-bottom:14px;color:var(--gray);font-size:.88rem" data-i18n="modal.switch_choose_site">Choisissez le site à gérer :</p>
         <div id="switch-site-list"></div>
         <div id="switch-site-pick-error" class="form-error" style="display:none"></div>
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" data-modal="switch-site">Annuler</button>
+      <button class="btn btn-secondary" data-modal="switch-site" data-i18n="modal.cancel">Annuler</button>
       <button class="btn btn-primary" id="btn-switch-site-login">
-        <i class="fas fa-sign-in-alt"></i> Continuer
+        <i class="fas fa-sign-in-alt"></i> <span data-i18n="modal.switch_continue">Continuer</span>
       </button>
     </div>
   </div>
@@ -837,7 +837,7 @@
 <div class="modal-overlay hidden" id="modal-plat">
   <div class="modal-box">
     <div class="modal-header">
-      <h2 id="modal-plat-title">Nouveau plat</h2>
+      <h2 id="modal-plat-title" data-i18n="modal.plat_new_title">Nouveau plat</h2>
       <button class="modal-close" data-modal="plat">&times;</button>
     </div>
     <div class="modal-body">
@@ -845,56 +845,56 @@
         <input type="hidden" id="plat-id">
         <div class="form-row">
           <div class="form-group">
-            <label>Nom du plat *</label>
-            <input type="text" id="plat-nom" required placeholder="Ex: Attiéké Poisson">
+            <label data-i18n="modal.plat_nom_label">Nom du plat *</label>
+            <input type="text" id="plat-nom" required placeholder="Ex: Attiéké Poisson" data-i18n-placeholder="modal.plat_nom_placeholder">
           </div>
           <div class="form-group">
-            <label>Catégorie</label>
+            <label data-i18n="modal.plat_categorie">Catégorie</label>
             <select id="plat-categorie">
-              <option value="Plats">Plats</option>
-              <option value="Entrées">Entrées</option>
-              <option value="Accompagnement">Accompagnement</option>
-              <option value="Sauce">Sauce</option>
-              <option value="Desserts">Desserts</option>
-              <option value="Buffet">Buffet</option>
-              <option value="Boissons">Boissons</option>
+              <option value="Plats" data-i18n="menu.cat_plats">Plats</option>
+              <option value="Entrées" data-i18n="menu.cat_entrees">Entrées</option>
+              <option value="Accompagnement" data-i18n="menu.cat_accompagnement">Accompagnement</option>
+              <option value="Sauce" data-i18n="menu.cat_sauce">Sauce</option>
+              <option value="Desserts" data-i18n="menu.cat_desserts">Desserts</option>
+              <option value="Buffet" data-i18n="menu.cat_buffet">Buffet</option>
+              <option value="Boissons" data-i18n="menu.cat_boissons">Boissons</option>
             </select>
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
             <label id="label-plat-prix">Prix (FCFA) *</label>
-            <input type="number" id="plat-prix" min="0" required placeholder="Ex: 2500">
+            <input type="number" id="plat-prix" min="0" required placeholder="Ex: 2500" data-i18n-placeholder="modal.plat_prix_placeholder">
           </div>
           <div class="form-group">
-            <label>Disponible</label>
+            <label data-i18n="modal.plat_disponible">Disponible</label>
             <select id="plat-disponible">
-              <option value="true">Oui</option>
-              <option value="false">Non</option>
+              <option value="true" data-i18n="modal.plat_oui">Oui</option>
+              <option value="false" data-i18n="modal.plat_non">Non</option>
             </select>
           </div>
         </div>
         <div class="form-group">
-          <label>Description</label>
-          <input type="text" id="plat-description" placeholder="Description courte du plat">
+          <label data-i18n="modal.plat_description">Description</label>
+          <input type="text" id="plat-description" placeholder="Description courte du plat" data-i18n-placeholder="modal.plat_description_placeholder">
         </div>
         <div class="form-group">
-          <label>Jours disponibles (laisser tout décoché = tous les jours)</label>
+          <label data-i18n="modal.plat_jours_dispo">Jours disponibles (laisser tout décoché = tous les jours)</label>
           <div class="plat-jours-checkboxes">
-            <label><input type="checkbox" class="plat-jour" value="lundi"> Lun</label>
-            <label><input type="checkbox" class="plat-jour" value="mardi"> Mar</label>
-            <label><input type="checkbox" class="plat-jour" value="mercredi"> Mer</label>
-            <label><input type="checkbox" class="plat-jour" value="jeudi"> Jeu</label>
-            <label><input type="checkbox" class="plat-jour" value="vendredi"> Ven</label>
-            <label><input type="checkbox" class="plat-jour" value="samedi"> Sam</label>
-            <label><input type="checkbox" class="plat-jour" value="dimanche"> Dim</label>
+            <label><input type="checkbox" class="plat-jour" value="lundi"> <span data-i18n="modal.jour_lun">Lun</span></label>
+            <label><input type="checkbox" class="plat-jour" value="mardi"> <span data-i18n="modal.jour_mar">Mar</span></label>
+            <label><input type="checkbox" class="plat-jour" value="mercredi"> <span data-i18n="modal.jour_mer">Mer</span></label>
+            <label><input type="checkbox" class="plat-jour" value="jeudi"> <span data-i18n="modal.jour_jeu">Jeu</span></label>
+            <label><input type="checkbox" class="plat-jour" value="vendredi"> <span data-i18n="modal.jour_ven">Ven</span></label>
+            <label><input type="checkbox" class="plat-jour" value="samedi"> <span data-i18n="modal.jour_sam">Sam</span></label>
+            <label><input type="checkbox" class="plat-jour" value="dimanche"> <span data-i18n="modal.jour_dim">Dim</span></label>
           </div>
         </div>
       </form>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" data-modal="plat">Annuler</button>
-      <button class="btn btn-primary" id="btn-save-plat"><i class="fas fa-save"></i> Enregistrer</button>
+      <button class="btn btn-secondary" data-modal="plat" data-i18n="modal.cancel">Annuler</button>
+      <button class="btn btn-primary" id="btn-save-plat"><i class="fas fa-save"></i> <span data-i18n="modal.save">Enregistrer</span></button>
     </div>
   </div>
 </div>
@@ -903,7 +903,7 @@
 <div class="modal-overlay hidden" id="modal-reservation">
   <div class="modal-box">
     <div class="modal-header">
-      <h2 id="modal-reservation-title">Nouvelle réservation</h2>
+      <h2 id="modal-reservation-title" data-i18n="modal.resa_new_title">Nouvelle réservation</h2>
       <button class="modal-close" data-modal="reservation">&times;</button>
     </div>
     <div class="modal-body">
@@ -911,50 +911,50 @@
         <input type="hidden" id="resa-id">
         <div class="form-row">
           <div class="form-group">
-            <label>Nom de l'événement *</label>
-            <input type="text" id="resa-nom-evenement" required placeholder="Ex: Mariage Koffi &amp; Aya">
+            <label data-i18n="modal.resa_nom_evenement">Nom de l'événement *</label>
+            <input type="text" id="resa-nom-evenement" required placeholder="Ex: Mariage Koffi &amp; Aya" data-i18n-placeholder="modal.resa_nom_evenement_placeholder">
           </div>
           <div class="form-group">
-            <label>Nom de la salle</label>
-            <input type="text" id="resa-salle" placeholder="Ex: Salle Prestige">
+            <label data-i18n="modal.resa_nom_salle">Nom de la salle</label>
+            <input type="text" id="resa-salle" placeholder="Ex: Salle Prestige" data-i18n-placeholder="modal.resa_nom_salle_placeholder">
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Nom *</label>
+            <label data-i18n="modal.resa_nom">Nom *</label>
             <input type="text" id="resa-nom" required>
           </div>
           <div class="form-group">
-            <label>Prénom</label>
+            <label data-i18n="modal.resa_prenom">Prénom</label>
             <input type="text" id="resa-prenom">
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Contact</label>
-            <input type="text" id="resa-contact" placeholder="Numéro de téléphone">
+            <label data-i18n="modal.resa_contact">Contact</label>
+            <input type="text" id="resa-contact" placeholder="Numéro de téléphone" data-i18n-placeholder="modal.resa_telephone_placeholder">
           </div>
           <div class="form-group">
-            <label>Email</label>
+            <label data-i18n="modal.resa_email">Email</label>
             <input type="email" id="resa-email">
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Date de la réservation</label>
+            <label data-i18n="modal.resa_date_resa">Date de la réservation</label>
             <input type="date" id="resa-date-reservation">
           </div>
           <div class="form-group">
-            <label>Date du jour J *</label>
+            <label data-i18n="modal.resa_date_jourj">Date du jour J *</label>
             <input type="date" id="resa-date-evenement" required>
           </div>
         </div>
         <div class="form-group">
-          <label>Menu</label>
+          <label data-i18n="modal.resa_menu">Menu</label>
           <div class="menu-search-wrapper" id="resa-menu-search-wrapper">
             <div class="menu-search-input-row">
               <i class="fas fa-search menu-search-icon"></i>
-              <input type="text" id="resa-menu-search" placeholder="Rechercher un plat du catalogue à ajouter…" autocomplete="off">
+              <input type="text" id="resa-menu-search" placeholder="Rechercher un plat du catalogue à ajouter…" data-i18n-placeholder="modal.resa_search_placeholder" autocomplete="off">
               <button type="button" class="menu-search-clear" id="resa-menu-clear" style="display:none" tabindex="-1">
                 <i class="fas fa-times"></i>
               </button>
@@ -962,7 +962,7 @@
             <div class="menu-search-dropdown" id="resa-menu-dropdown" style="display:none"></div>
           </div>
           <div id="resa-menu-items" style="margin-top:8px"></div>
-          <input type="text" id="resa-menu" placeholder="Ex: Menu Prestige 3 services — ou composez-le via la recherche ci-dessus" style="margin-top:8px">
+          <input type="text" id="resa-menu" placeholder="Ex: Menu Prestige 3 services — ou composez-le via la recherche ci-dessus" data-i18n-placeholder="modal.resa_menu_placeholder" style="margin-top:8px">
         </div>
         <div class="form-row">
           <div class="form-group">
@@ -975,13 +975,13 @@
           </div>
         </div>
         <p style="font-size:.9rem;color:var(--gray)">
-          Reste à payer : <strong id="resa-reste-preview">0</strong>
+          <span data-i18n="modal.resa_reste_a_payer">Reste à payer :</span> <strong id="resa-reste-preview">0</strong>
         </p>
       </form>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" data-modal="reservation">Annuler</button>
-      <button class="btn btn-primary" id="btn-save-reservation"><i class="fas fa-save"></i> Enregistrer</button>
+      <button class="btn btn-secondary" data-modal="reservation" data-i18n="modal.cancel">Annuler</button>
+      <button class="btn btn-primary" id="btn-save-reservation"><i class="fas fa-save"></i> <span data-i18n="modal.save">Enregistrer</span></button>
     </div>
   </div>
 </div>
@@ -990,7 +990,7 @@
 <div class="modal-overlay hidden" id="modal-stock">
   <div class="modal-box">
     <div class="modal-header">
-      <h2 id="modal-stock-title">Article de stock</h2>
+      <h2 id="modal-stock-title" data-i18n="modal.stock_title">Article de stock</h2>
       <button class="modal-close" data-modal="stock">&times;</button>
     </div>
     <div class="modal-body">
@@ -998,45 +998,45 @@
         <input type="hidden" id="stock-id">
         <div class="form-row">
           <div class="form-group">
-            <label>Nom *</label>
-            <input type="text" id="stock-nom" required placeholder="Ex: Riz">
+            <label data-i18n="modal.stock_nom">Nom *</label>
+            <input type="text" id="stock-nom" required placeholder="Ex: Riz" data-i18n-placeholder="modal.stock_nom_placeholder">
           </div>
           <div class="form-group">
-            <label>Catégorie</label>
+            <label data-i18n="modal.stock_categorie">Catégorie</label>
             <select id="stock-categorie">
-              <option>Ingrédients</option>
-              <option>Féculents</option>
-              <option>Viandes</option>
-              <option>Poissons</option>
-              <option>Légumes</option>
-              <option>Épices</option>
-              <option>Huiles</option>
-              <option>Condiments</option>
-              <option>Boissons</option>
-              <option>Consommables</option>
-              <option>Autre</option>
+              <option value="Ingrédients" data-i18n="stocks.cat_ingredients">Ingrédients</option>
+              <option value="Féculents" data-i18n="stocks.cat_feculents">Féculents</option>
+              <option value="Viandes" data-i18n="stocks.cat_viandes">Viandes</option>
+              <option value="Poissons" data-i18n="stocks.cat_poissons">Poissons</option>
+              <option value="Légumes" data-i18n="stocks.cat_legumes">Légumes</option>
+              <option value="Épices" data-i18n="stocks.cat_epices">Épices</option>
+              <option value="Huiles" data-i18n="stocks.cat_huiles">Huiles</option>
+              <option value="Condiments" data-i18n="stocks.cat_condiments">Condiments</option>
+              <option value="Boissons" data-i18n="menu.cat_boissons">Boissons</option>
+              <option value="Consommables" data-i18n="stocks.cat_consommables">Consommables</option>
+              <option value="Autre" data-i18n="stocks.cat_autre">Autre</option>
             </select>
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Quantité actuelle *</label>
+            <label data-i18n="modal.stock_qte_actuelle">Quantité actuelle *</label>
             <input type="number" id="stock-quantite" min="0" required>
           </div>
           <div class="form-group">
-            <label>Stock minimum *</label>
+            <label data-i18n="modal.stock_min">Stock minimum *</label>
             <input type="number" id="stock-minimum" min="0" required>
           </div>
           <div class="form-group">
-            <label>Unité</label>
-            <input type="text" id="stock-unite" value="kg" placeholder="kg, litres, pièces…">
+            <label data-i18n="modal.stock_unite">Unité</label>
+            <input type="text" id="stock-unite" value="kg" placeholder="kg, litres, pièces…" data-i18n-placeholder="modal.stock_unite_placeholder">
           </div>
         </div>
       </form>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" data-modal="stock">Annuler</button>
-      <button class="btn btn-primary" id="btn-save-stock"><i class="fas fa-save"></i> Enregistrer</button>
+      <button class="btn btn-secondary" data-modal="stock" data-i18n="modal.cancel">Annuler</button>
+      <button class="btn btn-primary" id="btn-save-stock"><i class="fas fa-save"></i> <span data-i18n="modal.save">Enregistrer</span></button>
     </div>
   </div>
 </div>
@@ -1045,12 +1045,12 @@
 <div class="modal-overlay hidden" id="modal-detail-commande">
   <div class="modal-box" style="max-width:500px">
     <div class="modal-header">
-      <h2 id="modal-detail-titre">Détail commande</h2>
+      <h2 id="modal-detail-titre" data-i18n="modal.detail_commande_title">Détail commande</h2>
       <button class="modal-close" data-modal="detail-commande">&times;</button>
     </div>
     <div class="modal-body" id="modal-detail-body"></div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" data-modal="detail-commande">Fermer</button>
+      <button class="btn btn-secondary" data-modal="detail-commande" data-i18n="modal.close">Fermer</button>
     </div>
   </div>
 </div>
@@ -1059,15 +1059,15 @@
 <div class="modal-overlay hidden" id="modal-apercu-facture">
   <div class="modal-box" style="max-width:520px">
     <div class="modal-header">
-      <h2 id="apercu-modal-title">Aperçu – Facture</h2>
+      <h2 id="apercu-modal-title" data-i18n="modal.apercu_facture_title">Aperçu – Facture</h2>
       <button class="modal-close" data-modal="apercu-facture">&times;</button>
     </div>
     <div class="modal-body">
       <div id="facture-print-area"></div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" data-modal="apercu-facture">Fermer</button>
-      <button class="btn btn-primary" id="btn-print-facture"><i class="fas fa-print"></i> Imprimer</button>
+      <button class="btn btn-secondary" data-modal="apercu-facture" data-i18n="modal.close">Fermer</button>
+      <button class="btn btn-primary" id="btn-print-facture"><i class="fas fa-print"></i> <span data-i18n="modal.print">Imprimer</span></button>
     </div>
   </div>
 </div>
@@ -1111,18 +1111,18 @@
 <div class="modal-overlay hidden" id="modal-copy-link">
   <div class="modal-box modal-box-sm">
     <div class="modal-header">
-      <h2>Partager le lien</h2>
+      <h2 data-i18n="modal.copy_link_title">Partager le lien</h2>
       <button class="modal-close" data-modal="copy-link">&times;</button>
     </div>
     <div class="modal-body">
       <p id="copy-link-message" class="dialog-message"></p>
       <div style="display:flex;gap:8px">
         <input type="text" id="copy-link-input" class="dialog-input" readonly style="flex:1;font-family:monospace;font-size:.85rem">
-        <button class="btn btn-primary" id="copy-link-btn-copy"><i class="fas fa-copy"></i> Copier</button>
+        <button class="btn btn-primary" id="copy-link-btn-copy"><i class="fas fa-copy"></i> <span data-i18n="modal.copy">Copier</span></button>
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" data-modal="copy-link">Fermer</button>
+      <button class="btn btn-secondary" data-modal="copy-link" data-i18n="modal.close">Fermer</button>
     </div>
   </div>
 </div>
@@ -1131,7 +1131,7 @@
 <div class="modal-overlay hidden" id="modal-utilisateur">
   <div class="modal-box" style="max-width:500px">
     <div class="modal-header">
-      <h2 id="modal-utilisateur-title">Nouvel utilisateur</h2>
+      <h2 id="modal-utilisateur-title" data-i18n="modal.util_new_title">Nouvel utilisateur</h2>
       <button class="modal-close" data-modal="utilisateur">&times;</button>
     </div>
     <div class="modal-body">
@@ -1139,51 +1139,51 @@
         <input type="hidden" id="utilisateur-id">
         <div class="form-row">
           <div class="form-group">
-            <label>Prénom</label>
-            <input type="text" id="utilisateur-prenom" placeholder="Ex: Koné">
+            <label data-i18n="modal.util_prenom">Prénom</label>
+            <input type="text" id="utilisateur-prenom" placeholder="Ex: Koné" data-i18n-placeholder="modal.util_prenom_placeholder">
           </div>
           <div class="form-group">
-            <label>Nom de famille *</label>
-            <input type="text" id="utilisateur-nom" required placeholder="Ex: Aminata">
+            <label data-i18n="modal.util_nom">Nom de famille *</label>
+            <input type="text" id="utilisateur-nom" required placeholder="Ex: Aminata" data-i18n-placeholder="modal.util_nom_placeholder">
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Identifiant *</label>
-            <input type="text" id="utilisateur-username" required placeholder="Ex: receptio" autocomplete="off">
+            <label data-i18n="modal.util_identifiant">Identifiant *</label>
+            <input type="text" id="utilisateur-username" required placeholder="Ex: receptio" data-i18n-placeholder="modal.util_identifiant_placeholder" autocomplete="off">
           </div>
           <div class="form-group">
-            <label>Rôle *</label>
+            <label data-i18n="modal.util_role">Rôle *</label>
             <select id="utilisateur-role">
-              <option value="caissiere">Caissière</option>
-              <option value="caissier-en-ligne">Caissier en ligne</option>
-              <option value="serveur">Serveur</option>
-              <option value="cuisiniere">Cuisinière</option>
-              <option value="barman">Barman</option>
-              <option value="admin">Admin</option>
+              <option value="caissiere" data-i18n="utilisateurs.role_caissiere">Caissière</option>
+              <option value="caissier-en-ligne" data-i18n="utilisateurs.role_caissier_en_ligne">Caissier en ligne</option>
+              <option value="serveur" data-i18n="utilisateurs.role_serveur">Serveur</option>
+              <option value="cuisiniere" data-i18n="utilisateurs.role_cuisiniere">Cuisinière</option>
+              <option value="barman" data-i18n="utilisateurs.role_barman">Barman</option>
+              <option value="admin" data-i18n="utilisateurs.role_admin">Admin</option>
             </select>
           </div>
         </div>
         <div class="form-group">
-          <label id="utilisateur-password-label">Mot de passe *</label>
+          <label id="utilisateur-password-label" data-i18n="utilisateurs.password_label">Mot de passe *</label>
           <input type="password" id="utilisateur-password" placeholder="••••••••" autocomplete="new-password">
-          <small id="utilisateur-password-hint" style="display:none;color:var(--gray);font-size:.78rem;margin-top:4px;display:none">
+          <small id="utilisateur-password-hint" style="display:none;color:var(--gray);font-size:.78rem;margin-top:4px;display:none" data-i18n="modal.util_password_hint">
             Laisser vide pour conserver le mot de passe actuel
           </small>
         </div>
         <div class="form-group" id="utilisateur-actif-group" style="display:none">
-          <label>Statut du compte</label>
+          <label data-i18n="modal.util_statut_compte">Statut du compte</label>
           <select id="utilisateur-actif">
-            <option value="true">Actif</option>
-            <option value="false">Inactif</option>
+            <option value="true" data-i18n="modal.util_actif">Actif</option>
+            <option value="false" data-i18n="modal.util_inactif">Inactif</option>
           </select>
         </div>
       </form>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" data-modal="utilisateur">Annuler</button>
+      <button class="btn btn-secondary" data-modal="utilisateur" data-i18n="modal.cancel">Annuler</button>
       <button class="btn btn-primary" id="btn-save-utilisateur">
-        <i class="fas fa-save"></i> Enregistrer
+        <i class="fas fa-save"></i> <span data-i18n="modal.save">Enregistrer</span>
       </button>
     </div>
   </div>

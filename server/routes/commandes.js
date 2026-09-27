@@ -11,9 +11,13 @@ const { formatMontant } = require('../utils/currency');
 
 const router = express.Router();
 
-// Invalide tous les caches commandes + factures (à appeler après chaque écriture)
+// Invalide tous les caches commandes + factures (à appeler après chaque écriture).
+// `commandes:list:<aujourd'hui>` en plus des clés globales : c'est la vue du jour qui
+// doit rester instantanément fraîche (voir GET / ci-dessous) ; les autres jours suivent
+// juste leur TTL normal, sans besoin d'être invalidés en temps réel.
 function invalidate() {
-  cache.del('commandes:list', 'factures:list', 'stats:dashboard', 'stats:notifications');
+  const today = new Date().toISOString().split('T')[0];
+  cache.del('commandes:list', `commandes:list:${today}`, 'factures:list', 'stats:dashboard', 'stats:notifications');
 }
 
 // GET /api/commandes
@@ -21,16 +25,33 @@ router.get('/', authenticateToken, async (req, res) => {
   try {
     const { statut, date, debut, fin, source } = req.query;
 
-    // Vue sur une plage de dates (ex. onglet Commandes en ligne, filtre par défaut sur
-    // "aujourd'hui") : le cache des 200 dernières commandes suffit pour ce cas d'usage
-    // courant (fenêtre récente), mais peut tronquer une plage large/ancienne — pour des
-    // statistiques exhaustives sur une longue période, voir /api/stats/rapport qui
-    // interroge Firestore directement, sans ce plafond.
-    let all = cache.get('commandes:list');
-    if (!all) {
-      const snap = await db.collection('commandes').orderBy('createdAt', 'desc').limit(200).get();
-      all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      cache.set('commandes:list', all, 15_000);
+    let all;
+    if (date && !debut && !fin) {
+      // Cas de très loin le plus fréquent (vue "Commandes" par défaut sur aujourd'hui,
+      // relue à chaque événement SSE pendant le service) : filtre Firestore directement
+      // sur ce jour plutôt que de rescanner les 200 dernières commandes TOUS jours
+      // confondus. Aux heures de pointe, ça ramène le coût de CHAQUE relecture de ~200
+      // lectures fixes à la taille réelle du jour (souvent bien moins) — voir pics de
+      // lecture Firestore du 26/09 corrélés aux heures de repas.
+      const cacheKey = `commandes:list:${date}`;
+      all = cache.get(cacheKey);
+      if (!all) {
+        const snap = await db.collection('commandes').where('date', '==', date).get();
+        all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        cache.set(cacheKey, all, 15_000);
+      }
+    } else {
+      // Plage de dates ou vue sans filtre (ex. onglet Commandes en ligne) : le cache des
+      // 200 dernières commandes suffit pour ce cas d'usage courant (fenêtre récente),
+      // mais peut tronquer une plage large/ancienne — pour des statistiques exhaustives
+      // sur une longue période, voir /api/stats/rapport qui interroge Firestore
+      // directement, sans ce plafond.
+      all = cache.get('commandes:list');
+      if (!all) {
+        const snap = await db.collection('commandes').orderBy('createdAt', 'desc').limit(200).get();
+        all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        cache.set('commandes:list', all, 15_000);
+      }
     }
 
     let result = all;

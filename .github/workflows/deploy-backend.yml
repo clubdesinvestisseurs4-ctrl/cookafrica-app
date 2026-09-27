@@ -1,4 +1,4 @@
-name: Backend — CI/CD (Cloud Run)
+name: Backend — CI/CD (Render + Cloud Run + AWS Lambda)
 
 on:
   push:
@@ -28,10 +28,30 @@ jobs:
           cache: 'npm'
           cache-dependency-path: server/package-lock.json
 
-      - run: npm ci
+      # npm install, pas ci : package-lock.json n'a pas encore été régénéré pour
+      # serverless-http (ajouté pour le handler Lambda, voir server/lambda.js) --
+      # à corriger plus tard avec un vrai `npm install` local pour reverrouiller
+      # les versions exactes, ça marche pour l'instant sans bloquer le pipeline.
+      - run: npm install
       - run: npm test
 
-  deploy:
+  deploy-render:
+    name: Deploy sur Render (Côte d'Ivoire)
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Déclenche le déploiement via le Deploy Hook Render
+        run: |
+          status=$(curl -s -o /tmp/render_deploy.json -w "%{http_code}" \
+            "${{ secrets.RENDER_DEPLOY_HOOK_URL }}")
+          cat /tmp/render_deploy.json
+          if [ "$status" != "200" ]; then
+            echo "Échec du déclenchement Render (HTTP $status)" >&2
+            exit 1
+          fi
+
+  deploy-cloudrun:
     name: Deploy sur Cloud Run
     needs: test
     if: github.event_name != 'pull_request'
@@ -67,3 +87,93 @@ jobs:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
           source: ./server
           flags: --max-instances=1
+
+  deploy-aws-lambda:
+    name: Deploy sur AWS Lambda (filet de secours)
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: aws-actions/setup-sam@f84ec7d548307efafe33230528756de3c5841a17 # v2
+        with:
+          use-installer: true
+
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-north-1
+
+      - run: sam build
+
+      - run: sam deploy --no-confirm-changeset --no-fail-on-empty-changeset
+
+      # Mêmes identifiants Firebase que Render/Cloud Run (mêmes secrets GitHub que
+      # partout ailleurs, jamais un nouveau projet Firebase) et le MÊME JWT_SECRET
+      # que Render : un jeton émis pendant que Render répond doit rester valide si
+      # une requête bascule ensuite sur AWS pendant que Render se réveille (voir le
+      # bascule automatique dans client/app.js) — un secret différent romprait la
+      # session de l'utilisateur exactement au moment du basculement.
+      #
+      # Posées ici plutôt qu'en paramètres CloudFormation (`sam deploy
+      # --parameter-overrides`) : testé, une clé privée multi-lignes ne survit pas
+      # intacte au passage par la ligne de commande (échappement shell/SAM CLI) --
+      # Lambda plantait au démarrage avec "Failed to parse private key". jq
+      # construit le JSON depuis de vraies variables d'environnement du job, sans
+      # jamais repasser par un parsing shell intermédiaire, et le résultat part vers
+      # l'API dans un fichier (`file://`), jamais comme argument de commande.
+      - name: Configure les variables d'environnement sensibles
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
+          FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
+          JWT_SECRET: ${{ secrets.RENDER_JWT_SECRET }}
+          QUOTA_MONITOR_KEY: ${{ secrets.QUOTA_MONITOR_KEY }}
+        run: |
+          jq -n \
+            --arg projectId "$FIREBASE_PROJECT_ID" \
+            --arg clientEmail "$FIREBASE_CLIENT_EMAIL" \
+            --arg privateKey "$FIREBASE_PRIVATE_KEY" \
+            --arg jwtSecret "$JWT_SECRET" \
+            --arg quotaKey "$QUOTA_MONITOR_KEY" \
+            '{Variables: {
+              NODE_ENV: "production",
+              CLIENT_URL: "https://cookafrica-app.vercel.app",
+              CURRENCY_LABEL: "FCFA",
+              CURRENCY_LOCALE: "fr-FR",
+              FIREBASE_PROJECT_ID: $projectId,
+              FIREBASE_CLIENT_EMAIL: $clientEmail,
+              FIREBASE_PRIVATE_KEY: $privateKey,
+              JWT_SECRET: $jwtSecret,
+              QUOTA_MONITOR_KEY: $quotaKey
+            }}' > /tmp/lambda-env.json
+          aws lambda update-function-configuration \
+            --function-name cookafrica-api \
+            --environment file:///tmp/lambda-env.json
+          rm -f /tmp/lambda-env.json
+          aws lambda wait function-updated --function-name cookafrica-api
+
+      - name: Affiche l'URL de l'API déployée
+        run: aws cloudformation describe-stacks --stack-name cookafrica-api --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" --output text
+
+      - name: Vérifie /health (attend que la mise à jour se propage)
+        run: |
+          url=$(aws cloudformation describe-stacks --stack-name cookafrica-api --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" --output text)
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o /tmp/health.json -w "%{http_code}" --max-time 10 "$url/health" || echo "000")
+            if [ "$code" = "200" ]; then echo "OK: $(cat /tmp/health.json)"; exit 0; fi
+            echo "tentative $i : HTTP $code, nouvel essai dans 5s"
+            sleep 5
+          done
+          echo "/health ne répond toujours pas en 200 après 5 tentatives" >&2
+          cat /tmp/health.json 2>/dev/null || true
+          exit 1
+
+      - name: Logs récents de la fonction (diagnostic)
+        if: always()
+        run: sam logs -n CookAfricaApiFunction --stack-name cookafrica-api --region eu-north-1 --start-time '10min ago' || true

@@ -6,9 +6,16 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 const { pushNotification } = require('../utils/notifications');
 
 const { isAllowedIp, getClientIp } = require('../utils/wifi');
-const { verifySwitchToken } = require('../utils/directory');
+const { verifySwitchToken, signVouchToken, lookupDirectorySites } = require('../utils/directory');
+const cache = require('../utils/cache');
 
 const router = express.Router();
+
+// Même valeur que HOME_API_URL côté client (client/app.js) — pas un secret, juste
+// l'adresse publique du backend qui héberge l'annuaire multi-site (déjà visible dans
+// le bundle JS de chaque site). Utilisée uniquement par GET /directory-sites ci-dessous
+// quand CE site n'est pas lui-même le site maison.
+const HOME_DIRECTORY_URL = 'https://cookafrica-api.onrender.com';
 
 // Normalise les anciens noms de rôles vers les nouveaux
 const ROLE_MIGRATION = {
@@ -137,6 +144,41 @@ router.post('/exchange-switch-token', async (req, res) => {
   }
 });
 
+// GET /api/auth/directory-sites — bascule vers un autre site sans redemander de mot
+// de passe, depuis N'IMPORTE QUEL site (contrairement à GET /api/directory/my-sites,
+// qui ne marche que depuis le site maison). Ce site vérifie d'abord l'admin
+// localement, avec son propre JWT_SECRET (authenticateToken ci-dessous) ; ensuite :
+//   - si CE site est le site maison, court-circuit local (même base, même processus) ;
+//   - sinon, aller-retour serveur-à-serveur vers le site maison avec un jeton de
+//     caution de 30s (voir signVouchToken) — jamais un mot de passe, jamais un secret
+//     transmis au navigateur, jamais le JWT_SECRET de ce site.
+router.get('/directory-sites', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    if (process.env.DIRECTORY_ENABLED === 'true') {
+      const result = await lookupDirectorySites(req.user.username);
+      if (!result) return res.status(404).json({ error: 'Aucun accès multi-site pour ce compte' });
+      return res.json(result);
+    }
+
+    if (!process.env.DIRECTORY_VOUCH_SECRET) {
+      return res.status(404).json({ error: 'Bascule multi-site non configurée sur ce site' });
+    }
+
+    const vouchToken = signVouchToken(req.user.username);
+    const resp = await fetch(`${HOME_DIRECTORY_URL}/api/directory/vouch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vouchToken }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) return res.status(resp.status).json(data);
+    res.json(data);
+  } catch (err) {
+    console.error('Directory sites error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 // POST /api/auth/logout
 router.post('/logout', authenticateToken, async (req, res) => {
   try {
@@ -147,12 +189,22 @@ router.post('/logout', authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/auth/sessions
+// GET /api/auth/sessions — journal d'audit consulté à la demande (pas de vue live à
+// rafraîchir en continu) : cache 2 min, un seul jeu de 500 documents partagé par tous
+// les filtres (debut/fin/username s'appliquent en mémoire sur ce même lot, comme
+// /api/commandes), plutôt que de relire Firestore à chaque changement de filtre.
 router.get('/sessions', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const { debut, fin, username } = req.query;
-    const snap = await db.collection('sessions').orderBy('timestamp', 'desc').limit(500).get();
-    let sessions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    let all = cache.get('sessions:list');
+    if (!all) {
+      const snap = await db.collection('sessions').orderBy('timestamp', 'desc').limit(500).get();
+      all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      cache.set('sessions:list', all, 2 * 60_000);
+    }
+
+    let sessions = all;
     if (debut)    sessions = sessions.filter(s => s.timestamp >= debut);
     if (fin)      sessions = sessions.filter(s => s.timestamp <= fin + 'T23:59:59');
     if (username) sessions = sessions.filter(s => s.username === username);

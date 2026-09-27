@@ -1,10 +1,27 @@
-// Version du SW — incrémenter à chaque déploiement pour forcer la mise à jour
+// Version du SW — DOIT changer à CHAQUE déploiement qui touche un fichier client/,
+// pas seulement sw.js lui-même. app.js appelle bien reg.update() à chaque exécution
+// (voir la section Service Worker en bas d'app.js), y compris au retour au premier
+// plan (visibilitychange) — mais reg.update() ne détecte une mise à jour que si les
+// OCTETS de sw.js ont changé. Un déploiement qui ne touche QUE app.js (ex. le bug de
+// connexion/bascule AWS du 27/09, réglé dans app.js mais SW_VERSION oublié ici) laisse
+// reg.update() ne rien trouver de neuf : aucune PWA déjà ouverte ne recharge JAMAIS,
+// elle continue de tourner sur l'ancien app.js indéfiniment. Donc : toute PR qui touche
+// client/*.js, client/*.html ou client/styles.css DOIT aussi bumper cette chaîne —
+// voir .github/workflows/check-sw-version.yml qui fait échouer la CI si ce n'est pas
+// le cas.
 // (v3.3.0 : Font Awesome auto-hébergé au lieu de cdnjs.cloudflare.com — c'était
 // la vraie cause des icônes manquantes sur mobile : tous les icônes de l'appli
 // (boutons, menus…) sont des glyphes de cette police, chargée depuis un CDN tiers
 // qui pouvait être lent/inaccessible sur certains réseaux mobiles alors que
-// l'ordinateur, sur une connexion plus stable, ne montrait jamais le problème)
-const SW_VERSION = 'cookafrica-v3.3.0';
+// l'ordinateur, sur une connexion plus stable, ne montrait jamais le problème.
+// v3.4.0 : sur mobile, une PWA installée reste souvent "suspendue" en arrière-plan
+// pendant des heures sans jamais recharger la page — donc sans jamais ré-exécuter
+// app.js ni rappeler reg.update() — et continuait de tourner sur l'ancien code en
+// mémoire même après un nouveau déploiement, alors qu'un onglet de navigation
+// privée, toujours rechargé intégralement, avait la dernière version. Corrigé en
+// forçant la vérification de mise à jour au retour au premier plan, pas seulement
+// à l'exécution initiale du script.)
+const SW_VERSION = 'cookafrica-v3.6.0';
 const SHELL_CACHE = `cookafrica-shell-${SW_VERSION}`;
 
 // App shell : ce qui ne change pas à chaque commande, précaché pour un premier

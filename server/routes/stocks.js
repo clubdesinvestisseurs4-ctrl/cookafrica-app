@@ -3,6 +3,7 @@ const { db } = require('../firebase-admin');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { pushNotification } = require('../utils/notifications');
 const eventBus = require('../utils/eventBus');
+const cache = require('../utils/cache');
 
 const router = express.Router();
 
@@ -10,11 +11,18 @@ let _alertsCache = null;
 let _alertsCacheTs = 0;
 const ALERTS_TTL = 60_000;
 
+function invalidateList() { cache.del('stocks:list'); }
+
 // GET /api/stocks
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const snap = await db.collection('stocks').orderBy('nom').get();
-    res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    let stocks = cache.get('stocks:list');
+    if (!stocks) {
+      const snap = await db.collection('stocks').orderBy('nom').get();
+      stocks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      cache.set('stocks:list', stocks, 30_000);
+    }
+    res.json(stocks);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -37,6 +45,7 @@ router.post('/', authenticateToken, requireRole('admin'), async (req, res) => {
       updatedAt: new Date().toISOString(),
     };
     const ref = await db.collection('stocks').add(data);
+    invalidateList();
 
     pushNotification({
       type: 'success', icon: 'plus-circle',
@@ -76,6 +85,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), async (req, res) => 
     });
 
     _alertsCache = null;
+    invalidateList();
     eventBus.emit('stocks');
     res.json({ id: req.params.id, ...update });
   } catch (err) {
@@ -244,6 +254,7 @@ router.post('/seed', authenticateToken, requireRole('admin'), async (req, res) =
       batch.set(ref, { ...item, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     }
     await batch.commit();
+    invalidateList();
     res.json({ message: `${items.length} articles de stock créés` });
   } catch (err) {
     res.status(500).json({ error: err.message });

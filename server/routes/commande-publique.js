@@ -87,7 +87,9 @@ router.post('/commandes', orderLimiter, async (req, res) => {
     };
 
     const ref = await db.collection('commandes').add(data);
-    cache.del('commandes:list', 'factures:list', 'stats:dashboard', 'stats:notifications');
+    // Une commande publique est toujours datée d'aujourd'hui (voir data.date ci-dessus) :
+    // on invalide directement la clé du jour, même logique que commandes.js/factures.js.
+    cache.del('commandes:list', `commandes:list:${data.date}`, 'factures:list', 'stats:dashboard', 'stats:notifications');
     eventBus.emit('commandes');
 
     const epuises = await decrementStocksForItems(db, resolved.items, now);

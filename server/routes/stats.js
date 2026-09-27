@@ -59,7 +59,13 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       totalPlats,
       totalBoissons,
       commandesParStatut,
-      commandesRecentes: commandesJour.slice(-5).reverse(),
+      // Toutes les commandes actives (en-attente/en-preparation), pas seulement celles
+      // du jour : une commande bloquée depuis hier (personne ne l'a envoyée en cuisine
+      // ni annulée) doit continuer à apparaître ici — sinon elle reste comptée dans
+      // commandesActives ci-dessus sans jamais réapparaître dans cette liste dès que la
+      // date change, ce qui donne l'impression d'un total fantôme qu'actualiser ne
+      // résout jamais.
+      commandesRecentes: commandesActives.slice(-5).reverse(),
     };
 
     cache.set('stats:dashboard', result, 60_000);
@@ -73,6 +79,13 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
 router.get('/rapport', authenticateToken, async (req, res) => {
   try {
     const { debut, fin } = req.query;
+
+    // Sans date, cette route lit les collections factures/commandes en entier (aucun
+    // filtre Firestore possible) : cache plus long qu'ailleurs (un rapport n'a pas
+    // besoin d'être à la seconde près), clé par période pour ne pas mélanger les vues.
+    const cacheKey = `stats:rapport:${debut || ''}:${fin || ''}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
 
     let query = db.collection('factures');
     if (debut) query = query.where('date', '>=', debut);
@@ -160,7 +173,7 @@ router.get('/rapport', authenticateToken, async (req, res) => {
     const ventesDetail = [...Object.values(ventesParMenuItem), ...Object.values(ventesHorsCatalogue)]
       .sort((a, b) => b.quantite - a.quantite || a.nom.localeCompare(b.nom, 'fr'));
 
-    res.json({
+    const result = {
       total,
       nombre: factures.length,
       moyenne: Math.round(total / (factures.length || 1)),
@@ -175,7 +188,9 @@ router.get('/rapport', authenticateToken, async (req, res) => {
       topBoissons: topVentes(boissonsVentes),
       ventesDetail,
       factures: factures.sort((a, b) => (b.date > a.date ? 1 : -1)),
-    });
+    };
+    cache.set(cacheKey, result, 5 * 60_000);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

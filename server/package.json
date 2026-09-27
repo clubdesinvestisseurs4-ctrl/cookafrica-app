@@ -19,7 +19,8 @@
     "express-rate-limit": "^7.3.1",
     "firebase-admin": "^14.3.0",
     "js-yaml": "^5.2.3",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "serverless-http": "^3.2.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.3"

@@ -1,0 +1,45 @@
+name: Surveillance quota Firestore
+
+# Vérifie périodiquement le total de lectures Firestore du jour (compteur partagé
+# Render + AWS Lambda, voir server/firebase-admin.js et server/routes/quota.js) et
+# échoue bruyamment (visible dans l'onglet Actions, notifiable par email/GitHub) si on
+# approche le quota gratuit de 50 000 lectures/jour — avant l'explosion, pas après.
+on:
+  schedule:
+    - cron: '0 */3 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  check-quota:
+    name: Vérifie le quota de lectures
+    runs-on: ubuntu-latest
+    steps:
+      - name: Interroge /api/admin/quota
+        env:
+          QUOTA_MONITOR_KEY: ${{ secrets.QUOTA_MONITOR_KEY }}
+        run: |
+          code=$(curl -s -o /tmp/quota.json -w "%{http_code}" --max-time 15 \
+            -H "x-quota-key: $QUOTA_MONITOR_KEY" \
+            "https://cookafrica-api.onrender.com/api/admin/quota" || echo "000")
+          if [ "$code" != "200" ]; then
+            echo "Impossible de lire le quota (HTTP $code) — Render dort peut-être encore, nouvelle tentative dans 20s" >&2
+            sleep 20
+            code=$(curl -s -o /tmp/quota.json -w "%{http_code}" --max-time 15 \
+              -H "x-quota-key: $QUOTA_MONITOR_KEY" \
+              "https://cookafrica-api.onrender.com/api/admin/quota" || echo "000")
+          fi
+          cat /tmp/quota.json 2>/dev/null || true
+          echo
+          if [ "$code" != "200" ]; then
+            echo "::warning::Endpoint /api/admin/quota inaccessible (HTTP $code) après 2 tentatives — pas de mesure ce cycle."
+            exit 0
+          fi
+          pct=$(jq -r '.pourcentage // 0' /tmp/quota.json)
+          reads=$(jq -r '.lecturesAujourdhui // 0' /tmp/quota.json)
+          echo "Lectures Firestore aujourd'hui : $reads ($pct% du quota gratuit)"
+          # Comparaison en entier (bash ne fait pas de flottants) : pct >= 80.0 ⇔ pct*10 >= 800
+          pct_x10=$(jq -r '((.pourcentage // 0) * 10) | floor' /tmp/quota.json)
+          if [ "$pct_x10" -ge 800 ]; then
+            echo "::error::Quota de lectures Firestore à ${pct}% aujourd'hui ($reads lectures) — seuil d'alerte 80% dépassé."
+            exit 1
+          fi
