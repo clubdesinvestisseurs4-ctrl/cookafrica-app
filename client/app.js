@@ -212,13 +212,13 @@ async function flushOfflineQueue() {
       let res;
       try {
         const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${state.token}` };
-        res = await fetch(API + item.path, {
+        res = await fetchWithFailover(item.path, {
           method: item.method,
           headers,
           body: item.body !== null && item.body !== undefined ? JSON.stringify(item.body) : undefined,
         });
       } catch {
-        break; // toujours hors-ligne — on réessaiera au prochain tick
+        break; // toujours hors-ligne (Render ET AWS injoignables) — on réessaiera au prochain tick
       }
       queue.shift();
       setOfflineQueue(queue);
@@ -298,6 +298,32 @@ function removePendingCommande(queueId) {
 async function handleBackendDown() {
   if (SITE.awsFallbackUrl) { API = SITE.awsFallbackUrl; return; }
   await wakeUpServer();
+}
+
+// Pour les quelques appels qui ne passent pas par api() (connexion, avant tout token ;
+// vidage de la file hors-ligne) : sans ça, un Render endormi pendant qu'on restait sur
+// l'écran de connexion (pas de SSE tant qu'on n'est pas authentifié, donc aucun signal
+// pour détecter le réveil) faisait échouer l'appel sans jamais essayer AWS — exact
+// symptôme "Impossible de contacter le serveur" alors qu'AWS aurait pu répondre.
+async function fetchWithFailover(path, opts = {}, timeoutMs = 6000) {
+  const attempt = async () => {
+    const ctrl = new AbortController();
+    const tid  = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      return await fetch(API + path, { ...opts, signal: ctrl.signal });
+    } finally {
+      clearTimeout(tid);
+    }
+  };
+  try {
+    return await attempt();
+  } catch (err) {
+    if (SITE.awsFallbackUrl && API !== SITE.awsFallbackUrl) {
+      API = SITE.awsFallbackUrl;
+      return attempt();
+    }
+    throw err;
+  }
 }
 
 async function api(path, opts = {}, _retry = false) {
@@ -3429,7 +3455,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     err.style.display = 'none';
 
     try {
-      const res = await fetch(API + '/api/auth/login', {
+      const res = await fetchWithFailover('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
