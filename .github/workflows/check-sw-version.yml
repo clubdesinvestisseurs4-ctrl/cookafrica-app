@@ -1,0 +1,63 @@
+name: Vérifie le bump de version du Service Worker
+
+# Filet de sécurité pour un bug déjà survenu deux fois : un déploiement qui ne touche
+# que app.js/commander.js/index.html/styles.css (jamais sw.js) fait tourner
+# indéfiniment les PWA déjà ouvertes sur l'ANCIEN code, parce que reg.update() (voir
+# app.js) ne détecte une mise à jour que si les octets de sw.js ont changé, pas juste
+# parce qu'un autre fichier client a changé. Voir le commentaire en tête de sw.js.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'client/**'
+  push:
+    branches: [main]
+    paths:
+      - 'client/**'
+
+jobs:
+  check:
+    name: sw.js doit être bumpé
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Compare les fichiers modifiés
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+          else
+            base="${{ github.event.before }}"
+            head="${{ github.sha }}"
+          fi
+
+          # Premier push sur une branche neuve (before = 40 zéros) : rien à comparer.
+          if [ "$base" = "0000000000000000000000000000000000000000" ] || [ -z "$base" ]; then
+            echo "Pas de commit précédent à comparer, on laisse passer."
+            exit 0
+          fi
+
+          changed=$(git diff --name-only "$base" "$head" -- client/)
+          echo "Fichiers client/ modifiés :"
+          echo "$changed"
+
+          only_sw_unrelated=$(echo "$changed" | grep -vE '^client/(sw\.js|vercel\.json)$' || true)
+          if [ -z "$only_sw_unrelated" ]; then
+            echo "Rien qui affecte le contenu servi aux PWA déjà ouvertes (ou seul sw.js/vercel.json a changé) — ok."
+            exit 0
+          fi
+
+          if ! echo "$changed" | grep -qx 'client/sw.js'; then
+            echo "::error::client/ a changé (${changed//$'\n'/, }) mais pas client/sw.js — les PWA déjà ouvertes ne détecteront JAMAIS cette mise à jour (reg.update() compare les octets de sw.js). Bump SW_VERSION dans client/sw.js."
+            exit 1
+          fi
+
+          if ! git diff "$base" "$head" -- client/sw.js | grep -q '^+const SW_VERSION'; then
+            echo "::error::client/sw.js a changé mais SW_VERSION n'a pas été modifié — bump la chaîne pour que reg.update() détecte réellement la mise à jour."
+            exit 1
+          fi
+
+          echo "SW_VERSION bumpé, ok."
