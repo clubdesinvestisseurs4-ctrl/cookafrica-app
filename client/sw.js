@@ -20,8 +20,15 @@
 // mémoire même après un nouveau déploiement, alors qu'un onglet de navigation
 // privée, toujours rechargé intégralement, avait la dernière version. Corrigé en
 // forçant la vérification de mise à jour au retour au premier plan, pas seulement
-// à l'exécution initiale du script.)
-const SW_VERSION = 'cookafrica-v3.6.0';
+// à l'exécution initiale du script.
+// v3.7.0 : même symptôme en pire — après une absence de toute une nuit, l'app
+// restait sur les chiffres de la veille ET perdait l'accès au serveur, alors que
+// Render et AWS répondaient très bien : Android avait gelé l'onglet assez longtemps
+// pour que même la connexion SSE ne se rétablisse jamais proprement. Un simple
+// swReg.update() ne suffisait pas (rien ne garantit qu'il s'exécute avant que
+// l'utilisateur interagisse). Ajouté un rechargement complet forcé si l'app est
+// restée cachée plus de 10 minutes (voir visibilitychange dans app.js).
+const SW_VERSION = 'cookafrica-v3.7.0';
 const SHELL_CACHE = `cookafrica-shell-${SW_VERSION}`;
 
 // App shell : ce qui ne change pas à chaque commande, précaché pour un premier

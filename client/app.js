@@ -3413,8 +3413,31 @@ if ('serviceWorker' in navigator) {
   // recharger la page, donc sans jamais ré-exécuter le code ci-dessus : sans ça,
   // elle continue de tourner sur l'ancien code même longtemps après un nouveau
   // déploiement. On revérifie donc aussi à chaque retour au premier plan.
+  //
+  // Après une LONGUE absence (ex. laissée ouverte toute la nuit), swReg.update()
+  // seul ne suffit pas : Android peut geler complètement l'onglet pendant la pause
+  // (timers, EventSource, tout figé), donc au retour, l'app tourne encore avec l'état
+  // d'hier (tableau de bord, commandes...) et une connexion SSE zombie qui ne se
+  // rétablit pas forcément proprement — symptôme observé le 28/09 (chiffres de la
+  // veille + "Impossible de contacter le serveur" alors que Render ET AWS répondaient
+  // normalement). Un vrai rechargement complet après un long silence règle les deux
+  // d'un coup : nouvelle exécution de app.js, nouvel appel initBackend(), nouvelle
+  // connexion SSE — plus fiable que d'essayer de reconstituer l'état après une
+  // suspension de durée inconnue. Seuil à 10 min pour ne jamais interrompre une
+  // absence courte (répondre au téléphone, prendre une photo) où une commande pourrait
+  // être en cours de saisie.
+  let hiddenAt = null;
+  const LONG_IDLE_MS = 10 * 60_000;
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && swReg) swReg.update().catch(() => {});
+    if (document.visibilityState === 'hidden') {
+      hiddenAt = Date.now();
+      return;
+    }
+    if (document.visibilityState !== 'visible') return;
+    const idleMs = hiddenAt ? Date.now() - hiddenAt : 0;
+    hiddenAt = null;
+    if (idleMs > LONG_IDLE_MS) { window.location.reload(); return; }
+    if (swReg) swReg.update().catch(() => {});
   });
 
   // Quand le nouveau SW prend le contrôle, recharger pour avoir la dernière version
