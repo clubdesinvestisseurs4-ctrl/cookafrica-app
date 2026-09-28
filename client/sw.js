@@ -28,7 +28,15 @@
 // swReg.update() ne suffisait pas (rien ne garantit qu'il s'exécute avant que
 // l'utilisateur interagisse). Ajouté un rechargement complet forcé si l'app est
 // restée cachée plus de 10 minutes (voir visibilitychange dans app.js).
-const SW_VERSION = 'cookafrica-v3.7.0';
+// v3.8.0 : le bug v3.7.0 est revenu identique (navigateur normal ET PWA bloqués,
+// navigation privée toujours OK) — preuve qu'un onglet déjà ouvert avant CE correctif
+// ne peut évidemment pas s'auto-guérir avec du code qu'il n'a jamais chargé. Ajouté
+// en complément : 'focus'/'pageshow' comme signaux de reprise supplémentaires
+// (visibilitychange n'est pas fiable à 100% sur tous les Android), et surtout un
+// filet de secours direct dans le formulaire de connexion — si une mise à jour SW est
+// déjà en attente (reg.waiting) au moment d'un échec de connexion, on l'active et on
+// recharge tout de suite, plus un lien "Recharger" manuel sinon.
+const SW_VERSION = 'cookafrica-v3.8.0';
 const SHELL_CACHE = `cookafrica-shell-${SW_VERSION}`;
 
 // App shell : ce qui ne change pas à chaque commande, précaché pour un premier

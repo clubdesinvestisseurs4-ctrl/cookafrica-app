@@ -3404,17 +3404,24 @@ if ('serviceWorker' in navigator) {
   // être en cours de saisie.
   let hiddenAt = null;
   const LONG_IDLE_MS = 10 * 60_000;
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') {
-      hiddenAt = Date.now();
-      return;
-    }
-    if (document.visibilityState !== 'visible') return;
+  function onResume() {
     const idleMs = hiddenAt ? Date.now() - hiddenAt : 0;
     hiddenAt = null;
     if (idleMs > LONG_IDLE_MS) { window.location.reload(); return; }
     if (swReg) swReg.update().catch(() => {});
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+    if (document.visibilityState === 'visible') onResume();
   });
+  // 'focus' en secours : sur certains Android/navigateurs, un onglet gelé puis restauré
+  // ne déclenche pas toujours visibilitychange de façon fiable (bug/optimisation
+  // batterie constructeur) — voir rapport du 28/09.
+  window.addEventListener('focus', onResume);
+  // 'pageshow' avec persisted=true = page restaurée depuis le bfcache (retour arrière,
+  // ou certains cas de reprise d'onglet) : c'est TOUJOURS un signal d'état potentiellement
+  // périmé, donc rechargement systématique plutôt que de dépendre du seuil de 10 min.
+  window.addEventListener('pageshow', e => { if (e.persisted) window.location.reload(); });
 
   // Quand le nouveau SW prend le contrôle, recharger pour avoir la dernière version
   navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -3474,8 +3481,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         err.style.display = 'block';
       }
     } catch {
-      err.textContent = t('login.server_unreachable');
+      // Avant d'afficher l'erreur : un onglet resté ouvert/gelé longtemps peut tourner
+      // sur un app.js ancien pour lequel une mise à jour a déjà été téléchargée par le
+      // SW mais jamais activée (reg.waiting) — c'est presque toujours la vraie cause
+      // quand Render ET AWS répondent normalement par ailleurs (rapport du 28/09 : le
+      // même identifiant échouait en navigation normale/PWA mais passait toujours en
+      // navigation privée, qui charge forcément le code le plus récent). On force son
+      // activation et on recharge tout de suite plutôt que d'afficher une erreur qu'un
+      // simple rechargement réglerait.
+      let healed = false;
+      if ('serviceWorker' in navigator) {
+        try {
+          const reg = await navigator.serviceWorker.getRegistration();
+          if (reg?.waiting) { reg.waiting.postMessage('SKIP_WAITING'); healed = true; }
+        } catch {}
+      }
+      if (healed) { window.location.reload(); return; }
+
+      // Sinon (aucune mise à jour en attente détectée, ou detection elle-même
+      // impossible sur cet onglet figé) : lien "Recharger" cliquable, secours manuel
+      // immédiat sans devoir fermer et rouvrir l'application.
+      err.innerHTML = `${t('login.server_unreachable')} — <a href="#" id="login-reload-link">${t('login.reload_hint')}</a>`;
       err.style.display = 'block';
+      document.getElementById('login-reload-link')?.addEventListener('click', ev => {
+        ev.preventDefault();
+        window.location.reload();
+      });
     } finally {
       btn.disabled = false; btn.innerHTML = `<i class="fas fa-sign-in-alt"></i> ${t('login.submit')}`;
     }

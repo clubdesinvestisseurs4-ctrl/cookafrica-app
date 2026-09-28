@@ -43,6 +43,7 @@ const I18N = {
     'login.wifi_restricted': "⚠️ Accès refusé : vous devez être connecté au Wi-Fi de l'entreprise",
     'login.invalid': 'Identifiants invalides',
     'login.server_unreachable': 'Impossible de contacter le serveur',
+    'login.reload_hint': "L'application semble figée depuis un moment. Recharger",
     'login.wifi_auto_logout': "Vous n'êtes plus sur le Wi-Fi de l'entreprise. Déconnexion automatique.",
 
     // Sidebar / nav
@@ -670,6 +671,7 @@ const I18N = {
     'login.wifi_restricted': '⚠️ Access denied: you must be connected to the company Wi-Fi',
     'login.invalid': 'Invalid credentials',
     'login.server_unreachable': 'Unable to reach the server',
+    'login.reload_hint': 'The app seems to be stuck. Reload',
     'login.wifi_auto_logout': 'You are no longer on the company Wi-Fi. Automatically signed out.',
 
     'nav.refresh_app': 'Refresh the app',
