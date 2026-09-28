@@ -197,6 +197,9 @@ router.put('/:id/envoyer', authenticateToken, requireRole('admin', 'serveur'), a
 // PUT /api/commandes/:id/items — modification libre des articles d'une commande, tant
 // qu'aucune facture n'a encore été générée. Le serveur ne peut plus modifier une commande
 // une fois envoyée à la facturation : elle appartient alors à la caissière.
+// Pas de code admin requis pour baisser un prix ici (décision explicite du 2026-09-23 :
+// tout rôle autorisé à modifier une commande peut le faire librement, sans code — contrairement
+// à /api/factures/:id/pay et /edit-items, qui gardent le code admin pour une facture déjà émise).
 router.put('/:id/items', authenticateToken, requireRole('admin', 'serveur', 'caissiere', 'caissier-en-ligne'), async (req, res) => {
   try {
     const { items } = req.body;
@@ -230,6 +233,7 @@ router.put('/:id/items', authenticateToken, requireRole('admin', 'serveur', 'cai
       sousTotal: Number(i.prix) * Number(i.quantite),
       categorie: i.categorie || '',
     }));
+
     const total = mappedItems.reduce((s, i) => s + i.sousTotal, 0);
     const now = new Date();
 
