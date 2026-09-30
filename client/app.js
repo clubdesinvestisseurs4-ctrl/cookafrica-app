@@ -1570,13 +1570,13 @@ async function loadFactures() {
 
   const factures = await api(url);
   if (!factures) return;
-  // Tri par numéro de facture croissant (FACT-0001, FACT-0002…), pas par montant —
-  // parse le suffixe numérique plutôt qu'un tri alphabétique sur la chaîne complète,
-  // pour rester correct même si le nombre de factures dépasse un jour 4 chiffres.
+  // Tri par numéro de facture décroissant (les plus récentes d'abord) — parse le
+  // suffixe numérique plutôt qu'un tri alphabétique sur la chaîne complète, pour
+  // rester correct même si le nombre de factures dépasse un jour 4 chiffres.
   factures.sort((a, b) => {
     const na = parseInt((a.numero || '').slice(5), 10);
     const nb = parseInt((b.numero || '').slice(5), 10);
-    return (isNaN(na) ? 0 : na) - (isNaN(nb) ? 0 : nb);
+    return (isNaN(nb) ? 0 : nb) - (isNaN(na) ? 0 : na);
   });
   state.factures = factures;
 
