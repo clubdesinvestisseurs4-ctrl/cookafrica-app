@@ -108,9 +108,6 @@ const state = {
   wifiInterval:        null,
   eventSource:         null,
   sseConnected:        false,
-  soundEnabled:        localStorage.getItem('ca_sound') === '1',
-  factureKnownIds:     null,
-  voiceReminderInterval: null,
   editFactureItems:    [],
   editCommandeItems:   [],
   payFactureItems:     null,
@@ -444,49 +441,6 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
-// ─── Annonces vocales (nouvelles commandes) ───────────
-function itemsSummary(items) {
-  return (items || []).map(i => `${i.quantite} ${i.nom}`).join(', ');
-}
-
-function speak(text) {
-  if (state.user?.role === 'admin') return; // sons désactivés côté admin
-  if (!state.soundEnabled || !('speechSynthesis' in window)) return;
-  try {
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = SITE.currency.locale;
-    u.rate = 0.95;
-    window.speechSynthesis.speak(u);
-  } catch {}
-}
-
-function updateSoundButtons() {
-  // Sons désactivés côté admin — on masque aussi les commandes devenues inertes
-  const soundIds = ['btn-sound-facturation', 'btn-play-facturation'];
-  if (state.user?.role === 'admin') {
-    soundIds.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
-    return;
-  }
-  soundIds.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
-
-  const factBtn = document.getElementById('btn-sound-facturation');
-  if (factBtn) {
-    factBtn.classList.toggle('btn-success', state.soundEnabled);
-    factBtn.classList.toggle('btn-accent', !state.soundEnabled);
-    factBtn.innerHTML = state.soundEnabled
-      ? t('facturation.sound_on')
-      : t('facturation.sound_off');
-  }
-}
-
-function enableSound(screen, announce = true) {
-  state.soundEnabled = true;
-  localStorage.setItem('ca_sound', '1');
-  updateSoundButtons();
-  if (!announce) return;
-  speak(t('facturation.tts_enabled'));
-}
-
 function toast(msg, type = 'info') {
   const icons = { success: 'check-circle', error: 'times-circle', warning: 'exclamation-triangle', info: 'info-circle' };
   const el = document.createElement('div');
@@ -600,7 +554,6 @@ async function loginFlow(token, user, skipWelcome = false) {
   document.getElementById('sidebar-user-role').textContent = ROLE_LABELS[user.role] || user.role;
   document.getElementById('switch-site-btn').style.display = user.role === 'admin' ? 'flex' : 'none';
   applyRoleNav();
-  updateSoundButtons();
   updateOfflineBadge();
   flushOfflineQueue();
   navigateTo(defaultPage());
@@ -893,7 +846,7 @@ function navigateTo(page) {
     dashboard:    loadDashboard,
     commandes:    loadCommandes,
     'commandes-en-ligne': loadCommandesLigne,
-    facturation:  () => { loadFactures(); checkFacturationReady(true); },
+    facturation:  loadFactures,
     menu:         loadMenu,
     stocks:       loadStocks,
     reservations: loadReservations,
@@ -946,11 +899,11 @@ function handleSSEEvent(type) {
   if (type === 'commandes') {
     if      (page === 'commandes')   loadCommandes();
     else if (page === 'commandes-en-ligne') loadCommandesLigne();
-    else if (page === 'facturation') { loadFactures(); checkFacturationReady(); }
+    else if (page === 'facturation') loadFactures();
     else if (page === 'dashboard')   loadDashboard();
   }
   if (type === 'factures') {
-    if      (page === 'facturation') { loadFactures(); checkFacturationReady(); }
+    if      (page === 'facturation') loadFactures();
     else if (page === 'dashboard')   loadDashboard();
   }
   if (type === 'stocks') {
@@ -1056,12 +1009,6 @@ function startPolling() {
       else if (state.currentPage === 'commandes-en-ligne')  loadCommandesLigne();
     }, POLL_MS);
   }
-
-  // Rappel vocal périodique (toutes les 4 min) — relit l'état de l'écran actif si le son est activé
-  state.voiceReminderInterval = setInterval(() => {
-    if (!state.soundEnabled) return;
-    if (state.currentPage === 'facturation') checkFacturationReady(true);
-  }, 4 * 60_000);
 
   // Notifications — admin seulement. Le SSE déclenche déjà loadNotifBadge() en
   // temps réel à chaque notification (voir handleSSEEvent, type 'notifications') :
@@ -1602,23 +1549,6 @@ async function loadCommandesLigne() {
 
 // ─── FACTURATION ───────────────────────────────────────
 
-// Annonce vocale des factures prêtes pour le client (payées ou non, hors bons internes)
-async function checkFacturationReady(entering = false) {
-  const today = new Date().toISOString().split('T')[0];
-  const factures = await api(`/api/factures?debut=${today}&fin=${today}&statut=partielle`);
-  if (!factures) return;
-
-  const ids = new Set(factures.map(f => f.id));
-  if (entering) {
-    factures.forEach(f => speak(t('facturation.tts_facture_prete', { numero: f.commandeNumero || f.numero })));
-  } else if (state.factureKnownIds) {
-    factures
-      .filter(f => !state.factureKnownIds.has(f.id))
-      .forEach(f => speak(t('facturation.tts_facture_prete', { numero: f.commandeNumero || f.numero })));
-  }
-  state.factureKnownIds = ids;
-}
-
 async function loadFactures() {
   const startEl = document.getElementById('filter-fact-start');
   const endEl   = document.getElementById('filter-fact-end');
@@ -1640,6 +1570,7 @@ async function loadFactures() {
 
   const factures = await api(url);
   if (!factures) return;
+  factures.sort((a, b) => (a.total || 0) - (b.total || 0)); // du plus petit au plus grand montant
   state.factures = factures;
 
   const tbody = document.getElementById('factures-tbody');
@@ -3599,8 +3530,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-filter-cmd').addEventListener('click', loadCommandes);
   document.getElementById('btn-editcmd-save').addEventListener('click', saveEditCommande);
 
-  updateSoundButtons();
-
   // ── Facturation ──
   document.getElementById('btn-new-facture').addEventListener('click', openNewFacture);
   document.getElementById('btn-save-new-facture').addEventListener('click', saveNewFacture);
@@ -3614,8 +3543,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('filter-fact-statut').addEventListener('change', loadFactures);
   document.getElementById('btn-print-facture').addEventListener('click', printFacture);
   document.getElementById('btn-repair-numeros')?.addEventListener('click', repairNumeros);
-  document.getElementById('btn-sound-facturation').addEventListener('click', () => enableSound('facturation'));
-  document.getElementById('btn-play-facturation').addEventListener('click', () => { enableSound('facturation', false); checkFacturationReady(true); });
   document.getElementById('btn-editfact-save').addEventListener('click', saveEditFacture);
   editfactPicker = setupMenuSearchPicker('editfact-search-wrapper', 'editfact-menu-search', 'editfact-menu-clear', 'editfact-menu-dropdown', addToEditFacture);
   resaMenuPicker  = setupMenuSearchPicker('resa-menu-search-wrapper', 'resa-menu-search', 'resa-menu-clear', 'resa-menu-dropdown', addToResaMenu);
