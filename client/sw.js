@@ -36,7 +36,9 @@
 // filet de secours direct dans le formulaire de connexion — si une mise à jour SW est
 // déjà en attente (reg.waiting) au moment d'un échec de connexion, on l'active et on
 // recharge tout de suite, plus un lien "Recharger" manuel sinon.
-const SW_VERSION = 'cookafrica-v3.8.0';
+// v3.9.0 : retrait complet du bouton son/annonces vocales en facturation (plus
+// nécessaire) + tri des factures par montant croissant.
+const SW_VERSION = 'cookafrica-v3.9.0';
 const SHELL_CACHE = `cookafrica-shell-${SW_VERSION}`;
 
 // App shell : ce qui ne change pas à chaque commande, précaché pour un premier
