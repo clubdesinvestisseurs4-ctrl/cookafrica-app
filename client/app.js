@@ -1570,7 +1570,14 @@ async function loadFactures() {
 
   const factures = await api(url);
   if (!factures) return;
-  factures.sort((a, b) => (a.total || 0) - (b.total || 0)); // du plus petit au plus grand montant
+  // Tri par numéro de facture croissant (FACT-0001, FACT-0002…), pas par montant —
+  // parse le suffixe numérique plutôt qu'un tri alphabétique sur la chaîne complète,
+  // pour rester correct même si le nombre de factures dépasse un jour 4 chiffres.
+  factures.sort((a, b) => {
+    const na = parseInt((a.numero || '').slice(5), 10);
+    const nb = parseInt((b.numero || '').slice(5), 10);
+    return (isNaN(na) ? 0 : na) - (isNaN(nb) ? 0 : nb);
+  });
   state.factures = factures;
 
   const tbody = document.getElementById('factures-tbody');

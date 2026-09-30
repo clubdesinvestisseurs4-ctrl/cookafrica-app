@@ -38,7 +38,9 @@
 // recharge tout de suite, plus un lien "Recharger" manuel sinon.
 // v3.9.0 : retrait complet du bouton son/annonces vocales en facturation (plus
 // nécessaire) + tri des factures par montant croissant.
-const SW_VERSION = 'cookafrica-v3.9.0';
+// v3.10.0 : le tri par montant (v3.9.0) ne correspondait pas à ce qui était attendu —
+// tri désormais par numéro de facture croissant (FACT-0001, 0002…).
+const SW_VERSION = 'cookafrica-v3.10.0';
 const SHELL_CACHE = `cookafrica-shell-${SW_VERSION}`;
 
 // App shell : ce qui ne change pas à chaque commande, précaché pour un premier
