@@ -472,6 +472,15 @@ function badgeQui(c) {
     : `<span style="background:#E3F2FD;color:#0d47a1;border:1px solid #90CAF9;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600;white-space:nowrap"><i class="fas fa-cash-register"></i> ${t('commandes.badge_qui_caisse')}</span>`;
 }
 
+// Classement automatique sur place / à emporter d'une commande en ligne (voir
+// determineModeConsommation côté serveur : présence d'une boisson ou d'un buffet).
+function badgeMode(c) {
+  if (!c.modeConsommation) return '';
+  return c.modeConsommation === 'sur-place'
+    ? `<span style="background:#EDE7F6;color:#4527A0;border:1px solid #B39DDB;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600;white-space:nowrap"><i class="fas fa-utensils"></i> ${t('commandes.badge_mode_sur_place')}</span>`
+    : `<span style="background:#E0F2F1;color:#00695C;border:1px solid #80CBC4;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600;white-space:nowrap"><i class="fas fa-shopping-bag"></i> ${t('commandes.badge_mode_a_emporter')}</span>`;
+}
+
 // Lien vers la localisation du client livreur. Sur Android, le lien geo:
 // déclenche le sélecteur natif "Ouvrir avec" (Maps, Waze, appli de
 // livraison...) dès le clic — pas la feuille de partage. Ailleurs (iOS,
@@ -1121,7 +1130,7 @@ async function loadCommandes() {
     const nomClientCmd = c.commandeClient ? `${escapeHtml(c.clientPrenom || '')} ${escapeHtml(c.clientNom || '')}`.trim() : '';
     return `
     <tr>
-      <td data-label="${t('common.num')}"><strong>${c.numero}</strong> ${badgeQui(c)}${nomClientCmd ? `<div style="font-size:.78rem;color:var(--gray);margin-top:2px">${nomClientCmd}</div>` : ''}</td>
+      <td data-label="${t('common.num')}"><strong>${c.numero}</strong> ${badgeQui(c)} ${badgeMode(c)}${nomClientCmd ? `<div style="font-size:.78rem;color:var(--gray);margin-top:2px">${nomClientCmd}</div>` : ''}</td>
       <td data-label="${t('common.date')}" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
       <td data-label="${t('commandes.th_articles')}" style="font-size:.82rem">${items}</td>
       <td data-label="${t('commandes.th_total')}"><strong>${fmt(c.total)}</strong></td>
@@ -1163,7 +1172,7 @@ async function viewCommande(id) {
   document.getElementById('modal-detail-titre').textContent = t('commandes.detail_titre', { numero: c.numero });
   document.getElementById('modal-detail-body').innerHTML = `
     <div style="margin-bottom:12px">
-      ${badgeQui(c) ? `<p style="margin-bottom:8px">${badgeQui(c)}</p>` : ''}
+      ${badgeQui(c) || badgeMode(c) ? `<p style="margin-bottom:8px">${badgeQui(c)} ${badgeMode(c)}</p>` : ''}
       ${c.commandeClient ? `
         <div style="background:var(--light);border-radius:8px;padding:10px 12px;margin-bottom:10px">
           <p style="font-weight:700">${escapeHtml(c.clientPrenom || '')} ${escapeHtml(c.clientNom || '')}</p>
@@ -1525,7 +1534,7 @@ async function loadCommandesLigne() {
     <tr>
       <td data-label="${t('common.num')}"><strong>${c.numero}</strong></td>
       <td data-label="${t('common.date')}" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
-      <td data-label="${t('commandes.dl_client')}">${badgeQui(c)}${nomClient ? `<div style="font-size:.78rem;margin-top:3px">${nomClient}</div>` : ''}${c.clientTelephone ? `<div style="margin-top:2px"><a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);font-size:.76rem;text-decoration:none;white-space:nowrap"><i class="fas fa-phone"></i> ${escapeHtml(c.clientTelephone)}</a></div>` : ''}</td>
+      <td data-label="${t('commandes.dl_client')}">${badgeQui(c)} ${badgeMode(c)}${nomClient ? `<div style="font-size:.78rem;margin-top:3px">${nomClient}</div>` : ''}${c.clientTelephone ? `<div style="margin-top:2px"><a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);font-size:.76rem;text-decoration:none;white-space:nowrap"><i class="fas fa-phone"></i> ${escapeHtml(c.clientTelephone)}</a></div>` : ''}</td>
       <td data-label="${t('commandes.th_articles')}" style="font-size:.82rem">${items}</td>
       <td data-label="${t('commandes.th_total')}"><strong>${fmt(c.total)}</strong></td>
       <td data-label="${t('common.status')}">${badgeStatus(c.statut)}</td>

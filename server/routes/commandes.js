@@ -5,7 +5,7 @@ const { pushNotification } = require('../utils/notifications');
 const cache    = require('../utils/cache');
 const eventBus = require('../utils/eventBus');
 const { buildCommandeUpdate } = require('../utils/commandeUpdate');
-const { getNextNumero, decrementStocksForItems } = require('../utils/commandes');
+const { getNextNumero, decrementStocksForItems, determineModeConsommation } = require('../utils/commandes');
 const { createFactureFromCommande } = require('../utils/factures');
 const { formatMontant } = require('../utils/currency');
 
@@ -103,6 +103,7 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere',
       note: note || '',
       tableNumero: tableNumero || '',
       source: isOnline ? 'en-ligne' : 'sur-place',
+      ...(isOnline ? { modeConsommation: determineModeConsommation(mappedItems) } : {}),
       statut: req.user.role === 'serveur' ? 'en-attente' : 'en-preparation',
       date: now.toISOString().split('T')[0],
       createdBy: req.user.username,

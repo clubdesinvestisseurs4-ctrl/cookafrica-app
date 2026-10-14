@@ -148,6 +148,8 @@ const I18N = {
     'facturation.badge_partielle': '⚠️ Partielle',
     'commandes.badge_qui_client': 'Client',
     'commandes.badge_qui_caisse': 'Caisse',
+    'commandes.badge_mode_sur_place': 'Sur place',
+    'commandes.badge_mode_a_emporter': 'À emporter',
 
     // Facturation
     'facturation.filter_all': 'Tous statuts',
@@ -765,6 +767,8 @@ const I18N = {
     'facturation.badge_partielle': '⚠️ Partial',
     'commandes.badge_qui_client': 'Customer',
     'commandes.badge_qui_caisse': 'Checkout',
+    'commandes.badge_mode_sur_place': 'Dine-in',
+    'commandes.badge_mode_a_emporter': 'Takeaway',
 
     'facturation.filter_all': 'All statuses',
     'facturation.filter_payee': 'Paid',

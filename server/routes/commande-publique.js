@@ -7,7 +7,7 @@ const { db } = require('../firebase-admin');
 const { pushNotification } = require('../utils/notifications');
 const cache    = require('../utils/cache');
 const eventBus = require('../utils/eventBus');
-const { getNextNumero, decrementStocksForItems } = require('../utils/commandes');
+const { getNextNumero, decrementStocksForItems, determineModeConsommation } = require('../utils/commandes');
 const { resolvePublicItems, resolvePublicContact } = require('../utils/publicCommande');
 const { formatMontant } = require('../utils/currency');
 
@@ -73,6 +73,7 @@ router.post('/commandes', orderLimiter, async (req, res) => {
       items: resolved.items,
       total: resolved.total,
       source: 'en-ligne',
+      modeConsommation: determineModeConsommation(resolved.items),
       commandeClient: true,
       clientPrenom: contact.prenom,
       clientNom: contact.nom,
@@ -117,6 +118,7 @@ router.post('/commandes', orderLimiter, async (req, res) => {
       items: resolved.items,
       total: resolved.total,
       statut: data.statut,
+      modeConsommation: data.modeConsommation,
       createdAt: data.createdAt,
     });
   } catch (err) {
@@ -135,7 +137,7 @@ router.get('/commandes/:id', async (req, res) => {
       return res.status(404).json({ error: 'Commande introuvable' });
     }
     const c = doc.data();
-    res.json({ id: doc.id, numero: c.numero, statut: c.statut, items: c.items, total: c.total, createdAt: c.createdAt });
+    res.json({ id: doc.id, numero: c.numero, statut: c.statut, items: c.items, total: c.total, modeConsommation: c.modeConsommation, createdAt: c.createdAt });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

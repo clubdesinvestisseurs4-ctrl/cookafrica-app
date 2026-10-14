@@ -27,4 +27,26 @@ async function decrementStocksForItems(db, items, now) {
   return epuises;
 }
 
-module.exports = { getNextNumero, decrementStocksForItems };
+function normalize(text) {
+  return String(text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
+}
+
+const MOTS_SUR_PLACE = ['boisson', 'buffet'];
+
+// Classement automatique sur place / à emporter (demande du 2026-10-14) : les commandes
+// en ligne contenant une boisson ou un buffet sont presque toujours consommées sur
+// place, le reste part à emporter. On regarde la catégorie ET le nom de l'article —
+// une catégorie mal renseignée (ex. un "Buffet Mixte" classé "Plats") ne doit pas
+// empêcher la détection.
+function determineModeConsommation(items) {
+  const contientSurPlace = (items || []).some(item => {
+    const texte = normalize(`${item.categorie} ${item.nom}`);
+    return MOTS_SUR_PLACE.some(mot => texte.includes(mot));
+  });
+  return contientSurPlace ? 'sur-place' : 'a-emporter';
+}
+
+module.exports = { getNextNumero, decrementStocksForItems, determineModeConsommation };
