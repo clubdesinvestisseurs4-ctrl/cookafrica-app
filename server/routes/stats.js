@@ -106,9 +106,15 @@ router.get('/rapport', authenticateToken, async (req, res) => {
 
     // Commandes en ligne, badgées "Client" (commandeClient) ou "Caisse" (saisie par la
     // caissière) confondues — annulées exclues, ce compteur ne reflète que le volume traité.
-    const commandesEnLigne = commandesSnap.docs
+    const commandesEnLigneList = commandesSnap.docs
       .map(d => d.data())
-      .filter(c => c.source === 'en-ligne' && c.statut !== 'annulee').length;
+      .filter(c => c.source === 'en-ligne' && c.statut !== 'annulee');
+    const commandesEnLigne = commandesEnLigneList.length;
+
+    // Classement automatique sur place / à emporter (voir determineModeConsommation) :
+    // uniquement renseigné sur les commandes en ligne, donc décompté sur ce même sous-ensemble.
+    const commandesSurPlace   = commandesEnLigneList.filter(c => c.modeConsommation === 'sur-place').length;
+    const commandesAEmporter  = commandesEnLigneList.filter(c => c.modeConsommation === 'a-emporter').length;
 
     const total = factures.reduce((s, f) => s + (f.total || 0), 0);
     const parMode = {};
@@ -182,6 +188,8 @@ router.get('/rapport', authenticateToken, async (req, res) => {
       parCategorie,
       qteParCategorie,
       commandesEnLigne,
+      commandesSurPlace,
+      commandesAEmporter,
       totalPlatsQte,
       totalBoissonsQte,
       topPlats: topVentes(platsVentes),

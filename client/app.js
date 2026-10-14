@@ -2736,6 +2736,10 @@ async function loadRapport() {
   document.getElementById('rapp-nombre').textContent = data.nombre ?? '—';
   document.getElementById('rapp-ca').textContent     = fmt(data.total);
   document.getElementById('rapp-commandes-ligne').textContent = data.commandesEnLigne ?? '—';
+  document.getElementById('rapp-par-mode-conso').innerHTML = `
+    <li><span><i class="fas fa-utensils"></i> ${t('rapports.mode_sur_place')}</span><strong>${data.commandesSurPlace ?? 0}</strong></li>
+    <li><span><i class="fas fa-shopping-bag"></i> ${t('rapports.mode_a_emporter')}</span><strong>${data.commandesAEmporter ?? 0}</strong></li>
+  `;
 
   // Quantité vendue par catégorie : sélecteur peuplé depuis les catégories réellement
   // vendues sur la période (Boissons, Accompagnement, Plats, Buffet, Sauce…), rien n'est
