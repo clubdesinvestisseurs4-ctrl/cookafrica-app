@@ -5,7 +5,7 @@ const { pushNotification } = require('../utils/notifications');
 const cache    = require('../utils/cache');
 const eventBus = require('../utils/eventBus');
 const { buildCommandeUpdate } = require('../utils/commandeUpdate');
-const { getNextNumero, decrementStocksForItems, determineModeConsommation } = require('../utils/commandes');
+const { getNextNumero, decrementStocksForItems, determineModeConsommation, resolveCommandeDate } = require('../utils/commandes');
 const { createFactureFromCommande } = require('../utils/factures');
 const { formatMontant } = require('../utils/currency');
 
@@ -14,10 +14,14 @@ const router = express.Router();
 // Invalide tous les caches commandes + factures (à appeler après chaque écriture).
 // `commandes:list:<aujourd'hui>` en plus des clés globales : c'est la vue du jour qui
 // doit rester instantanément fraîche (voir GET / ci-dessous) ; les autres jours suivent
-// juste leur TTL normal, sans besoin d'être invalidés en temps réel.
-function invalidate() {
+// juste leur TTL normal, sans besoin d'être invalidés en temps réel - SAUF si on vient
+// justement d'écrire une commande antidatée (resolveCommandeDate) : sa propre clé de jour
+// est alors explicitement nettoyée via `autreDate` pour rester cohérente immédiatement.
+function invalidate(autreDate) {
   const today = new Date().toISOString().split('T')[0];
-  cache.del('commandes:list', `commandes:list:${today}`, 'factures:list', 'stats:dashboard', 'stats:notifications');
+  const keys = ['commandes:list', `commandes:list:${today}`, 'factures:list', 'stats:dashboard', 'stats:notifications'];
+  if (autreDate && autreDate !== today) keys.push(`commandes:list:${autreDate}`);
+  cache.del(...keys);
 }
 
 // GET /api/commandes
@@ -75,7 +79,7 @@ router.get('/', authenticateToken, async (req, res) => {
 // pas besoin d'un envoi depuis un serveur.
 router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere', 'caissier-en-ligne'), async (req, res) => {
   try {
-    const { items, note, tableNumero, source } = req.body;
+    const { items, note, tableNumero, source, date } = req.body;
     // Seuls admin/caissière/caissier en ligne peuvent marquer une commande "en ligne" (écran dédié)
     const isOnline = source === 'en-ligne' && ['admin', 'caissiere', 'caissier-en-ligne'].includes(req.user.role);
 
@@ -86,6 +90,8 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere',
     const total = items.reduce((sum, i) => sum + (Number(i.prix) * Number(i.quantite)), 0);
     const numero = await getNextNumero(db);
     const now = new Date();
+    const resolvedDate = resolveCommandeDate(date, req.user.role, now);
+    if (resolvedDate.error) return res.status(400).json({ error: resolvedDate.error });
 
     const mappedItems = items.map(i => ({
       menuItemId: i.menuItemId || '',
@@ -105,7 +111,7 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere',
       source: isOnline ? 'en-ligne' : 'sur-place',
       ...(isOnline ? { modeConsommation: determineModeConsommation(mappedItems) } : {}),
       statut: req.user.role === 'serveur' ? 'en-attente' : 'en-preparation',
-      date: now.toISOString().split('T')[0],
+      date: resolvedDate.date,
       createdBy: req.user.username,
       createdByNom: req.user.nom || req.user.username,
       createdAt: now.toISOString(),
@@ -113,7 +119,7 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere',
     };
 
     const ref = await db.collection('commandes').add(data);
-    invalidate();
+    invalidate(resolvedDate.date);
     eventBus.emit('commandes');
 
     // Décrémenter quantiteRestante dans stocks_plats pour chaque article commandé

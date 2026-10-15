@@ -49,4 +49,29 @@ function determineModeConsommation(items) {
   return contientSurPlace ? 'sur-place' : 'a-emporter';
 }
 
-module.exports = { getNextNumero, decrementStocksForItems, determineModeConsommation };
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const ROLES_PEUVENT_ANTIDATER = ['admin', 'caissiere'];
+const ANTIDATE_MAX_JOURS = 30;
+
+// Permet de saisir aujourd'hui une commande qui a réellement eu lieu un jour antérieur
+// (ex: oubliée hier, retrouvée sur un carnet) afin qu'elle compte dans le bilan du BON
+// jour - createFactureFromCommande (utils/factures.js) reprend déjà `commande.date` pour
+// la facture, donc fixer correctement cette date ici suffit à tout faire remonter au bon
+// endroit dans les rapports. Restreint à admin/caissière (pas serveur/caissier-en-ligne)
+// pour qu'un simple correctif de saisie ne devienne pas un moyen de déplacer des ventes
+// d'un jour à l'autre sans contrôle.
+function resolveCommandeDate(requestedDate, role, now) {
+  const today = now.toISOString().split('T')[0];
+  if (!requestedDate || !ROLES_PEUVENT_ANTIDATER.includes(role)) return { date: today };
+  if (!DATE_RE.test(requestedDate)) return { error: 'Date invalide (format attendu AAAA-MM-JJ)' };
+  if (requestedDate > today) return { error: 'La date ne peut pas être dans le futur' };
+  const joursEcoules = (new Date(`${today}T00:00:00Z`) - new Date(`${requestedDate}T00:00:00Z`)) / 86_400_000;
+  if (joursEcoules > ANTIDATE_MAX_JOURS) {
+    return { error: `La date ne peut pas remonter à plus de ${ANTIDATE_MAX_JOURS} jours` };
+  }
+  return { date: requestedDate };
+}
+
+module.exports = {
+  getNextNumero, decrementStocksForItems, determineModeConsommation, resolveCommandeDate,
+};

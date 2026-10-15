@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { determineModeConsommation } = require('../utils/commandes');
+const { determineModeConsommation, resolveCommandeDate } = require('../utils/commandes');
 
 test('determineModeConsommation — une boisson classe la commande "sur-place"', () => {
   const items = [
@@ -34,4 +34,37 @@ test('determineModeConsommation — insensible à la casse et aux accents', () =
 test('determineModeConsommation — liste vide ou absente -> "a-emporter"', () => {
   assert.strictEqual(determineModeConsommation([]), 'a-emporter');
   assert.strictEqual(determineModeConsommation(undefined), 'a-emporter');
+});
+
+const NOW = new Date('2026-10-15T12:00:00Z');
+
+test('resolveCommandeDate — aucune date fournie -> aujourd\'hui', () => {
+  assert.deepStrictEqual(resolveCommandeDate(undefined, 'admin', NOW), { date: '2026-10-15' });
+});
+
+test('resolveCommandeDate — admin peut antidater dans la fenêtre autorisée', () => {
+  assert.deepStrictEqual(resolveCommandeDate('2026-10-14', 'admin', NOW), { date: '2026-10-14' });
+});
+
+test('resolveCommandeDate — caissière peut aussi antidater', () => {
+  assert.deepStrictEqual(resolveCommandeDate('2026-10-14', 'caissiere', NOW), { date: '2026-10-14' });
+});
+
+test('resolveCommandeDate — serveur/caissier-en-ligne : date ignorée, retombe sur aujourd\'hui', () => {
+  assert.deepStrictEqual(resolveCommandeDate('2026-10-14', 'serveur', NOW), { date: '2026-10-15' });
+  assert.deepStrictEqual(resolveCommandeDate('2026-10-14', 'caissier-en-ligne', NOW), { date: '2026-10-15' });
+});
+
+test('resolveCommandeDate — refuse un format invalide', () => {
+  assert.deepStrictEqual(resolveCommandeDate('14/10/2026', 'admin', NOW), { error: 'Date invalide (format attendu AAAA-MM-JJ)' });
+});
+
+test('resolveCommandeDate — refuse une date future', () => {
+  assert.deepStrictEqual(resolveCommandeDate('2026-10-16', 'admin', NOW), { error: 'La date ne peut pas être dans le futur' });
+});
+
+test('resolveCommandeDate — accepte la borne exacte (30 jours), refuse au-delà', () => {
+  assert.deepStrictEqual(resolveCommandeDate('2026-09-15', 'admin', NOW), { date: '2026-09-15' });
+  const res = resolveCommandeDate('2026-09-14', 'admin', NOW);
+  assert.ok(res.error);
 });

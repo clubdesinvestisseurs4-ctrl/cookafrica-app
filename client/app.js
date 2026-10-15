@@ -1302,6 +1302,20 @@ async function openNewCommande(source = 'sur-place') {
   panierPicker.reset();
   document.getElementById('modal-commande-title').textContent =
     source === 'en-ligne' ? t('cmdligne.new') : t('commandes.new');
+
+  // Antidatage réservé à admin/caissière (voir resolveCommandeDate côté serveur) : permet
+  // de rattraper aujourd'hui une commande réellement passée un jour précédent (oubliée),
+  // pour qu'elle compte dans le bilan du bon jour plutôt que celui de la saisie.
+  const peutAntidater = ['admin', 'caissiere'].includes(state.user?.role);
+  const dateGroup = document.getElementById('cmd-date-group');
+  const dateInput = document.getElementById('cmd-date-input');
+  dateGroup.style.display = peutAntidater ? '' : 'none';
+  const today = new Date().toISOString().split('T')[0];
+  const minDate = new Date(Date.now() - 30 * 86_400_000).toISOString().split('T')[0];
+  dateInput.max = today;
+  dateInput.min = minDate;
+  dateInput.value = today;
+
   openModal('commande');
 }
 
@@ -1448,6 +1462,9 @@ async function saveCommande() {
   if (state.panier.length === 0) { toast(t('commandes.ajoutez_article'), 'warning'); return; }
   const isOnline = state.panierSource === 'en-ligne';
   const body = { items: state.panier, source: state.panierSource || 'sur-place' };
+  const dateGroup = document.getElementById('cmd-date-group');
+  const dateValue = document.getElementById('cmd-date-input')?.value;
+  if (dateGroup && dateGroup.style.display !== 'none' && dateValue) body.date = dateValue;
   showLoader();
   const res = await api('/api/commandes', { method: 'POST', body: JSON.stringify(body) });
   hideLoader();
