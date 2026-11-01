@@ -91,3 +91,12 @@ test('bilan : facture dont la commande est introuvable ou non classée -> "non c
   assert.strictEqual(b.parMode['non-classe'].ca, 1000);
   assert.strictEqual(b.parMode['sur-place'].ca, 0);
 });
+
+test('bilan : une facture de réservation (mariage, traiteur…) compte "sur place"', () => {
+  const b = computeBilan({
+    factures: [{ commandeId: '', reservationId: 'r1', statut: 'payee', date: '2026-10-30', total: 150000, items: [] }],
+    commandes: [], depenses: [], debut: '2026-10-30', fin: '2026-10-30',
+  });
+  assert.strictEqual(b.parMode['sur-place'].ca, 150000);
+  assert.strictEqual(b.parMode['non-classe'].commandes, 0);
+});

@@ -20,9 +20,12 @@ function estBoisson(item) {
   return item.categorie === 'Boissons'; // même critère que le dashboard (routes/stats.js)
 }
 
-// Mode d'une facture = celui de sa commande. Une facture sans commande retrouvée (ou une
-// commande jamais classée) part dans "non classé" plutôt que d'être devinée ici.
+// Mode d'une facture = celui de sa commande. Une facture de réservation (mariages, traiteur,
+// événements — offres à part, sans commande) compte "sur place" (décision du 2026-11-01).
+// Une facture sans commande retrouvée (ou une commande jamais classée) part dans "non
+// classé" plutôt que d'être devinée ici.
 function modeDeFacture(f, commandesById) {
+  if (!f.commandeId && f.reservationId) return 'sur-place';
   const c = f.commandeId ? commandesById.get(f.commandeId) : null;
   return MODES.includes(c?.modeConsommation) ? c.modeConsommation : NON_CLASSE;
 }
