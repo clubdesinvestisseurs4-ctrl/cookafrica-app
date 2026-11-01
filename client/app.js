@@ -101,6 +101,9 @@ const state = {
   utilisateurs: [],
   panier:    [],
   panierSource: 'sur-place',
+  // Sur place / à emporter de la commande en cours de saisie, et de celle en modification.
+  panierMode: { mode: 'sur-place', manuel: false },
+  editMode:   { mode: 'sur-place', manuel: false, touche: false, role: null },
   notifInterval:       null,
   dashInterval:        null,
   commandesInterval:   null,
@@ -145,6 +148,7 @@ const PAGE_ROLES = {
   stocks:         [], // masqué pour l'instant (fonctionnalité conservée, pas utilisée) — voir index.html
   reservations:   ['admin'],
   rapports:       ['admin'],
+  depenses:       ['admin'], // le serveur vérifie aussi (routes/depenses.js) : pas qu'un masquage
   sessions:       ['admin'],
   utilisateurs:   ['admin'],
 };
@@ -158,6 +162,7 @@ const PAGE_TITLES = {
   stocks:         t('title.stocks'),
   reservations:   t('title.reservations'),
   rapports:       t('title.rapports'),
+  depenses:       t('title.depenses'),
   sessions:       t('title.sessions'),
   utilisateurs:   t('title.utilisateurs'),
 };
@@ -472,13 +477,43 @@ function badgeQui(c) {
     : `<span style="background:#E3F2FD;color:#0d47a1;border:1px solid #90CAF9;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600;white-space:nowrap"><i class="fas fa-cash-register"></i> ${t('commandes.badge_qui_caisse')}</span>`;
 }
 
-// Classement automatique sur place / à emporter d'une commande en ligne (voir
-// determineModeConsommation côté serveur : présence d'une boisson ou d'un buffet).
+// Sur place / à emporter, renseigné sur toutes les commandes depuis le 2026-11-01 (voir
+// modeParDefaut côté serveur). "estimé" = classement rétroactif d'une ancienne commande
+// (scripts/migrate-mode-consommation.js), à distinguer d'un choix fait à la prise de commande.
 function badgeMode(c) {
   if (!c.modeConsommation) return '';
+  const estime = c.modeEstime ? ` <em style="font-weight:400">(${t('mode.estime')})</em>` : '';
   return c.modeConsommation === 'sur-place'
-    ? `<span style="background:#EDE7F6;color:#4527A0;border:1px solid #B39DDB;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600;white-space:nowrap"><i class="fas fa-utensils"></i> ${t('commandes.badge_mode_sur_place')}</span>`
-    : `<span style="background:#E0F2F1;color:#00695C;border:1px solid #80CBC4;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600;white-space:nowrap"><i class="fas fa-shopping-bag"></i> ${t('commandes.badge_mode_a_emporter')}</span>`;
+    ? `<span style="background:#EDE7F6;color:#4527A0;border:1px solid #B39DDB;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600;white-space:nowrap"><i class="fas fa-utensils"></i> ${t('commandes.badge_mode_sur_place')}${estime}</span>`
+    : `<span style="background:#E0F2F1;color:#00695C;border:1px solid #80CBC4;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600;white-space:nowrap"><i class="fas fa-shopping-bag"></i> ${t('commandes.badge_mode_a_emporter')}${estime}</span>`;
+}
+
+// Miroir client de modeParDefaut (server/utils/commandes.js) : sert uniquement à
+// PRÉ-SÉLECTIONNER le bouton — le serveur réapplique la même règle de son côté.
+const MOTS_SUR_PLACE = ['boisson', 'buffet'];
+function modeParDefautClient(role, items) {
+  if (role === 'serveur') return 'sur-place';
+  const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const surPlace = (items || []).some(i => MOTS_SUR_PLACE.some(m => norm(`${i.categorie} ${i.nom}`).includes(m)));
+  return surPlace ? 'sur-place' : 'a-emporter';
+}
+
+// Sélecteur à deux boutons. `ctrl` = { mode, manuel } : tant que `manuel` est faux, le mode
+// suit la règle (recalculé à chaque changement d'articles) ; un clic le fige.
+function renderModeToggle(toggleId, hintId, ctrl, role) {
+  document.querySelectorAll(`#${toggleId} button`).forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === ctrl.mode);
+  });
+  const hint = document.getElementById(hintId);
+  if (!hint) return;
+  hint.textContent = ctrl.manuel ? t('mode.hint_manuel')
+    : role === 'serveur' ? t('mode.hint_serveur') : t('mode.hint_auto');
+}
+
+function bindModeToggle(toggleId, onPick) {
+  document.querySelectorAll(`#${toggleId} button`).forEach(b => {
+    b.addEventListener('click', () => onPick(b.dataset.mode));
+  });
 }
 
 // Lien vers la localisation du client livreur. Sur Android, le lien geo:
@@ -859,7 +894,8 @@ function navigateTo(page) {
     menu:         loadMenu,
     stocks:       loadStocks,
     reservations: loadReservations,
-    rapports:     () => {},
+    rapports:     initRapportPeriode,
+    depenses:     loadDepenses,
     sessions:     loadSessions,
     utilisateurs: () => { loadUtilisateurs(); loadWifiConfig(); loadDiscountOtpStatus(); },
   };
@@ -1183,6 +1219,7 @@ async function viewCommande(id) {
       ${c.note ? `<p style="color:var(--gray);font-size:.85rem;font-style:italic"><i class="fas fa-sticky-note"></i> ${escapeHtml(c.note)}</p>` : ''}
       <p><strong>${t('commandes.statut_label')}</strong> ${badgeStatus(c.statut)}</p>
       <p style="font-size:.8rem;color:var(--gray)"><strong>${t('commandes.creee_par_label')}</strong> ${escapeHtml(c.commandeClient ? (c.clientNom || t('commandes.client_en_ligne')) : (c.createdByNom || c.createdBy))} – ${fmtDate(c.createdAt)}</p>
+      ${modeCorrectionHtml(c)}
     </div>
     <div style="margin-bottom:12px">${items}</div>
     <div style="text-align:right;font-size:1.1rem;font-weight:800;color:var(--primary)">
@@ -1190,6 +1227,30 @@ async function viewCommande(id) {
     </div>`;
   openModal('detail-commande');
 }
+
+// Correction du mode après coup (même facturée/servie) : admin et caisse uniquement, comme
+// côté serveur (ROLES_MODE dans utils/commandeUpdate.js).
+function modeCorrectionHtml(c) {
+  const peut = ['admin', 'caissiere', 'caissier-en-ligne'].includes(state.user?.role)
+    && c.statut !== 'annulee' && !c._pending;
+  if (!peut) return '';
+  const autre = c.modeConsommation === 'sur-place' ? 'a-emporter' : 'sur-place';
+  const libelle = t(autre === 'sur-place' ? 'mode.sur_place' : 'mode.a_emporter');
+  return `<p style="margin-top:8px"><button class="btn btn-secondary btn-sm" onclick="changerModeCommande('${c.id}','${autre}')">
+    <i class="fas fa-exchange-alt"></i> ${t('mode.changer_vers', { mode: libelle })}</button></p>`;
+}
+
+window.changerModeCommande = async (id, mode) => {
+  showLoader();
+  const res = await api(`/api/commandes/${id}`, { method: 'PUT', body: JSON.stringify({ modeConsommation: mode }) });
+  hideLoader();
+  if (!res?.id) { toast(res?.error || t('common.error'), 'error'); return; }
+  toast(t('mode.corrige'), 'success');
+  const c = state.commandes.find(x => x.id === id);
+  if (c) Object.assign(c, { modeConsommation: mode, modeSource: 'manuel', modeEstime: false });
+  viewCommande(id);
+  if (state.currentPage === 'commandes-en-ligne') loadCommandesLigne(); else if (state.currentPage === 'commandes') loadCommandes();
+};
 
 async function annulerCommande(id, numero) {
   if (!(await confirmDialog(t('commandes.cancel_confirm', { numero }), { danger: true }))) return;
@@ -1219,6 +1280,14 @@ window.openEditCommande = async (id) => {
   document.getElementById('editcmd-id').value = id;
   document.getElementById('editcmd-numero').textContent = c.numero;
   state.editCommandeItems = (c.items || []).map(i => ({ ...i }));
+  // Commande d'avant le 2026-11-01 sans rôle connu : son mode ne suit pas les articles
+  // (même règle que le serveur, PUT /:id/items), seul un choix explicite le change.
+  state.editMode = {
+    mode: c.modeConsommation || modeParDefautClient(c.createdByRole, c.items),
+    manuel: c.modeSource === 'manuel' || !c.createdByRole,
+    touche: false,
+    role: c.createdByRole || null,
+  };
 
   if (state.menu.length === 0) {
     const menu = await api('/api/menu');
@@ -1248,6 +1317,9 @@ function renderEditCommandeItems() {
   }
   const total = state.editCommandeItems.reduce((s, i) => s + i.sousTotal, 0);
   document.getElementById('editcmd-total').textContent = t('commandes.total_label', { total: fmt(total) });
+
+  if (!state.editMode.manuel) state.editMode.mode = modeParDefautClient(state.editMode.role, state.editCommandeItems);
+  renderModeToggle('editcmd-mode-toggle', 'editcmd-mode-hint', state.editMode, state.editMode.role);
 }
 
 window.updateEditCommandeQty = (i, qty) => {
@@ -1274,9 +1346,11 @@ async function saveEditCommande() {
   const id = document.getElementById('editcmd-id').value;
 
   showLoader();
+  const body = { items: state.editCommandeItems };
+  if (state.editMode.touche) body.modeConsommation = state.editMode.mode;
   const res = await api(`/api/commandes/${id}/items`, {
     method: 'PUT',
-    body: JSON.stringify({ items: state.editCommandeItems }),
+    body: JSON.stringify(body),
   });
   hideLoader();
 
@@ -1298,6 +1372,7 @@ async function openNewCommande(source = 'sur-place') {
   }
   state.panier = [];
   state.panierSource = source;
+  state.panierMode = { mode: modeParDefautClient(state.user?.role, []), manuel: false };
   renderPanier();
   panierPicker.reset();
   document.getElementById('modal-commande-title').textContent =
@@ -1424,6 +1499,9 @@ function renderPanier() {
   const totalEl   = document.getElementById('panier-total');
   const totalVal  = document.getElementById('panier-total-val');
 
+  if (!state.panierMode.manuel) state.panierMode.mode = modeParDefautClient(state.user?.role, state.panier);
+  renderModeToggle('cmd-mode-toggle', 'cmd-mode-hint', state.panierMode, state.user?.role);
+
   if (state.panier.length === 0) {
     container.innerHTML = `<p style="color:var(--gray);font-size:.85rem;text-align:center;padding:12px">${t('commandes.aucun_article')}</p>`;
     totalEl.style.display = 'none';
@@ -1461,7 +1539,11 @@ window.removePanierItem = (i) => {
 async function saveCommande() {
   if (state.panier.length === 0) { toast(t('commandes.ajoutez_article'), 'warning'); return; }
   const isOnline = state.panierSource === 'en-ligne';
-  const body = { items: state.panier, source: state.panierSource || 'sur-place' };
+  const body = {
+    items: state.panier,
+    source: state.panierSource || 'sur-place',
+    modeConsommation: state.panierMode.mode,
+  };
   const dateGroup = document.getElementById('cmd-date-group');
   const dateValue = document.getElementById('cmd-date-input')?.value;
   if (dateGroup && dateGroup.style.display !== 'none' && dateValue) body.date = dateValue;
@@ -1484,6 +1566,7 @@ async function saveCommande() {
       total: state.panier.reduce((s, p) => s + p.sousTotal, 0),
       statut: state.user?.role === 'serveur' ? 'en-attente' : 'en-preparation',
       source: state.panierSource || 'sur-place',
+      modeConsommation: state.panierMode.mode,
       createdAt: new Date().toISOString(),
       createdBy: state.user?.nom || '',
     });
@@ -2745,10 +2828,25 @@ async function loadRapport() {
   if (debut) url += `debut=${debut}&`;
   if (fin)   url += `fin=${fin}`;
 
+  // Le bilan exige une période bornée (voir /api/stats/bilan) ; sans dates, seul le
+  // rapport historique est affiché.
+  const avecBilan = debut && fin && debut <= fin;
   showLoader();
-  const data = await api(url);
+  const [data, bilan] = await Promise.all([
+    api(url),
+    avecBilan ? api(`/api/stats/bilan?debut=${debut}&fin=${fin}`) : null,
+  ]);
   hideLoader();
   if (!data) return;
+
+  if (bilan && bilan.entrees !== undefined) {
+    renderBilan(bilan);
+  } else {
+    state.bilan = null;
+    document.getElementById('bilan-tbody').innerHTML =
+      `<tr><td colspan="6" style="text-align:center;color:var(--gray);padding:20px">${t('bilan.periode_requise')}</td></tr>`;
+  }
+  if (data.modeConsommation) renderModeStats(data.modeConsommation);
 
   document.getElementById('rapp-nombre').textContent = data.nombre ?? '—';
   document.getElementById('rapp-ca').textContent     = fmt(data.total);
@@ -2859,6 +2957,276 @@ function exportCSV() {
   const url  = URL.createObjectURL(blob);
   const a    = Object.assign(document.createElement('a'), { href: url, download: `rapport-cookafrica-${today()}.csv` });
   a.click(); URL.revokeObjectURL(url);
+}
+
+// ─── DÉPENSES (admin) ──────────────────────────────────
+// Clés identiques à server/utils/depenses.js#CATEGORIES_DEPENSES.
+const CATEGORIES_DEPENSES = [
+  'marche-vivres', 'achat-boissons', 'gaz', 'transport',
+  'electricite-eau', 'salaires', 'entretien-materiel', 'autre',
+];
+const labelCategorieDepense = (cat) => t(`depenses.cat_${cat}`);
+const labelModePaiement = (m) => t(`modal.mode_${m}`);
+
+function isoDate(d) { return d.toISOString().split('T')[0]; }
+
+// Plage [debut, fin] d'une période autour d'une date de référence (semaine du lundi au
+// dimanche, comme le bilan côté serveur — utils/bilan.js#lundiDe).
+function plagePeriode(periode, ref) {
+  const d = new Date(`${ref}T00:00:00Z`);
+  if (periode === 'semaine') {
+    const lundi = new Date(d); lundi.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+    const dimanche = new Date(lundi); dimanche.setUTCDate(lundi.getUTCDate() + 6);
+    return [isoDate(lundi), isoDate(dimanche)];
+  }
+  if (periode === 'mois') {
+    const debut = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+    const fin   = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0));
+    return [isoDate(debut), isoDate(fin)];
+  }
+  return [ref, ref];
+}
+
+function syncDepensePeriodeUI() {
+  const perso = document.getElementById('dep-periode').value === 'perso';
+  document.getElementById('dep-ref').style.display = perso ? 'none' : '';
+  document.getElementById('dep-perso').style.display = perso ? 'inline-flex' : 'none';
+}
+
+function plageDepensesCourante() {
+  const periode = document.getElementById('dep-periode').value;
+  if (periode === 'perso') {
+    return [document.getElementById('dep-start').value, document.getElementById('dep-end').value];
+  }
+  const refEl = document.getElementById('dep-ref');
+  if (!refEl.value) refEl.value = today();
+  return plagePeriode(periode, refEl.value);
+}
+
+async function loadDepenses() {
+  syncDepensePeriodeUI();
+  const [debut, fin] = plageDepensesCourante();
+  if (!debut || !fin) { toast(t('depenses.choisir_periode'), 'warning'); return; }
+
+  const data = await api(`/api/depenses?debut=${debut}&fin=${fin}`);
+  if (!data) return;
+  state.depenses = data.depenses || [];
+
+  document.getElementById('dep-total').textContent = fmt(data.total);
+  document.getElementById('dep-periode-label').textContent = debut === fin
+    ? fmtDateOnly(debut) : t('depenses.du_au', { debut: fmtDateOnly(debut), fin: fmtDateOnly(fin) });
+
+  const parCat = {};
+  state.depenses.forEach(d => { parCat[d.categorie] = (parCat[d.categorie] || 0) + d.montant; });
+  document.getElementById('dep-par-categorie').innerHTML =
+    Object.entries(parCat).sort((a, b) => b[1] - a[1])
+      .map(([cat, total]) => `<li><span>${escapeHtml(labelCategorieDepense(cat))}</span><strong>${fmt(total)}</strong></li>`)
+      .join('') || `<li><span>${t('rapports.aucune_donnee')}</span></li>`;
+
+  const tbody = document.getElementById('depenses-tbody');
+  if (state.depenses.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--gray);padding:24px">${t('depenses.aucune')}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = state.depenses.map(d => `
+    <tr>
+      <td data-label="${t('common.date')}" style="font-size:.82rem">${fmtDateOnly(d.date)}</td>
+      <td data-label="${t('depenses.th_libelle')}"><strong>${escapeHtml(d.libelle)}</strong>${d.note ? `<div style="font-size:.76rem;color:var(--gray)">${escapeHtml(d.note)}</div>` : ''}</td>
+      <td data-label="${t('depenses.th_categorie')}" style="font-size:.82rem">${escapeHtml(labelCategorieDepense(d.categorie))}</td>
+      <td data-label="${t('depenses.th_montant')}"><strong>${fmt(d.montant)}</strong></td>
+      <td data-label="${t('depenses.th_paiement')}" style="font-size:.82rem;color:var(--gray)">${escapeHtml(labelModePaiement(d.modePaiement))}</td>
+      <td data-label="${t('depenses.th_auteur')}" style="font-size:.82rem;color:var(--gray)">${escapeHtml(d.createdByNom || d.createdBy || '')}</td>
+      <td data-label="${t('common.actions')}">
+        <button class="btn btn-secondary btn-sm" onclick="openEditDepense('${d.id}')" title="${t('depenses.modifier')}"><i class="fas fa-edit"></i></button>
+        <button class="btn btn-secondary btn-sm" onclick="voirHistoriqueDepense('${d.id}')" title="${t('depenses.historique')}"><i class="fas fa-history"></i></button>
+        <button class="btn btn-danger btn-sm" onclick="supprimerDepense('${d.id}')" title="${t('depenses.supprimer')}"><i class="fas fa-trash"></i></button>
+      </td>
+    </tr>`).join('');
+}
+
+function remplirFormDepense(d) {
+  const catSelect = document.getElementById('dep-categorie');
+  catSelect.innerHTML = CATEGORIES_DEPENSES
+    .map(c => `<option value="${c}">${escapeHtml(labelCategorieDepense(c))}</option>`).join('');
+  document.getElementById('dep-id').value        = d?.id || '';
+  document.getElementById('dep-date').value      = d?.date || today();
+  document.getElementById('dep-date').max        = today();
+  document.getElementById('dep-libelle').value   = d?.libelle || '';
+  document.getElementById('dep-categorie').value = d?.categorie || 'marche-vivres';
+  document.getElementById('dep-montant').value   = d?.montant ?? '';
+  document.getElementById('dep-mode').value      = d?.modePaiement || 'especes';
+  document.getElementById('dep-note').value      = d?.note || '';
+  document.getElementById('dep-devise').textContent = SITE.currency.label;
+  document.getElementById('modal-depense-title').textContent = d ? t('depenses.modifier') : t('depenses.nouvelle');
+}
+
+function openNewDepense() { remplirFormDepense(null); openModal('depense'); }
+
+window.openEditDepense = (id) => {
+  const d = (state.depenses || []).find(x => x.id === id);
+  if (!d) return;
+  remplirFormDepense(d);
+  openModal('depense');
+};
+
+async function saveDepense() {
+  const id = document.getElementById('dep-id').value;
+  const body = {
+    date:         document.getElementById('dep-date').value,
+    libelle:      document.getElementById('dep-libelle').value.trim(),
+    categorie:    document.getElementById('dep-categorie').value,
+    montant:      Number(document.getElementById('dep-montant').value),
+    modePaiement: document.getElementById('dep-mode').value,
+    note:         document.getElementById('dep-note').value.trim(),
+  };
+  if (!body.libelle || !(body.montant > 0) || !body.date) { toast(t('depenses.champs_requis'), 'warning'); return; }
+
+  showLoader();
+  const res = await api(id ? `/api/depenses/${id}` : '/api/depenses', {
+    method: id ? 'PUT' : 'POST', body: JSON.stringify(body),
+  });
+  hideLoader();
+  if (!res?.id) { toast(res?.error || t('common.error'), 'error'); return; }
+  toast(id ? t('depenses.modifiee') : t('depenses.creee'), 'success');
+  closeModal('depense');
+  loadDepenses();
+}
+
+window.supprimerDepense = async (id) => {
+  const d = (state.depenses || []).find(x => x.id === id);
+  if (!d) return;
+  const ok = await confirmDialog(t('depenses.supprimer_confirm', { libelle: d.libelle, montant: fmt(d.montant) }), { danger: true });
+  if (!ok) return;
+  const res = await api(`/api/depenses/${id}`, { method: 'DELETE' });
+  if (!res?.message) { toast(res?.error || t('common.error'), 'error'); return; }
+  toast(t('depenses.supprimee'), 'warning');
+  loadDepenses();
+};
+
+window.voirHistoriqueDepense = (id) => {
+  const d = (state.depenses || []).find(x => x.id === id);
+  if (!d) return;
+  const champ = (k) => t(`depenses.champ_${k}`);
+  const valeur = (k, v) => v === null || v === undefined || v === '' ? '—'
+    : k === 'montant' ? fmt(v) : k === 'categorie' ? labelCategorieDepense(v)
+    : k === 'modePaiement' ? labelModePaiement(v) : k === 'date' ? fmtDateOnly(v) : v;
+  const lignes = (d.historique || []).map(h => {
+    const modifs = Object.entries(h.modifies || {}).map(([k, m]) =>
+      `<div style="font-size:.8rem;color:var(--gray)">${escapeHtml(champ(k))} : ${escapeHtml(String(valeur(k, m.avant)))} → <strong>${escapeHtml(String(valeur(k, m.apres)))}</strong></div>`).join('');
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--border)">
+      <strong>${escapeHtml(t(`depenses.action_${h.action}`))}</strong> — ${escapeHtml(h.parNom || h.par)} · ${fmtDate(h.at)}${modifs}</div>`;
+  }).join('') || `<p style="color:var(--gray)">${t('rapports.aucune_donnee')}</p>`;
+  document.getElementById('modal-detail-titre').textContent = t('depenses.historique_titre', { libelle: d.libelle });
+  document.getElementById('modal-detail-body').innerHTML = lignes;
+  openModal('detail-commande');
+};
+
+// ─── BILAN & SUR PLACE / À EMPORTER (page Rapports) ────
+// Par défaut le mois en cours : le bilan exige une période (pas de relecture de tout
+// l'historique), et le rapport en profite pour ne pas relire toutes les factures non plus.
+function initRapportPeriode() {
+  const startEl = document.getElementById('rapp-start');
+  const endEl   = document.getElementById('rapp-end');
+  if (!startEl.value) startEl.value = plagePeriode('mois', today())[0];
+  if (!endEl.value)   endEl.value   = today();
+}
+
+function renderBilan(b) {
+  state.bilan = b;
+  const resultatEl = document.getElementById('bilan-resultat');
+  document.getElementById('bilan-entrees').textContent = fmt(b.entrees);
+  document.getElementById('bilan-nb-ventes').textContent = t('bilan.nb_ventes', { n: b.nbVentes });
+  document.getElementById('bilan-non-encaisse').textContent = b.nonEncaisse > 0
+    ? t('bilan.non_encaisse', { montant: fmt(b.nonEncaisse) }) : '';
+  document.getElementById('bilan-depenses').textContent = fmt(b.depenses);
+  document.getElementById('bilan-dep-categories').innerHTML =
+    Object.entries(b.depensesParCategorie || {}).sort((x, y) => y[1] - x[1])
+      .map(([cat, total]) => `<li><span>${escapeHtml(labelCategorieDepense(cat))}</span><strong>${fmt(total)}</strong></li>`)
+      .join('') || `<li><span>${t('depenses.aucune')}</span></li>`;
+  resultatEl.textContent = fmt(b.resultat);
+  resultatEl.classList.toggle('positif', b.resultat > 0);
+  resultatEl.classList.toggle('negatif', b.resultat < 0);
+  document.getElementById('bilan-resultat-label').textContent =
+    b.resultat > 0 ? t('bilan.gain') : b.resultat < 0 ? t('bilan.perte') : t('bilan.equilibre');
+  renderBilanTable();
+}
+
+function libellePeriode(granularite, p) {
+  if (granularite === 'parSemaine') return t('bilan.semaine_du', { date: fmtDateOnly(p) });
+  if (granularite === 'parMois') {
+    const [an, mois] = p.split('-').map(Number);
+    return new Date(Date.UTC(an, mois - 1, 1)).toLocaleDateString(SITE.currency.locale, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  }
+  return fmtDateOnly(p);
+}
+
+function renderBilanTable() {
+  const tbody = document.getElementById('bilan-tbody');
+  const b = state.bilan;
+  if (!b) return;
+  const granularite = document.getElementById('bilan-granularite').value;
+  const lignes = b[granularite] || [];
+  if (lignes.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--gray);padding:20px">${t('rapports.aucune_donnee')}</td></tr>`;
+    return;
+  }
+  const montant = (v) => `<span class="${v < 0 ? 'montant-negatif' : ''}">${fmt(v)}</span>`;
+  tbody.innerHTML = lignes.map(l => `
+    <tr>
+      <td data-label="${t('bilan.th_periode')}"><strong>${escapeHtml(libellePeriode(granularite, l.periode || l.date))}</strong></td>
+      <td data-label="${t('bilan.entrees')}">${fmt(l.entrees)}</td>
+      <td data-label="${t('mode.sur_place')}" style="color:var(--gray)">${fmt(l['sur-place'])}</td>
+      <td data-label="${t('mode.a_emporter')}" style="color:var(--gray)">${fmt(l['a-emporter'])}</td>
+      <td data-label="${t('bilan.depenses')}">${fmt(l.depenses)}</td>
+      <td data-label="${t('bilan.resultat')}"><strong>${montant(l.resultat)}</strong></td>
+    </tr>`).join('');
+}
+
+// Cartes + détail par article. `mc` = data.modeConsommation renvoyé par /api/stats/rapport.
+function renderModeStats(mc) {
+  const cartes = [
+    ['sur-place', 'fa-utensils', t('mode.sur_place')],
+    ['a-emporter', 'fa-shopping-bag', t('mode.a_emporter')],
+  ];
+  const nonClasse = mc.parMode['non-classe'];
+  if (nonClasse.commandes > 0) cartes.push(['non-classe', 'fa-question-circle', t('mode.non_classe')]);
+
+  document.getElementById('modestats-cards').innerHTML = cartes.map(([cle, icone, titre]) => {
+    const m = mc.parMode[cle];
+    return `<div class="rapport-card">
+      <h3><i class="fas ${icone}"></i> ${escapeHtml(titre)}</h3>
+      <div class="kpi-value-big">${fmt(m.ca)}</div>
+      <div class="kpi-label-sm">${t('modestats.ca')}</div>
+      <ul class="kpi-list" style="margin-top:12px">
+        <li><span>${t('modestats.commandes')}</span><strong>${m.commandes}</strong></li>
+        <li><span>${t('modestats.plats')}</span><strong>${m.platsQte}</strong></li>
+        <li><span>${t('modestats.boissons')}</span><strong>${m.boissonsQte}</strong></li>
+        ${m.commandesEstimees ? `<li><span>${t('modestats.dont_estimees')}</span><strong>${m.commandesEstimees}</strong></li>` : ''}
+      </ul>
+    </div>`;
+  }).join('');
+
+  const estimees = mc.parMode['sur-place'].commandesEstimees + mc.parMode['a-emporter'].commandesEstimees;
+  document.getElementById('modestats-hint').textContent = [
+    estimees ? t('modestats.hint_estimees', { n: estimees }) : '',
+    nonClasse.commandes ? t('modestats.hint_non_classe', { n: nonClasse.commandes }) : '',
+  ].filter(Boolean).join(' ');
+
+  const tbody = document.getElementById('modestats-articles-tbody');
+  const articles = mc.detailArticles || [];
+  if (articles.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--gray)">${t('rapports.aucune_vente')}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = articles.map(a => `
+    <tr>
+      <td data-label="${t('rapports.th_article')}"><strong>${escapeHtml(a.nom)}</strong></td>
+      <td data-label="${t('stocks.th_categorie')}" style="font-size:.82rem;color:var(--gray)">${escapeHtml(a.categorie)}</td>
+      <td data-label="${t('modestats.th_qte_sur_place')}">${a['sur-place'].quantite}</td>
+      <td data-label="${t('modestats.th_ca_sur_place')}">${fmt(a['sur-place'].total)}</td>
+      <td data-label="${t('modestats.th_qte_a_emporter')}">${a['a-emporter'].quantite}</td>
+      <td data-label="${t('modestats.th_ca_a_emporter')}">${fmt(a['a-emporter'].total)}</td>
+    </tr>`).join('');
 }
 
 // ─── UTILISATEURS ──────────────────────────────────────
@@ -3566,6 +3934,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-save-commande').addEventListener('click', saveCommande);
   document.getElementById('btn-filter-cmd').addEventListener('click', loadCommandes);
   document.getElementById('btn-editcmd-save').addEventListener('click', saveEditCommande);
+  bindModeToggle('cmd-mode-toggle', (mode) => {
+    state.panierMode = { mode, manuel: true };
+    renderModeToggle('cmd-mode-toggle', 'cmd-mode-hint', state.panierMode, state.user?.role);
+  });
+  bindModeToggle('editcmd-mode-toggle', (mode) => {
+    state.editMode = { ...state.editMode, mode, manuel: true, touche: true };
+    renderModeToggle('editcmd-mode-toggle', 'editcmd-mode-hint', state.editMode, state.editMode.role);
+  });
+
+  // ── Dépenses (admin) ──
+  document.getElementById('btn-new-depense').addEventListener('click', openNewDepense);
+  document.getElementById('btn-save-depense').addEventListener('click', saveDepense);
+  document.getElementById('btn-load-depenses').addEventListener('click', loadDepenses);
+  document.getElementById('dep-periode').addEventListener('change', () => { syncDepensePeriodeUI(); loadDepenses(); });
+  document.getElementById('dep-ref').addEventListener('change', loadDepenses);
+  document.getElementById('bilan-granularite').addEventListener('change', renderBilanTable);
 
   // ── Facturation ──
   document.getElementById('btn-new-facture').addEventListener('click', openNewFacture);

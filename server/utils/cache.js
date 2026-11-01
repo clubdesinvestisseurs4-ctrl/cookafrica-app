@@ -14,4 +14,10 @@ function del(...keys) {
   keys.forEach(k => _store.delete(k));
 }
 
-module.exports = { get, set, del };
+// Pour les caches indexés par période (ex. `stats:bilan:<debut>:<fin>`) : une écriture
+// peut toucher n'importe laquelle, on les vide toutes.
+function delPrefix(prefix) {
+  for (const key of _store.keys()) if (key.startsWith(prefix)) _store.delete(key);
+}
+
+module.exports = { get, set, del, delPrefix };

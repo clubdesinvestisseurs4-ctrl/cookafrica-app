@@ -5,7 +5,10 @@ const { pushNotification } = require('../utils/notifications');
 const cache    = require('../utils/cache');
 const eventBus = require('../utils/eventBus');
 const { buildCommandeUpdate } = require('../utils/commandeUpdate');
-const { getNextNumero, decrementStocksForItems, determineModeConsommation, resolveCommandeDate } = require('../utils/commandes');
+const {
+  getNextNumero, decrementStocksForItems, resolveCommandeDate,
+  MODES_CONSOMMATION, modeParDefaut, resolveModeConsommation,
+} = require('../utils/commandes');
 const { createFactureFromCommande } = require('../utils/factures');
 const { formatMontant } = require('../utils/currency');
 
@@ -22,6 +25,7 @@ function invalidate(autreDate) {
   const keys = ['commandes:list', `commandes:list:${today}`, 'factures:list', 'stats:dashboard', 'stats:notifications'];
   if (autreDate && autreDate !== today) keys.push(`commandes:list:${autreDate}`);
   cache.del(...keys);
+  cache.delPrefix('stats:bilan:'); // le mode d'une commande ventile le bilan
 }
 
 // GET /api/commandes
@@ -79,7 +83,7 @@ router.get('/', authenticateToken, async (req, res) => {
 // pas besoin d'un envoi depuis un serveur.
 router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere', 'caissier-en-ligne'), async (req, res) => {
   try {
-    const { items, note, tableNumero, source, date } = req.body;
+    const { items, note, tableNumero, source, date, modeConsommation } = req.body;
     // Seuls admin/caissière/caissier en ligne peuvent marquer une commande "en ligne" (écran dédié)
     const isOnline = source === 'en-ligne' && ['admin', 'caissiere', 'caissier-en-ligne'].includes(req.user.role);
 
@@ -108,12 +112,18 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere',
       total,
       note: note || '',
       tableNumero: tableNumero || '',
+      // `source` = canal (en ligne ou non) ; le mode sur place / à emporter est un champ
+      // à part, renseigné sur TOUTES les commandes depuis le 2026-11-01.
       source: isOnline ? 'en-ligne' : 'sur-place',
-      ...(isOnline ? { modeConsommation: determineModeConsommation(mappedItems) } : {}),
+      ...resolveModeConsommation(modeConsommation, req.user.role, mappedItems),
+      modeEstime: false,
       statut: req.user.role === 'serveur' ? 'en-attente' : 'en-preparation',
       date: resolvedDate.date,
       createdBy: req.user.username,
       createdByNom: req.user.nom || req.user.username,
+      // Rôle au moment de la création : sert à recalculer le mode automatique si les
+      // articles changent, même si le compte change de rôle plus tard.
+      createdByRole: req.user.role,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
     };
@@ -209,9 +219,12 @@ router.put('/:id/envoyer', authenticateToken, requireRole('admin', 'serveur'), a
 // à /api/factures/:id/pay et /edit-items, qui gardent le code admin pour une facture déjà émise).
 router.put('/:id/items', authenticateToken, requireRole('admin', 'serveur', 'caissiere', 'caissier-en-ligne'), async (req, res) => {
   try {
-    const { items } = req.body;
+    const { items, modeConsommation } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'La commande doit contenir au moins un article' });
+    }
+    if (modeConsommation !== undefined && !MODES_CONSOMMATION.includes(modeConsommation)) {
+      return res.status(400).json({ error: 'Mode de consommation invalide' });
     }
 
     const docRef = db.collection('commandes').doc(req.params.id);
@@ -253,6 +266,21 @@ router.put('/:id/items', authenticateToken, requireRole('admin', 'serveur', 'cai
       lastEditedAt: now.toISOString(),
     };
 
+    // Le mode suit les articles tant que personne ne l'a choisi à la main (ex. une boisson
+    // ajoutée fait passer une commande caisse en "sur place") ; un choix explicite envoyé
+    // avec la modification l'emporte. Les commandes d'avant le 2026-11-01 n'ont pas de
+    // createdByRole : leur mode n'est alors touché que sur choix explicite.
+    const role = existing.createdByRole;
+    if (modeConsommation !== undefined) {
+      const auto = role ? modeParDefaut(role, mappedItems) : null;
+      update.modeConsommation = modeConsommation;
+      update.modeSource = modeConsommation === auto ? 'auto' : 'manuel';
+      update.modeEstime = false;
+    } else if (role && existing.modeSource !== 'manuel') {
+      update.modeConsommation = modeParDefaut(role, mappedItems);
+      update.modeSource = 'auto';
+    }
+
     await docRef.update(update);
     invalidate();
     eventBus.emit('commandes');
@@ -280,8 +308,8 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const existing = doc.data();
     const now = new Date();
 
-    const { update, error } = buildCommandeUpdate(req.body, now);
-    if (error) return res.status(400).json({ error });
+    const { update, error, status } = buildCommandeUpdate(req.body, now, req.user.role);
+    if (error) return res.status(status || 400).json({ error });
 
     await docRef.update(update);
     invalidate();

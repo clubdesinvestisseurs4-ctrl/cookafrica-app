@@ -6,6 +6,7 @@ const cache    = require('../utils/cache');
 const eventBus = require('../utils/eventBus');
 const { createFactureFromCommande } = require('../utils/factures');
 const { formatMontant } = require('../utils/currency');
+const { modeApresFacture } = require('../utils/commandes');
 
 const router = express.Router();
 
@@ -19,6 +20,7 @@ function invalidate() {
     'commandes:list', `commandes:list:${today}`,
     'stats:dashboard', 'stats:notifications',
   );
+  cache.delPrefix('stats:bilan:'); // un paiement change les entrées du bilan
 }
 
 // GET /api/factures
@@ -230,12 +232,14 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere', 'cai
       }
     }
 
-    // Marquer la commande comme servie
+    // Marquer la commande comme servie (et ajuster son mode automatique si des
+    // articles ont été ajoutés sur la facture — voir modeApresFacture)
     if (facture.commandeId) {
       const cmdDoc = await db.collection('commandes').doc(facture.commandeId).get();
       if (cmdDoc.exists && !['servie', 'annulee'].includes(cmdDoc.data().statut)) {
         await db.collection('commandes').doc(facture.commandeId).update({
           statut: 'servie',
+          ...modeApresFacture(cmdDoc.data(), finalItems),
           updatedAt: now.toISOString(),
         });
       }
@@ -297,6 +301,17 @@ router.post('/:id/edit-items', authenticateToken, requireRole('admin', 'caissier
     };
 
     await docRef.update(update);
+
+    if (facture.commandeId) {
+      const cmdRef = db.collection('commandes').doc(facture.commandeId);
+      const cmdDoc = await cmdRef.get();
+      const modeUpdate = cmdDoc.exists ? modeApresFacture(cmdDoc.data(), mappedItems) : null;
+      if (modeUpdate) {
+        await cmdRef.update({ ...modeUpdate, updatedAt: now.toISOString() });
+        eventBus.emit('commandes');
+      }
+    }
+
     invalidate();
     eventBus.emit('factures');
 

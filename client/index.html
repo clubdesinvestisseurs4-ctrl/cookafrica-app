@@ -151,6 +151,9 @@
       <a class="nav-item" data-page="rapports" id="nav-rapports">
         <i class="fas fa-chart-bar"></i><span data-i18n="nav.rapports">Rapports</span>
       </a>
+      <a class="nav-item" data-page="depenses" id="nav-depenses">
+        <i class="fas fa-wallet"></i><span data-i18n="nav.depenses">Dépenses</span>
+      </a>
       <a class="nav-item" data-page="sessions" id="nav-sessions">
         <i class="fas fa-shield-alt"></i><span data-i18n="nav.sessions">Sessions</span>
       </a>
@@ -405,6 +408,69 @@
           <button class="btn btn-primary" id="btn-load-rapport"><i class="fas fa-chart-line"></i> <span data-i18n="rapports.generer">Générer</span></button>
           <button class="btn btn-secondary" id="btn-export-csv"><i class="fas fa-download"></i> <span data-i18n="rapports.export_csv">Export CSV</span></button>
         </div>
+
+        <!-- Bilan financier : Entrées (factures payées) − Dépenses = Résultat -->
+        <h2 class="rapport-section-title"><i class="fas fa-balance-scale"></i> <span data-i18n="bilan.titre">Bilan financier</span></h2>
+        <p class="rapport-section-hint" id="bilan-hint" data-i18n="bilan.hint">Entrées = factures payées (argent réellement encaissé), à la date de la commande.</p>
+        <div class="rapports-grid">
+          <div class="rapport-card">
+            <h3><i class="fas fa-arrow-down"></i> <span data-i18n="bilan.entrees">Entrées</span></h3>
+            <div class="kpi-value-big" id="bilan-entrees">—</div>
+            <div class="kpi-label-sm" id="bilan-nb-ventes"></div>
+            <div class="kpi-label-sm" id="bilan-non-encaisse" style="margin-top:6px"></div>
+          </div>
+          <div class="rapport-card">
+            <h3><i class="fas fa-arrow-up"></i> <span data-i18n="bilan.depenses">Dépenses</span></h3>
+            <div class="kpi-value-big" id="bilan-depenses">—</div>
+            <ul class="kpi-list" id="bilan-dep-categories" style="margin-top:12px"></ul>
+          </div>
+          <div class="rapport-card">
+            <h3><i class="fas fa-equals"></i> <span data-i18n="bilan.resultat">Résultat</span></h3>
+            <div class="kpi-value-big" id="bilan-resultat">—</div>
+            <div class="kpi-label-sm" id="bilan-resultat-label"></div>
+          </div>
+        </div>
+        <div class="table-wrapper" style="margin-top:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);gap:10px;flex-wrap:wrap">
+            <h3 style="font-size:.95rem;font-weight:700;color:var(--dark)"><i class="fas fa-calendar-alt"></i> <span data-i18n="bilan.detail">Détail</span></h3>
+            <select id="bilan-granularite">
+              <option value="parJour" data-i18n="bilan.par_jour">Par jour</option>
+              <option value="parSemaine" data-i18n="bilan.par_semaine">Par semaine</option>
+              <option value="parMois" data-i18n="bilan.par_mois">Par mois</option>
+            </select>
+          </div>
+          <table class="data-table">
+            <thead><tr>
+              <th data-i18n="bilan.th_periode">Période</th><th data-i18n="bilan.entrees">Entrées</th><th data-i18n="mode.sur_place">Sur place</th>
+              <th data-i18n="mode.a_emporter">À emporter</th><th data-i18n="bilan.depenses">Dépenses</th><th data-i18n="bilan.resultat">Résultat</th>
+            </tr></thead>
+            <tbody id="bilan-tbody">
+              <tr><td colspan="6" style="text-align:center;color:var(--gray);padding:24px" data-i18n="rapports.generer_hint">Cliquez sur "Générer" pour afficher les données</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Sur place / À emporter (toutes les commandes) -->
+        <h2 class="rapport-section-title"><i class="fas fa-utensils"></i> <span data-i18n="modestats.titre">Sur place / À emporter</span></h2>
+        <p class="rapport-section-hint" id="modestats-hint"></p>
+        <div class="rapports-grid" id="modestats-cards"></div>
+        <div class="table-wrapper" style="margin-top:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)">
+            <h3 style="font-size:.95rem;font-weight:700;color:var(--dark)"><i class="fas fa-list"></i> <span data-i18n="modestats.detail_articles">Détail par article</span></h3>
+          </div>
+          <table class="data-table">
+            <thead><tr>
+              <th data-i18n="rapports.th_article">Article</th><th data-i18n="stocks.th_categorie">Catégorie</th>
+              <th data-i18n="modestats.th_qte_sur_place">Qté sur place</th><th data-i18n="modestats.th_ca_sur_place">CA sur place</th>
+              <th data-i18n="modestats.th_qte_a_emporter">Qté à emporter</th><th data-i18n="modestats.th_ca_a_emporter">CA à emporter</th>
+            </tr></thead>
+            <tbody id="modestats-articles-tbody">
+              <tr><td colspan="6" style="text-align:center;color:var(--gray);padding:24px" data-i18n="rapports.generer_hint">Cliquez sur "Générer" pour afficher les données</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 class="rapport-section-title"><i class="fas fa-chart-bar"></i> <span data-i18n="rapports.autres_stats">Ventes</span></h2>
         <div class="rapports-grid">
           <div class="rapport-card">
             <h3><i class="fas fa-receipt"></i> <span data-i18n="rapports.ventes">Ventes</span></h3>
@@ -473,6 +539,46 @@
             </tr></thead>
             <tbody id="rapport-factures-tbody">
               <tr><td colspan="7" style="text-align:center;color:var(--gray);padding:24px" data-i18n="rapports.generer_hint">Cliquez sur "Générer" pour afficher les données</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ── DÉPENSES (admin) ──────────────────── -->
+      <section id="page-depenses" class="page">
+        <div class="page-actions">
+          <select id="dep-periode">
+            <option value="jour" data-i18n="depenses.periode_jour">Jour</option>
+            <option value="semaine" data-i18n="depenses.periode_semaine">Semaine</option>
+            <option value="mois" data-i18n="depenses.periode_mois">Mois</option>
+            <option value="perso" data-i18n="depenses.periode_perso">Période personnalisée</option>
+          </select>
+          <input type="date" id="dep-ref">
+          <span id="dep-perso" style="display:none;align-items:center;gap:6px">
+            <input type="date" id="dep-start"><span style="color:var(--gray)">–</span><input type="date" id="dep-end">
+          </span>
+          <button class="btn btn-secondary" id="btn-load-depenses"><i class="fas fa-filter"></i> <span data-i18n="depenses.filtrer">Afficher</span></button>
+          <button class="btn btn-primary" id="btn-new-depense"><i class="fas fa-plus"></i> <span data-i18n="depenses.nouvelle">Nouvelle dépense</span></button>
+        </div>
+        <div class="rapports-grid">
+          <div class="rapport-card">
+            <h3><i class="fas fa-wallet"></i> <span data-i18n="depenses.total">Total des dépenses</span></h3>
+            <div class="kpi-value-big" id="dep-total">—</div>
+            <div class="kpi-label-sm" id="dep-periode-label"></div>
+          </div>
+          <div class="rapport-card">
+            <h3><i class="fas fa-tags"></i> <span data-i18n="depenses.par_categorie">Par catégorie</span></h3>
+            <ul class="kpi-list" id="dep-par-categorie"></ul>
+          </div>
+        </div>
+        <div class="table-wrapper" style="margin-top:24px">
+          <table class="data-table">
+            <thead><tr>
+              <th data-i18n="common.date">Date</th><th data-i18n="depenses.th_libelle">Libellé</th><th data-i18n="depenses.th_categorie">Catégorie</th>
+              <th data-i18n="depenses.th_montant">Montant</th><th data-i18n="depenses.th_paiement">Paiement</th><th data-i18n="depenses.th_auteur">Saisie par</th><th data-i18n="common.actions">Actions</th>
+            </tr></thead>
+            <tbody id="depenses-tbody">
+              <tr><td colspan="7" style="text-align:center;color:var(--gray);padding:24px" data-i18n="depenses.aucune">Aucune dépense sur cette période</td></tr>
             </tbody>
           </table>
         </div>
@@ -628,6 +734,14 @@
       </div>
       <div id="editcmd-items" style="margin-top:10px"></div>
       <div style="text-align:right;font-weight:800;margin-top:10px;font-size:1.05rem" id="editcmd-total"></div>
+      <div class="form-group" style="margin-top:12px">
+        <label data-i18n="mode.label">Type de consommation</label>
+        <div class="mode-toggle" id="editcmd-mode-toggle">
+          <button type="button" data-mode="sur-place"><i class="fas fa-utensils"></i> <span data-i18n="mode.sur_place">Sur place</span></button>
+          <button type="button" data-mode="a-emporter"><i class="fas fa-shopping-bag"></i> <span data-i18n="mode.a_emporter">À emporter</span></button>
+        </div>
+        <small class="mode-hint" id="editcmd-mode-hint"></small>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" data-modal="edit-commande" data-i18n="modal.cancel">Annuler</button>
@@ -676,12 +790,71 @@
           <span id="panier-total-val">0</span>
         </div>
       </div>
+
+      <div class="form-group" style="margin-top:12px">
+        <label data-i18n="mode.label">Type de consommation</label>
+        <div class="mode-toggle" id="cmd-mode-toggle">
+          <button type="button" data-mode="sur-place"><i class="fas fa-utensils"></i> <span data-i18n="mode.sur_place">Sur place</span></button>
+          <button type="button" data-mode="a-emporter"><i class="fas fa-shopping-bag"></i> <span data-i18n="mode.a_emporter">À emporter</span></button>
+        </div>
+        <small class="mode-hint" id="cmd-mode-hint"></small>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" data-modal="commande" data-i18n="modal.cancel">Annuler</button>
       <button class="btn btn-primary" id="btn-save-commande">
         <i class="fas fa-check"></i> <span data-i18n="modal.newcmd_create">Créer la commande</span>
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Dépense (admin) -->
+<div class="modal-overlay hidden" id="modal-depense">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-header">
+      <h2 id="modal-depense-title" data-i18n="depenses.nouvelle">Nouvelle dépense</h2>
+      <button class="modal-close" data-modal="depense">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="dep-id">
+      <div class="form-row">
+        <div class="form-group">
+          <label data-i18n="common.date">Date</label>
+          <input type="date" id="dep-date">
+        </div>
+        <div class="form-group">
+          <label><span data-i18n="depenses.th_montant">Montant</span> (<span id="dep-devise"></span>)</label>
+          <input type="number" id="dep-montant" min="1" step="1" inputmode="numeric">
+        </div>
+      </div>
+      <div class="form-group">
+        <label data-i18n="depenses.th_libelle">Libellé</label>
+        <input type="text" id="dep-libelle" maxlength="120" placeholder="Ex. achats au marché, bouteille de gaz…" data-i18n-placeholder="depenses.libelle_placeholder">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label data-i18n="depenses.th_categorie">Catégorie</label>
+          <select id="dep-categorie"></select>
+        </div>
+        <div class="form-group">
+          <label data-i18n="modal.mode_paiement">Mode de paiement</label>
+          <select id="dep-mode">
+            <option value="especes" data-i18n="modal.mode_especes">Espèces</option>
+            <option value="mobile" data-i18n="modal.mode_mobile">Mobile Money</option>
+            <option value="carte" data-i18n="modal.mode_carte">Carte bancaire</option>
+            <option value="virement" data-i18n="modal.mode_virement">Virement</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label data-i18n="depenses.note">Note (facultatif)</label>
+        <textarea id="dep-note" rows="2" maxlength="500"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-modal="depense" data-i18n="modal.cancel">Annuler</button>
+      <button class="btn btn-primary" id="btn-save-depense"><i class="fas fa-save"></i> <span data-i18n="modal.save">Enregistrer</span></button>
     </div>
   </div>
 </div>

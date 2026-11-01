@@ -1,8 +1,11 @@
 const express = require('express');
 const { db } = require('../firebase-admin');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 const cache = require('../utils/cache');
 const { formatMontant } = require('../utils/currency');
+const { computeBilan, statsParMode, series, estVente } = require('../utils/bilan');
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 const router = express.Router();
 
@@ -103,11 +106,11 @@ router.get('/rapport', authenticateToken, async (req, res) => {
     ]);
 
     const factures = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const commandesPeriode = commandesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
     // Commandes en ligne, badgées "Client" (commandeClient) ou "Caisse" (saisie par la
     // caissière) confondues — annulées exclues, ce compteur ne reflète que le volume traité.
-    const commandesEnLigneList = commandesSnap.docs
-      .map(d => d.data())
+    const commandesEnLigneList = commandesPeriode
       .filter(c => c.source === 'en-ligne' && c.statut !== 'annulee');
     const commandesEnLigne = commandesEnLigneList.length;
 
@@ -179,6 +182,16 @@ router.get('/rapport', authenticateToken, async (req, res) => {
     const ventesDetail = [...Object.values(ventesParMenuItem), ...Object.values(ventesHorsCatalogue)]
       .sort((a, b) => b.quantite - a.quantite || a.nom.localeCompare(b.nom, 'fr'));
 
+    // Sur place / à emporter sur TOUTES les commandes (depuis le 2026-11-01, plus seulement
+    // les commandes en ligne) : mêmes factures que le reste de ce rapport, pour que ces
+    // chiffres s'additionnent bien au CA affiché au-dessus. Le bilan (/bilan), lui, ne
+    // compte que les factures payées.
+    const commandesById = new Map(commandesPeriode.map(c => [c.id, c]));
+    const ventes = factures.filter(estVente);
+    // (`parMode` est déjà pris plus haut : ventilation par mode de PAIEMENT.)
+    const consommation = statsParMode(ventes, commandesById);
+    const { parJour, parSemaine, parMois } = series(ventes, [], commandesById, debut, fin);
+
     const result = {
       total,
       nombre: factures.length,
@@ -195,9 +208,41 @@ router.get('/rapport', authenticateToken, async (req, res) => {
       topPlats: topVentes(platsVentes),
       topBoissons: topVentes(boissonsVentes),
       ventesDetail,
+      modeConsommation: { ...consommation, parJour, parSemaine, parMois },
       factures: factures.sort((a, b) => (b.date > a.date ? 1 : -1)),
     };
     cache.set(cacheKey, result, 5 * 60_000);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/stats/bilan?debut=AAAA-MM-JJ&fin=AAAA-MM-JJ — admin uniquement.
+// Entrées (factures payées) − Dépenses = Résultat, détail par jour/semaine/mois et par
+// mode sur place / à emporter (calcul dans utils/bilan.js). Période obligatoire : sans
+// borne, cette route relirait toutes les factures, commandes et dépenses depuis l'origine.
+router.get('/bilan', authenticateToken, requireRole('admin'), async (req, res) => {
+  try {
+    const { debut, fin } = req.query;
+    if (!DATE_RE.test(debut || '') || !DATE_RE.test(fin || '') || debut > fin) {
+      return res.status(400).json({ error: 'Période requise : debut et fin au format AAAA-MM-JJ, debut ≤ fin' });
+    }
+
+    const cacheKey = `stats:bilan:${debut}:${fin}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const parDate = (col) => db.collection(col).where('date', '>=', debut).where('date', '<=', fin).get();
+    const [facturesSnap, commandesSnap, depensesSnap] = await Promise.all([
+      parDate('factures'), parDate('commandes'), parDate('depenses'),
+    ]);
+    const docs = (snap) => snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    const result = computeBilan({
+      factures: docs(facturesSnap), commandes: docs(commandesSnap), depenses: docs(depensesSnap), debut, fin,
+    });
+    cache.set(cacheKey, result, 2 * 60_000);
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });

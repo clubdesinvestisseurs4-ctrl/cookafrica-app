@@ -722,6 +722,20 @@ mark.search-hl {
 }
 .rapport-card h3 { font-size: .9rem; font-weight: 700; color: var(--gray); margin-bottom: 12px; }
 .kpi-value-big { font-size: 2rem; font-weight: 800; color: var(--primary); }
+.kpi-value-big.positif { color: #2e7d32; }
+.kpi-value-big.negatif { color: var(--danger); }
+.rapport-section-title { font-size: 1.05rem; font-weight: 800; color: var(--dark); margin: 8px 0 4px; }
+.rapport-section-hint  { font-size: .8rem; color: var(--gray); margin-bottom: 12px; }
+.montant-negatif { color: var(--danger); font-weight: 700; }
+
+/* Sur place / À emporter : choix en deux boutons (pré-sélectionné par la règle) */
+.mode-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mode-toggle button {
+  padding: 10px; border: 1.5px solid var(--border); border-radius: 8px; background: var(--white);
+  font-weight: 600; font-size: .9rem; cursor: pointer; color: var(--dark);
+}
+.mode-toggle button.active { border-color: var(--primary); background: var(--primary); color: var(--white); }
+.mode-hint { display: block; color: var(--gray); font-size: .78rem; margin-top: 4px; }
 .kpi-label-sm  { font-size: .75rem; color: var(--gray); margin-top: 2px; }
 .kpi-list { font-size: .82rem; }
 .kpi-list li { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--border); }

@@ -65,6 +65,8 @@ tags:
     description: Routes service-à-service (clé partagée, pas de JWT) consommées par d'autres applications internes
   - name: Réservations
     description: Réservations de salle pour événements (admin) — génère la facture du jour J
+  - name: Dépenses
+    description: Dépenses quotidiennes du restaurant (admin) — suppression douce + historique
   - name: Système
     description: Health check et flux d'événements temps réel
 
@@ -1062,6 +1064,76 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/RapportStats' }
 
+  /api/stats/bilan:
+    get:
+      operationId: getApiStatsBilan
+      tags: [Statistiques]
+      summary: Bilan financier (admin) — entrées (factures payées) − dépenses = résultat
+      description: >
+        Détail par jour / semaine (lundi→dimanche) / mois, ventilation sur place / à emporter
+        (commandes, plats, boissons, CA) et détail par article. Période obligatoire.
+      parameters:
+        - { name: debut, in: query, required: true, schema: { type: string, format: date } }
+        - { name: fin, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: Bilan de la période }
+        '400': { description: Période absente ou invalide }
+        '403': { description: Réservé aux administrateurs }
+
+  # ── Dépenses (admin) ──────────────────────────────────
+  /api/depenses:
+    get:
+      operationId: getApiDepenses
+      tags: [Dépenses]
+      summary: Dépenses d'une période, avec leur total
+      parameters:
+        - { name: debut, in: query, schema: { type: string, format: date } }
+        - { name: fin, in: query, schema: { type: string, format: date } }
+        - { name: supprimees, in: query, description: "1 = inclure les dépenses supprimées (consultation de l'historique)", schema: { type: string, enum: ['1'] } }
+      responses:
+        '200':
+          description: "{ depenses: Depense[], total: number }"
+        '403': { description: Réservé aux administrateurs }
+    post:
+      operationId: postApiDepenses
+      tags: [Dépenses]
+      summary: Saisir une dépense
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DepenseRequest' }
+      responses:
+        '201': { description: Dépense créée }
+        '400': { description: Champ manquant ou invalide }
+        '403': { description: Réservé aux administrateurs }
+
+  /api/depenses/{id}:
+    put:
+      operationId: putApiDepensesId
+      tags: [Dépenses]
+      summary: Modifier une dépense (partiel) — anciennes valeurs gardées dans l'historique
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DepenseRequest' }
+      responses:
+        '200': { description: Dépense modifiée }
+        '400': { description: Champ invalide, ou dépense supprimée }
+        '404': { description: Dépense introuvable }
+    delete:
+      operationId: deleteApiDepensesId
+      tags: [Dépenses]
+      summary: Supprimer une dépense (suppression douce, tracée dans l'historique)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Dépense supprimée }
+        '404': { description: Dépense introuvable }
+
   /api/stats/notifications:
     get:
       operationId: getApiStatsNotifications
@@ -1500,6 +1572,18 @@ components:
         clientLocalisation:
           $ref: '#/components/schemas/Localisation'
         statut: { $ref: '#/components/schemas/StatutCommande' }
+        modeConsommation:
+          type: string
+          enum: [sur-place, a-emporter]
+          description: >
+            Renseigné sur toutes les commandes depuis le 2026-11-01. Par défaut : serveur → sur-place ;
+            autres rôles → sur-place si boisson ou buffet, sinon a-emporter. Corrigible à la main.
+        modeSource:
+          type: string
+          enum: [auto, manuel, estime]
+          description: auto = règle ; manuel = choisi/corrigé par un utilisateur ; estime = classement rétroactif.
+        modeEstime: { type: boolean, description: Vrai pour une ancienne commande classée rétroactivement. }
+        createdByRole: { type: string, description: Rôle du créateur au moment de la création. }
         date: { type: string, format: date }
         createdBy: { type: string }
         createdByNom: { type: string }
@@ -1512,10 +1596,27 @@ components:
         lastEditedByNom: { type: string }
         lastEditedAt: { type: string, format: date-time }
 
+    DepenseRequest:
+      type: object
+      description: Tous les champs sont requis à la création ; en modification, seuls ceux envoyés changent.
+      properties:
+        date: { type: string, format: date }
+        libelle: { type: string, maxLength: 120 }
+        categorie:
+          type: string
+          enum: [marche-vivres, achat-boissons, gaz, transport, electricite-eau, salaires, entretien-materiel, autre]
+        montant: { type: number, minimum: 1 }
+        modePaiement: { type: string, enum: [especes, mobile, carte, virement] }
+        note: { type: string, maxLength: 500 }
+
     CommandeCreateRequest:
       type: object
       required: [items]
       properties:
+        modeConsommation:
+          type: string
+          enum: [sur-place, a-emporter]
+          description: Optionnel — absent ou égal à la règle = "auto", différent = correction "manuel".
         items:
           type: array
           minItems: 1

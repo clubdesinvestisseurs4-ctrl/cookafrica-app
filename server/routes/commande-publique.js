@@ -74,6 +74,8 @@ router.post('/commandes', orderLimiter, async (req, res) => {
       total: resolved.total,
       source: 'en-ligne',
       modeConsommation: determineModeConsommation(resolved.items),
+      modeSource: 'auto',
+      modeEstime: false,
       commandeClient: true,
       clientPrenom: contact.prenom,
       clientNom: contact.nom,
@@ -83,6 +85,7 @@ router.post('/commandes', orderLimiter, async (req, res) => {
       date: now.toISOString().split('T')[0],
       createdBy: 'client-web',
       createdByNom: `${contact.prenom} ${contact.nom}`,
+      createdByRole: 'client-web',
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
     };

@@ -49,6 +49,38 @@ function determineModeConsommation(items) {
   return contientSurPlace ? 'sur-place' : 'a-emporter';
 }
 
+const MODES_CONSOMMATION = ['sur-place', 'a-emporter'];
+
+// Mode proposé par défaut à la création, quel que soit l'écran (demande du 2026-11-01) :
+// un serveur prend les commandes en salle → toujours "sur place" ; pour tous les autres
+// (admin, caissière, caissier en ligne, client web) c'est la règle boisson/buffet
+// ci-dessus. L'utilisateur peut toujours corriger avant de valider (voir resolveModeConsommation).
+function modeParDefaut(role, items) {
+  return role === 'serveur' ? 'sur-place' : determineModeConsommation(items);
+}
+
+// Mode final d'une commande + d'où il vient : 'auto' si c'est celui de la règle, 'manuel'
+// si l'utilisateur l'a changé. Une valeur absente ou inconnue retombe sur la règle — un
+// client hors-ligne d'avant cette fonctionnalité (file d'attente rejouée) n'envoie rien.
+function resolveModeConsommation(requested, role, items) {
+  const auto = modeParDefaut(role, items);
+  if (!MODES_CONSOMMATION.includes(requested) || requested === auto) {
+    return { modeConsommation: auto, modeSource: 'auto' };
+  }
+  return { modeConsommation: requested, modeSource: 'manuel' };
+}
+
+// Une boisson ajoutée sur la facture à l'encaissement doit faire passer une commande caisse
+// en "sur place", comme si elle avait été dans la commande dès le départ — seulement si le
+// mode est encore celui de la règle (jamais un choix manuel) et pour une commande créée
+// depuis le 2026-11-01 (createdByRole connu). Un serveur reste toujours "sur place".
+// Retourne la mise à jour à appliquer à la commande, ou null.
+function modeApresFacture(commande, factureItems) {
+  if (!commande || commande.modeSource !== 'auto' || !commande.createdByRole) return null;
+  const mode = modeParDefaut(commande.createdByRole, [...(commande.items || []), ...(factureItems || [])]);
+  return mode !== commande.modeConsommation ? { modeConsommation: mode } : null;
+}
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ROLES_PEUVENT_ANTIDATER = ['admin', 'caissiere'];
 const ANTIDATE_MAX_JOURS = 30;
@@ -74,4 +106,5 @@ function resolveCommandeDate(requestedDate, role, now) {
 
 module.exports = {
   getNextNumero, decrementStocksForItems, determineModeConsommation, resolveCommandeDate,
+  MODES_CONSOMMATION, modeParDefaut, resolveModeConsommation, modeApresFacture,
 };
