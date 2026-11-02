@@ -76,6 +76,10 @@ router.post('/commandes', orderLimiter, async (req, res) => {
       modeConsommation: determineModeConsommation(resolved.items),
       modeSource: 'auto',
       modeEstime: false,
+      // Un client qui commande en ligne passe une vraie commande, même boisson seule :
+      // la notion de supplément ne concerne que les ajouts saisis par le personnel.
+      supplement: false,
+      supplementSource: 'manuel',
       commandeClient: true,
       clientPrenom: contact.prenom,
       clientNom: contact.nom,

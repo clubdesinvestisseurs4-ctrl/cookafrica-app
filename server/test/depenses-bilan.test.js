@@ -73,8 +73,8 @@ test('bilan : entrées = factures payées seulement, dépenses supprimées exclu
     ['2026-10-31', 3000, 4000, -1000], // perte du jour
   ]);
 
-  assert.deepStrictEqual(b.parMode['sur-place'], { commandes: 1, platsQte: 2, boissonsQte: 1, ca: 5000, commandesEstimees: 0 });
-  assert.deepStrictEqual(b.parMode['a-emporter'], { commandes: 1, platsQte: 1, boissonsQte: 0, ca: 3000, commandesEstimees: 1 });
+  assert.deepStrictEqual(b.parMode['sur-place'], { commandes: 1, supplements: 0, platsQte: 2, boissonsQte: 1, ca: 5000, commandesEstimees: 0 });
+  assert.deepStrictEqual(b.parMode['a-emporter'], { commandes: 1, supplements: 0, platsQte: 1, boissonsQte: 0, ca: 3000, commandesEstimees: 1 });
 
   const attieke = b.detailArticles.find(a => a.nom === 'Attiéké');
   assert.deepStrictEqual(attieke['sur-place'], { quantite: 2, total: 4000 });

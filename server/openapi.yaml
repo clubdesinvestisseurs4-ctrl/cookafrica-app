@@ -436,6 +436,37 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /api/commandes/{id}/supplement:
+    put:
+      operationId: putApiCommandesByIdSupplement
+      tags: [Commandes]
+      summary: Marquer une commande comme supplément et la rattacher à sa commande d'origine
+      description: >
+        Admin et caisse uniquement, même après facturation. Un supplément rattaché prend le
+        type sur place / à emporter de sa commande d'origine (et le suit si celle-ci est
+        corrigée). Un supplément compte dans le CA mais pas dans le nombre de commandes.
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [supplement]
+              properties:
+                supplement: { type: boolean }
+                commandeParentId: { type: string, nullable: true, description: Commande d'origine (ignoré si supplement est faux). }
+      responses:
+        '200':
+          description: Commande mise à jour
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Commande' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /api/commandes/{id}:
     put:
       operationId: putApiCommandesById
@@ -1580,10 +1611,14 @@ components:
             autres rôles → sur-place si boisson ou buffet, sinon a-emporter. Corrigible à la main.
         modeSource:
           type: string
-          enum: [auto, manuel, estime]
-          description: auto = règle ; manuel = choisi/corrigé par un utilisateur ; estime = classement rétroactif.
+          enum: [auto, manuel, estime, parent]
+          description: auto = règle ; manuel = choisi/corrigé par un utilisateur ; estime = classement rétroactif ; parent = repris de la commande d'origine (supplément rattaché).
         modeEstime: { type: boolean, description: Vrai pour une ancienne commande classée rétroactivement. }
         createdByRole: { type: string, description: Rôle du créateur au moment de la création. }
+        supplement: { type: boolean, description: "Supplément d'une commande déjà passée (riz, boisson…) : compte dans le CA, pas comme une commande. Proposé d'office si la commande ne contient que des accompagnements et/ou des boissons." }
+        supplementSource: { type: string, enum: [auto, manuel] }
+        commandeParentId: { type: string, nullable: true, description: Commande d'origine d'un supplément rattaché. }
+        commandeParentNumero: { type: string, nullable: true }
         date: { type: string, format: date }
         createdBy: { type: string }
         createdByNom: { type: string }

@@ -6,7 +6,7 @@ const cache    = require('../utils/cache');
 const eventBus = require('../utils/eventBus');
 const { createFactureFromCommande } = require('../utils/factures');
 const { formatMontant } = require('../utils/currency');
-const { modeApresFacture } = require('../utils/commandes');
+const { modeApresFacture, supplementApresFacture } = require('../utils/commandes');
 
 const router = express.Router();
 
@@ -240,6 +240,7 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere', 'cai
         await db.collection('commandes').doc(facture.commandeId).update({
           statut: 'servie',
           ...modeApresFacture(cmdDoc.data(), finalItems),
+          ...supplementApresFacture(cmdDoc.data(), finalItems),
           updatedAt: now.toISOString(),
         });
       }
@@ -305,8 +306,10 @@ router.post('/:id/edit-items', authenticateToken, requireRole('admin', 'caissier
     if (facture.commandeId) {
       const cmdRef = db.collection('commandes').doc(facture.commandeId);
       const cmdDoc = await cmdRef.get();
-      const modeUpdate = cmdDoc.exists ? modeApresFacture(cmdDoc.data(), mappedItems) : null;
-      if (modeUpdate) {
+      const modeUpdate = cmdDoc.exists
+        ? { ...modeApresFacture(cmdDoc.data(), mappedItems), ...supplementApresFacture(cmdDoc.data(), mappedItems) }
+        : {};
+      if (Object.keys(modeUpdate).length > 0) {
         await cmdRef.update({ ...modeUpdate, updatedAt: now.toISOString() });
         eventBus.emit('commandes');
       }

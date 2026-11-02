@@ -81,6 +81,61 @@ function modeApresFacture(commande, factureItems) {
   return mode !== commande.modeConsommation ? { modeConsommation: mode } : null;
 }
 
+// Supplément (demande du 2026-11-02) : un client qui redemande du riz ou une boisson après
+// facturation donne lieu à une nouvelle commande, qui n'est pas une commande à part entière
+// pour les statistiques (son argent compte, pas son nombre). Proposé d'office quand la
+// commande ne contient QUE des accompagnements et/ou des boissons ; corrigible à la main.
+function estArticleSupplement(item) {
+  const categorie = normalize(item.categorie);
+  if (normalize(item.nom).includes('buffet')) return false;
+  return categorie.includes('accompagnement') || categorie.includes('boisson');
+}
+
+function estSupplementAuto(items) {
+  return Array.isArray(items) && items.length > 0 && items.every(estArticleSupplement);
+}
+
+// `requested` : true/false si l'utilisateur a coché/décoché la case, sinon la règle.
+function resolveSupplement(requested, items) {
+  const auto = estSupplementAuto(items);
+  if (typeof requested !== 'boolean' || requested === auto) return { supplement: auto, supplementSource: 'auto' };
+  return { supplement: requested, supplementSource: 'manuel' };
+}
+
+// Articles ajoutés sur la facture (ex. un plat en plus) : un supplément "auto" non rattaché
+// redevient une vraie commande, comme pour modeApresFacture. Retourne la mise à jour ou null.
+function supplementApresFacture(commande, factureItems) {
+  if (!commande || commande.supplementSource !== 'auto' || commande.commandeParentId) return null;
+  const supplement = estSupplementAuto([...(commande.items || []), ...(factureItems || [])]);
+  return supplement !== commande.supplement ? { supplement } : null;
+}
+
+// Commande d'origine d'un supplément : doit exister, ne pas être annulée, ni être
+// elle-même un supplément (on rattache toujours à la vraie commande).
+async function chargerCommandeParent(db, parentId, selfId) {
+  if (typeof parentId !== 'string' || !parentId || parentId === selfId) return { error: 'Commande d\'origine invalide' };
+  const doc = await db.collection('commandes').doc(parentId).get();
+  if (!doc.exists) return { error: 'Commande d\'origine introuvable' };
+  const parent = doc.data();
+  if (parent.statut === 'annulee') return { error: 'La commande d\'origine est annulée' };
+  if (parent.supplement === true) return { error: 'La commande d\'origine est elle-même un supplément' };
+  return { parent: { id: doc.id, ...parent } };
+}
+
+// Champs posés sur un supplément rattaché : il prend le mode de sa commande d'origine
+// (modeSource 'parent' : ni la règle automatique ni les articles ne le changent ensuite).
+function champsRattachement(parent) {
+  return {
+    supplement: true,
+    supplementSource: 'manuel',
+    commandeParentId: parent.id,
+    commandeParentNumero: parent.numero || '',
+    ...(MODES_CONSOMMATION.includes(parent.modeConsommation)
+      ? { modeConsommation: parent.modeConsommation, modeSource: 'parent', modeEstime: false }
+      : {}),
+  };
+}
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ROLES_PEUVENT_ANTIDATER = ['admin', 'caissiere'];
 const ANTIDATE_MAX_JOURS = 30;
@@ -107,4 +162,5 @@ function resolveCommandeDate(requestedDate, role, now) {
 module.exports = {
   getNextNumero, decrementStocksForItems, determineModeConsommation, resolveCommandeDate,
   MODES_CONSOMMATION, modeParDefaut, resolveModeConsommation, modeApresFacture,
+  estSupplementAuto, resolveSupplement, supplementApresFacture, chargerCommandeParent, champsRattachement,
 };

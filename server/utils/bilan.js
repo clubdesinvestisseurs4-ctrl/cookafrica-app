@@ -1,6 +1,8 @@
 // Bilan financier (entrées − dépenses = résultat) et ventilation sur place / à emporter.
 // Logique pure, partagée par /api/stats/bilan et /api/stats/rapport, testable sans Firestore.
 
+const { estSupplementAuto } = require('./commandes');
+
 const MODES = ['sur-place', 'a-emporter'];
 const NON_CLASSE = 'non-classe';
 
@@ -30,8 +32,16 @@ function modeDeFacture(f, commandesById) {
   return MODES.includes(c?.modeConsommation) ? c.modeConsommation : NON_CLASSE;
 }
 
+// Supplément (riz, boisson redemandés après facturation) : son CA et ses articles comptent,
+// mais pas comme une commande de plus. Une commande d'avant le 2026-11-02 n'a pas le champ :
+// on applique alors la même règle (que des accompagnements et/ou des boissons).
+function estSupplement(commande) {
+  if (!commande) return false;
+  return typeof commande.supplement === 'boolean' ? commande.supplement : estSupplementAuto(commande.items);
+}
+
 function compteurVide() {
-  return { commandes: 0, platsQte: 0, boissonsQte: 0, ca: 0, commandesEstimees: 0 };
+  return { commandes: 0, supplements: 0, platsQte: 0, boissonsQte: 0, ca: 0, commandesEstimees: 0 };
 }
 
 // Ventilation par mode : nombre de commandes, plats (hors boissons) et boissons vendus,
@@ -43,9 +53,14 @@ function statsParMode(factures, commandesById) {
   for (const f of factures) {
     const mode = modeDeFacture(f, commandesById);
     const m = parMode[mode];
-    m.commandes += 1;
+    const commande = f.commandeId ? commandesById.get(f.commandeId) : null;
+    if (estSupplement(commande)) {
+      m.supplements += 1;
+    } else {
+      m.commandes += 1;
+      if (commande?.modeEstime) m.commandesEstimees += 1;
+    }
     m.ca += f.total || 0;
-    if (commandesById.get(f.commandeId)?.modeEstime) m.commandesEstimees += 1;
 
     for (const item of f.items || []) {
       const qte = item.quantite || 0;
@@ -172,5 +187,5 @@ function computeBilan({ factures, commandes, depenses, debut, fin }) {
 }
 
 module.exports = {
-  MODES, NON_CLASSE, estVente, estEncaissee, modeDeFacture, statsParMode, series, lundiDe, computeBilan,
+  MODES, NON_CLASSE, estVente, estEncaissee, modeDeFacture, estSupplement, statsParMode, series, lundiDe, computeBilan,
 };

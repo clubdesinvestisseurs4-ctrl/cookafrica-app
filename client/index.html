@@ -799,6 +799,15 @@
         </div>
         <small class="mode-hint" id="cmd-mode-hint"></small>
       </div>
+
+      <div class="form-group">
+        <label class="supplement-check"><input type="checkbox" id="cmd-supplement"> <span data-i18n="supplement.case">Supplément d'une commande déjà passée (riz, boisson…)</span></label>
+        <small class="mode-hint" id="cmd-supplement-hint"></small>
+        <div id="cmd-parent-wrap" style="display:none;margin-top:6px">
+          <label for="cmd-parent" data-i18n="supplement.rattacher_a">Commande d'origine</label>
+          <select id="cmd-parent"></select>
+        </div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" data-modal="commande" data-i18n="modal.cancel">Annuler</button>

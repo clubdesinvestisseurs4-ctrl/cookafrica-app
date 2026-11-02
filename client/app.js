@@ -104,6 +104,8 @@ const state = {
   // Sur place / à emporter de la commande en cours de saisie, et de celle en modification.
   panierMode: { mode: 'sur-place', manuel: false },
   editMode:   { mode: 'sur-place', manuel: false, touche: false, role: null },
+  panierSupplement: { coche: false, manuel: false, parentId: '' },
+  parentCandidats: [],
   notifInterval:       null,
   dashInterval:        null,
   commandesInterval:   null,
@@ -508,6 +510,70 @@ function renderModeToggle(toggleId, hintId, ctrl, role) {
   if (!hint) return;
   hint.textContent = ctrl.manuel ? t('mode.hint_manuel')
     : role === 'serveur' ? t('mode.hint_serveur') : t('mode.hint_auto');
+}
+
+// Supplément (riz, boisson redemandés après facturation) : miroir client de
+// estSupplementAuto (server/utils/commandes.js), pour pré-cocher la case seulement.
+function estSupplementClient(items) {
+  const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return (items || []).length > 0 && items.every(i => !norm(i.nom).includes('buffet')
+    && (norm(i.categorie).includes('accompagnement') || norm(i.categorie).includes('boisson')));
+}
+
+function badgeSupplement(c) {
+  if (c.supplement !== true) return '';
+  const texte = c.commandeParentNumero
+    ? t('supplement.badge_de', { numero: escapeHtml(c.commandeParentNumero) }) : t('supplement.badge');
+  return `<span style="background:#FFF8E1;color:#8D6E00;border:1px solid #FFE082;border-radius:12px;padding:1px 7px;font-size:.68rem;font-weight:600;white-space:nowrap"><i class="fas fa-plus-circle"></i> ${texte}</span>`;
+}
+
+// Commandes d'un jour auxquelles rattacher un supplément (pas les annulées, pas les
+// suppléments eux-mêmes), les plus récentes d'abord.
+async function chargerParentCandidats(date, exclureId) {
+  const liste = await api(`/api/commandes?date=${encodeURIComponent(date)}`);
+  return (Array.isArray(liste) ? liste : [])
+    .filter(c => c.statut !== 'annulee' && c.supplement !== true && c.id !== exclureId)
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+}
+
+function optionsParent(candidats, selectedId) {
+  const libelle = (c) => {
+    const qui = c.tableNumero ? `${t('commandes.table_label')} ${c.tableNumero}`
+      : [c.clientPrenom, c.clientNom].filter(Boolean).join(' ');
+    const mode = c.modeConsommation ? t(c.modeConsommation === 'sur-place' ? 'mode.sur_place' : 'mode.a_emporter') : '';
+    const heure = c.createdAt ? new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    return [c.numero, heure, qui, fmt(c.total), mode].filter(Boolean).join(' · ');
+  };
+  const vide = candidats.length ? t('supplement.non_rattache') : t('supplement.aucune_commande');
+  return `<option value="">${escapeHtml(vide)}</option>` + candidats.map(c =>
+    `<option value="${c.id}"${c.id === selectedId ? ' selected' : ''}>${escapeHtml(libelle(c))}</option>`).join('');
+}
+
+// Case "supplément" + liste des commandes d'origine du formulaire de nouvelle commande.
+// Un supplément rattaché prend le type (sur place / à emporter) de sa commande d'origine.
+function renderPanierSupplement() {
+  const s = state.panierSupplement;
+  if (!s.manuel) s.coche = estSupplementClient(state.panier);
+  document.getElementById('cmd-supplement').checked = s.coche;
+  document.getElementById('cmd-supplement-hint').textContent = s.coche
+    ? t(s.manuel ? 'supplement.hint_manuel' : 'supplement.hint_auto') : '';
+  document.getElementById('cmd-parent-wrap').style.display = s.coche ? '' : 'none';
+  const select = document.getElementById('cmd-parent');
+  select.innerHTML = optionsParent(state.parentCandidats, s.parentId);
+
+  const parent = s.coche && state.parentCandidats.find(c => c.id === s.parentId);
+  if (parent?.modeConsommation) {
+    state.panierMode = { mode: parent.modeConsommation, manuel: true };
+    renderModeToggle('cmd-mode-toggle', 'cmd-mode-hint', state.panierMode, state.user?.role);
+    document.getElementById('cmd-mode-hint').textContent = t('mode.hint_parent', { numero: parent.numero });
+  }
+}
+
+async function rechargerParentCandidats() {
+  const date = document.getElementById('cmd-date-input')?.value || today();
+  state.parentCandidats = await chargerParentCandidats(date);
+  if (!state.parentCandidats.some(c => c.id === state.panierSupplement.parentId)) state.panierSupplement.parentId = '';
+  renderPanierSupplement();
 }
 
 function bindModeToggle(toggleId, onPick) {
@@ -1166,7 +1232,7 @@ async function loadCommandes() {
     const nomClientCmd = c.commandeClient ? `${escapeHtml(c.clientPrenom || '')} ${escapeHtml(c.clientNom || '')}`.trim() : '';
     return `
     <tr>
-      <td data-label="${t('common.num')}"><strong>${c.numero}</strong> ${badgeQui(c)} ${badgeMode(c)}${nomClientCmd ? `<div style="font-size:.78rem;color:var(--gray);margin-top:2px">${nomClientCmd}</div>` : ''}</td>
+      <td data-label="${t('common.num')}"><strong>${c.numero}</strong> ${badgeQui(c)} ${badgeMode(c)} ${badgeSupplement(c)}${nomClientCmd ? `<div style="font-size:.78rem;color:var(--gray);margin-top:2px">${nomClientCmd}</div>` : ''}</td>
       <td data-label="${t('common.date')}" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
       <td data-label="${t('commandes.th_articles')}" style="font-size:.82rem">${items}</td>
       <td data-label="${t('commandes.th_total')}"><strong>${fmt(c.total)}</strong></td>
@@ -1208,7 +1274,7 @@ async function viewCommande(id) {
   document.getElementById('modal-detail-titre').textContent = t('commandes.detail_titre', { numero: c.numero });
   document.getElementById('modal-detail-body').innerHTML = `
     <div style="margin-bottom:12px">
-      ${badgeQui(c) || badgeMode(c) ? `<p style="margin-bottom:8px">${badgeQui(c)} ${badgeMode(c)}</p>` : ''}
+      ${badgeQui(c) || badgeMode(c) || badgeSupplement(c) ? `<p style="margin-bottom:8px">${badgeQui(c)} ${badgeMode(c)} ${badgeSupplement(c)}</p>` : ''}
       ${c.commandeClient ? `
         <div style="background:var(--light);border-radius:8px;padding:10px 12px;margin-bottom:10px">
           <p style="font-weight:700">${escapeHtml(c.clientPrenom || '')} ${escapeHtml(c.clientNom || '')}</p>
@@ -1220,13 +1286,52 @@ async function viewCommande(id) {
       <p><strong>${t('commandes.statut_label')}</strong> ${badgeStatus(c.statut)}</p>
       <p style="font-size:.8rem;color:var(--gray)"><strong>${t('commandes.creee_par_label')}</strong> ${escapeHtml(c.commandeClient ? (c.clientNom || t('commandes.client_en_ligne')) : (c.createdByNom || c.createdBy))} – ${fmtDate(c.createdAt)}</p>
       ${modeCorrectionHtml(c)}
+      ${supplementCorrectionHtml(c)}
     </div>
     <div style="margin-bottom:12px">${items}</div>
     <div style="text-align:right;font-size:1.1rem;font-weight:800;color:var(--primary)">
       ${t('commandes.total_label', { total: fmt(c.total) })}
     </div>`;
   openModal('detail-commande');
+  if (document.getElementById('detail-parent')) {
+    const candidats = await chargerParentCandidats(c.date || today(), c.id);
+    const select = document.getElementById('detail-parent');
+    if (select) select.innerHTML = optionsParent(candidats, c.commandeParentId || '');
+  }
 }
+
+// Supplément après coup : marquer / démarquer, rattacher à la commande d'origine (mêmes
+// rôles que la correction du mode). Une commande qui a déjà des suppléments rattachés ne
+// peut pas en devenir un — le serveur le refuse.
+function supplementCorrectionHtml(c) {
+  const peut = ['admin', 'caissiere', 'caissier-en-ligne'].includes(state.user?.role)
+    && c.statut !== 'annulee' && !c._pending && !c.commandeClient;
+  if (!peut) return '';
+  if (c.supplement !== true) {
+    return `<p style="margin-top:6px"><button class="btn btn-secondary btn-sm" onclick="enregistrerSupplement('${c.id}', true, false)">
+      <i class="fas fa-plus-circle"></i> ${t('supplement.marquer')}</button></p>`;
+  }
+  return `<div style="margin-top:8px;padding:8px 10px;background:var(--light);border-radius:8px">
+    <label for="detail-parent" style="font-size:.82rem;font-weight:600">${t('supplement.rattacher_a')}</label>
+    <select id="detail-parent" style="width:100%;margin:4px 0 6px"><option>…</option></select>
+    <button class="btn btn-primary btn-sm" onclick="enregistrerSupplement('${c.id}', true, true)"><i class="fas fa-link"></i> ${t('supplement.rattacher')}</button>
+    <button class="btn btn-secondary btn-sm" onclick="enregistrerSupplement('${c.id}', false, false)">${t('supplement.demarquer')}</button>
+  </div>`;
+}
+
+window.enregistrerSupplement = async (id, supplement, avecParent) => {
+  const body = { supplement };
+  if (avecParent) body.commandeParentId = document.getElementById('detail-parent')?.value || null;
+  showLoader();
+  const res = await api(`/api/commandes/${id}/supplement`, { method: 'PUT', body: JSON.stringify(body) });
+  hideLoader();
+  if (!res?.id) { toast(res?.error || t('common.error'), 'error'); return; }
+  toast(t('supplement.enregistre'), 'success');
+  const c = state.commandes.find(x => x.id === id);
+  if (c) Object.assign(c, res);
+  viewCommande(id);
+  if (state.currentPage === 'commandes-en-ligne') loadCommandesLigne(); else if (state.currentPage === 'commandes') loadCommandes();
+};
 
 // Correction du mode après coup (même facturée/servie) : admin et caisse uniquement, comme
 // côté serveur (ROLES_MODE dans utils/commandeUpdate.js).
@@ -1373,6 +1478,8 @@ async function openNewCommande(source = 'sur-place') {
   state.panier = [];
   state.panierSource = source;
   state.panierMode = { mode: modeParDefautClient(state.user?.role, []), manuel: false };
+  state.panierSupplement = { coche: false, manuel: false, parentId: '' };
+  state.parentCandidats = [];
   renderPanier();
   panierPicker.reset();
   document.getElementById('modal-commande-title').textContent =
@@ -1392,6 +1499,7 @@ async function openNewCommande(source = 'sur-place') {
   dateInput.value = today;
 
   openModal('commande');
+  rechargerParentCandidats();
 }
 
 function addToPanier(id, nom, prix, categorie) {
@@ -1501,6 +1609,7 @@ function renderPanier() {
 
   if (!state.panierMode.manuel) state.panierMode.mode = modeParDefautClient(state.user?.role, state.panier);
   renderModeToggle('cmd-mode-toggle', 'cmd-mode-hint', state.panierMode, state.user?.role);
+  renderPanierSupplement();
 
   if (state.panier.length === 0) {
     container.innerHTML = `<p style="color:var(--gray);font-size:.85rem;text-align:center;padding:12px">${t('commandes.aucun_article')}</p>`;
@@ -1543,7 +1652,11 @@ async function saveCommande() {
     items: state.panier,
     source: state.panierSource || 'sur-place',
     modeConsommation: state.panierMode.mode,
+    supplement: state.panierSupplement.coche,
   };
+  if (state.panierSupplement.coche && state.panierSupplement.parentId) {
+    body.commandeParentId = state.panierSupplement.parentId;
+  }
   const dateGroup = document.getElementById('cmd-date-group');
   const dateValue = document.getElementById('cmd-date-input')?.value;
   if (dateGroup && dateGroup.style.display !== 'none' && dateValue) body.date = dateValue;
@@ -1634,7 +1747,7 @@ async function loadCommandesLigne() {
     <tr>
       <td data-label="${t('common.num')}"><strong>${c.numero}</strong></td>
       <td data-label="${t('common.date')}" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
-      <td data-label="${t('commandes.dl_client')}">${badgeQui(c)} ${badgeMode(c)}${nomClient ? `<div style="font-size:.78rem;margin-top:3px">${nomClient}</div>` : ''}${c.clientTelephone ? `<div style="margin-top:2px"><a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);font-size:.76rem;text-decoration:none;white-space:nowrap"><i class="fas fa-phone"></i> ${escapeHtml(c.clientTelephone)}</a></div>` : ''}</td>
+      <td data-label="${t('commandes.dl_client')}">${badgeQui(c)} ${badgeMode(c)} ${badgeSupplement(c)}${nomClient ?`<div style="font-size:.78rem;margin-top:3px">${nomClient}</div>` : ''}${c.clientTelephone ? `<div style="margin-top:2px"><a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);font-size:.76rem;text-decoration:none;white-space:nowrap"><i class="fas fa-phone"></i> ${escapeHtml(c.clientTelephone)}</a></div>` : ''}</td>
       <td data-label="${t('commandes.th_articles')}" style="font-size:.82rem">${items}</td>
       <td data-label="${t('commandes.th_total')}"><strong>${fmt(c.total)}</strong></td>
       <td data-label="${t('common.status')}">${badgeStatus(c.statut)}</td>
@@ -3199,6 +3312,7 @@ function renderModeStats(mc) {
       <div class="kpi-label-sm">${t('modestats.ca')}</div>
       <ul class="kpi-list" style="margin-top:12px">
         <li><span>${t('modestats.commandes')}</span><strong>${m.commandes}</strong></li>
+        ${m.supplements ? `<li><span>${t('modestats.supplements')}</span><strong>${m.supplements}</strong></li>` : ''}
         <li><span>${t('modestats.plats')}</span><strong>${m.platsQte}</strong></li>
         <li><span>${t('modestats.boissons')}</span><strong>${m.boissonsQte}</strong></li>
         ${m.commandesEstimees ? `<li><span>${t('modestats.dont_estimees')}</span><strong>${m.commandesEstimees}</strong></li>` : ''}
@@ -3942,6 +4056,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.editMode = { ...state.editMode, mode, manuel: true, touche: true };
     renderModeToggle('editcmd-mode-toggle', 'editcmd-mode-hint', state.editMode, state.editMode.role);
   });
+  document.getElementById('cmd-supplement').addEventListener('change', (e) => {
+    state.panierSupplement = { ...state.panierSupplement, coche: e.target.checked, manuel: true };
+    if (!e.target.checked) state.panierSupplement.parentId = '';
+    renderPanier();
+  });
+  document.getElementById('cmd-parent').addEventListener('change', (e) => {
+    state.panierSupplement.parentId = e.target.value;
+    // Plus de commande d'origine : le type redevient celui de la règle.
+    if (!e.target.value) state.panierMode = { mode: modeParDefautClient(state.user?.role, state.panier), manuel: false };
+    renderPanier();
+  });
+  document.getElementById('cmd-date-input').addEventListener('change', rechargerParentCandidats);
 
   // ── Dépenses (admin) ──
   document.getElementById('btn-new-depense').addEventListener('click', openNewDepense);

@@ -736,6 +736,8 @@ mark.search-hl {
 }
 .mode-toggle button.active { border-color: var(--primary); background: var(--primary); color: var(--white); }
 .mode-hint { display: block; color: var(--gray); font-size: .78rem; margin-top: 4px; }
+.supplement-check { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; }
+.supplement-check input { width: auto; margin: 0; }
 .kpi-label-sm  { font-size: .75rem; color: var(--gray); margin-top: 2px; }
 .kpi-list { font-size: .82rem; }
 .kpi-list li { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--border); }

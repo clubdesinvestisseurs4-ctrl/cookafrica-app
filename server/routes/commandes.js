@@ -8,7 +8,9 @@ const { buildCommandeUpdate } = require('../utils/commandeUpdate');
 const {
   getNextNumero, decrementStocksForItems, resolveCommandeDate,
   MODES_CONSOMMATION, modeParDefaut, resolveModeConsommation,
+  resolveSupplement, chargerCommandeParent, champsRattachement,
 } = require('../utils/commandes');
+const { ROLES_MODE } = require('../utils/commandeUpdate');
 const { createFactureFromCommande } = require('../utils/factures');
 const { formatMontant } = require('../utils/currency');
 
@@ -83,7 +85,7 @@ router.get('/', authenticateToken, async (req, res) => {
 // pas besoin d'un envoi depuis un serveur.
 router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere', 'caissier-en-ligne'), async (req, res) => {
   try {
-    const { items, note, tableNumero, source, date, modeConsommation } = req.body;
+    const { items, note, tableNumero, source, date, modeConsommation, supplement, commandeParentId } = req.body;
     // Seuls admin/caissière/caissier en ligne peuvent marquer une commande "en ligne" (écran dédié)
     const isOnline = source === 'en-ligne' && ['admin', 'caissiere', 'caissier-en-ligne'].includes(req.user.role);
 
@@ -106,6 +108,13 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere',
       categorie: i.categorie || '',
     }));
 
+    let rattachement = {};
+    if (commandeParentId) {
+      const { parent, error } = await chargerCommandeParent(db, commandeParentId);
+      if (error) return res.status(400).json({ error });
+      rattachement = champsRattachement(parent);
+    }
+
     const data = {
       numero,
       items: mappedItems,
@@ -117,6 +126,8 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere',
       source: isOnline ? 'en-ligne' : 'sur-place',
       ...resolveModeConsommation(modeConsommation, req.user.role, mappedItems),
       modeEstime: false,
+      ...resolveSupplement(supplement, mappedItems),
+      ...rattachement, // supplément rattaché : prend le mode de sa commande d'origine
       statut: req.user.role === 'serveur' ? 'en-attente' : 'en-preparation',
       date: resolvedDate.date,
       createdBy: req.user.username,
@@ -276,9 +287,13 @@ router.put('/:id/items', authenticateToken, requireRole('admin', 'serveur', 'cai
       update.modeConsommation = modeConsommation;
       update.modeSource = modeConsommation === auto ? 'auto' : 'manuel';
       update.modeEstime = false;
-    } else if (role && existing.modeSource !== 'manuel') {
+    } else if (role && !['manuel', 'parent'].includes(existing.modeSource)) {
       update.modeConsommation = modeParDefaut(role, mappedItems);
       update.modeSource = 'auto';
+    }
+    // Même principe pour "supplément" : suit les articles tant qu'il vient de la règle.
+    if (existing.supplementSource === 'auto' && !existing.commandeParentId) {
+      Object.assign(update, resolveSupplement(undefined, mappedItems));
     }
 
     await docRef.update(update);
@@ -292,6 +307,45 @@ router.put('/:id/items', authenticateToken, requireRole('admin', 'serveur', 'cai
       createdBy: req.user.username,
     });
 
+    res.json({ id: req.params.id, ...existing, ...update });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/commandes/:id/supplement — après coup (même facturée/servie) : marquer ou non
+// comme supplément, et le rattacher à sa commande d'origine ou l'en détacher.
+// Corps : { supplement: bool, commandeParentId?: string|null }. Change les statistiques,
+// donc réservé aux mêmes rôles que la correction du mode (ROLES_MODE).
+router.put('/:id/supplement', authenticateToken, requireRole(...ROLES_MODE), async (req, res) => {
+  try {
+    const { supplement, commandeParentId } = req.body;
+    if (typeof supplement !== 'boolean') return res.status(400).json({ error: 'Champ "supplement" (vrai/faux) requis' });
+
+    const docRef = db.collection('commandes').doc(req.params.id);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ error: 'Commande introuvable' });
+    const existing = doc.data();
+    if (existing.statut === 'annulee') return res.status(400).json({ error: 'Commande annulée' });
+
+    const now = new Date();
+    const update = { supplement, supplementSource: 'manuel', updatedAt: now.toISOString() };
+
+    if (supplement && commandeParentId) {
+      const { parent, error } = await chargerCommandeParent(db, commandeParentId, req.params.id);
+      if (error) return res.status(400).json({ error });
+      const aDesSupplements = await db.collection('commandes').where('commandeParentId', '==', req.params.id).limit(1).get();
+      if (!aDesSupplements.empty) return res.status(400).json({ error: 'Cette commande a elle-même des suppléments rattachés' });
+      Object.assign(update, champsRattachement(parent));
+    } else if (existing.commandeParentId) {
+      // Détachée : garde le mode qu'elle avait, désormais considéré comme un choix manuel.
+      Object.assign(update, { commandeParentId: null, commandeParentNumero: null });
+      if (existing.modeSource === 'parent') update.modeSource = 'manuel';
+    }
+
+    await docRef.update(update);
+    invalidate();
+    eventBus.emit('commandes');
     res.json({ id: req.params.id, ...existing, ...update });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -312,6 +366,15 @@ router.put('/:id', authenticateToken, async (req, res) => {
     if (error) return res.status(status || 400).json({ error });
 
     await docRef.update(update);
+
+    // Mode corrigé sur une commande d'origine : ses suppléments rattachés suivent.
+    if (update.modeConsommation && update.modeConsommation !== existing.modeConsommation) {
+      const enfants = await db.collection('commandes').where('commandeParentId', '==', req.params.id).get();
+      await Promise.all(enfants.docs
+        .filter(d => d.data().modeSource === 'parent')
+        .map(d => d.ref.update({ modeConsommation: update.modeConsommation, updatedAt: now.toISOString() })));
+    }
+
     invalidate();
     eventBus.emit('commandes');
 
