@@ -3,7 +3,9 @@ const { db } = require('../firebase-admin');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const cache = require('../utils/cache');
 const { formatMontant } = require('../utils/currency');
-const { computeBilan, statsParMode, series, estVente } = require('../utils/bilan');
+const {
+  computeBilan, statsParMode, series, estVente, modeDeFacture, estSupplement,
+} = require('../utils/bilan');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -209,7 +211,12 @@ router.get('/rapport', authenticateToken, async (req, res) => {
       topBoissons: topVentes(boissonsVentes),
       ventesDetail,
       modeConsommation: { ...consommation, parJour, parSemaine, parMois },
-      factures: factures.sort((a, b) => (b.date > a.date ? 1 : -1)),
+      // Type de consommation de chaque facture (celui de sa commande) : sert à l'export.
+      factures: factures.sort((a, b) => (b.date > a.date ? 1 : -1)).map(f => ({
+        ...f,
+        modeConsommation: modeDeFacture(f, commandesById),
+        supplement: estSupplement(commandesById.get(f.commandeId)),
+      })),
     };
     cache.set(cacheKey, result, 5 * 60_000);
     res.json(result);

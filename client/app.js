@@ -2951,6 +2951,7 @@ async function loadRapport() {
   ]);
   hideLoader();
   if (!data) return;
+  state.rapportData = { data, debut, fin };
 
   if (bilan && bilan.entrees !== undefined) {
     renderBilan(bilan);
@@ -3053,22 +3054,107 @@ async function loadRapport() {
     </tr>`).join('');
 }
 
-function exportCSV() {
-  const tbody = document.getElementById('rapport-factures-tbody');
-  if (!tbody || !tbody.querySelectorAll('tr').length) { toast(t('rapports.generer_dabord'), 'warning'); return; }
+// Export complet de la période affichée, en un seul fichier ouvrable dans Excel : bilan
+// (entrées − dépenses), sur place / à emporter, bilan par jour, dépenses (liste et par
+// catégorie), détail par article, puis les factures. Les montants sont des nombres bruts
+// (sans séparateur ni devise) pour qu'Excel puisse les additionner.
+async function exportCSV() {
+  const r = state.rapportData;
+  if (!r?.data) { toast(t('rapports.generer_dabord'), 'warning'); return; }
+  const { data, debut, fin } = r;
+  const b = debut && fin ? state.bilan : null;
 
-  const rows = [[
+  let depenses = [];
+  if (b) {
+    showLoader();
+    const res = await api(`/api/depenses?debut=${debut}&fin=${fin}`);
+    hideLoader();
+    depenses = res?.depenses || [];
+  }
+
+  const devise = SITE.currency.label;
+  const libMode = (m) => t(m === 'sur-place' ? 'mode.sur_place' : m === 'a-emporter' ? 'mode.a_emporter' : 'mode.non_classe');
+  const rows = [];
+  const section = (titre) => { if (rows.length) rows.push([]); rows.push([titre.toUpperCase()]); };
+
+  section(t('export.titre'));
+  rows.push([t('export.periode'), debut && fin ? t('depenses.du_au', { debut: fmtDateOnly(debut), fin: fmtDateOnly(fin) }) : t('export.toute_periode')]);
+  rows.push([t('export.genere_le'), new Date().toLocaleString()]);
+
+  if (b) {
+    section(t('bilan.titre'));
+    rows.push([`${t('bilan.entrees')} (${devise})`, b.entrees]);
+    rows.push([`${t('bilan.depenses')} (${devise})`, b.depenses]);
+    rows.push([`${t('bilan.resultat')} (${devise})`, b.resultat]);
+    rows.push([`${t('export.non_encaisse')} (${devise})`, b.nonEncaisse]);
+    rows.push([t('export.nb_factures_payees'), b.nbVentes]);
+    rows.push([t('export.nb_depenses'), b.nbDepenses]);
+  }
+
+  // Bilan : ventes payées seulement ; sans bilan (pas de période), le rapport (toutes factures).
+  const mc = b || data.modeConsommation;
+  if (mc?.parMode) {
+    section(`${t('modestats.titre')}${b ? ` — ${t('export.factures_payees')}` : ''}`);
+    rows.push(['', t('mode.sur_place'), t('mode.a_emporter'), t('mode.non_classe')]);
+    const ligne = (label, cle) => rows.push([label, ...['sur-place', 'a-emporter', 'non-classe'].map(m => mc.parMode[m]?.[cle] ?? 0)]);
+    ligne(`${t('modestats.ca')} (${devise})`, 'ca');
+    ligne(t('modestats.commandes'), 'commandes');
+    ligne(t('modestats.supplements'), 'supplements');
+    ligne(t('modestats.plats'), 'platsQte');
+    ligne(t('modestats.boissons'), 'boissonsQte');
+    ligne(t('modestats.dont_estimees'), 'commandesEstimees');
+  }
+
+  if (b?.parJour?.length) {
+    section(`${t('bilan.titre')} — ${t('bilan.par_jour')}`);
+    rows.push([t('common.date'), `${t('bilan.entrees')} (${devise})`, t('mode.sur_place'), t('mode.a_emporter'),
+      t('mode.non_classe'), `${t('bilan.depenses')} (${devise})`, `${t('bilan.resultat')} (${devise})`]);
+    b.parJour.forEach(j => rows.push([j.date, j.entrees, j['sur-place'], j['a-emporter'], j['non-classe'], j.depenses, j.resultat]));
+    rows.push([t('export.total'), b.entrees,
+      ...['sur-place', 'a-emporter', 'non-classe'].map(m => b.parJour.reduce((s, j) => s + j[m], 0)), b.depenses, b.resultat]);
+  }
+
+  if (b) {
+    section(`${t('nav.depenses')} — ${t('depenses.par_categorie')}`);
+    rows.push([t('depenses.th_categorie'), `${t('depenses.th_montant')} (${devise})`]);
+    Object.entries(b.depensesParCategorie || {}).sort((x, y) => y[1] - x[1])
+      .forEach(([cat, montant]) => rows.push([labelCategorieDepense(cat), montant]));
+    rows.push([t('export.total'), b.depenses]);
+
+    section(`${t('nav.depenses')} — ${t('export.liste')}`);
+    rows.push([t('common.date'), t('depenses.th_libelle'), t('depenses.th_categorie'), `${t('depenses.th_montant')} (${devise})`,
+      t('depenses.th_paiement'), t('depenses.champ_note'), t('depenses.th_auteur')]);
+    if (!depenses.length) rows.push([t('depenses.aucune')]);
+    [...depenses].sort((x, y) => x.date.localeCompare(y.date)).forEach(d => rows.push([
+      d.date, d.libelle, labelCategorieDepense(d.categorie), d.montant, labelModePaiement(d.modePaiement), d.note || '',
+      d.createdByNom || d.createdBy || '',
+    ]));
+  }
+
+  if (mc?.detailArticles?.length) {
+    section(`${t('modestats.detail_articles')} — ${t('modestats.titre')}`);
+    rows.push([t('rapports.th_article'), t('stocks.th_categorie'), t('modestats.th_qte_sur_place'), t('modestats.th_ca_sur_place'),
+      t('modestats.th_qte_a_emporter'), t('modestats.th_ca_a_emporter')]);
+    mc.detailArticles.forEach(a => rows.push([a.nom, a.categorie,
+      a['sur-place'].quantite, a['sur-place'].total, a['a-emporter'].quantite, a['a-emporter'].total]));
+  }
+
+  section(t('export.factures'));
+  rows.push([
     t('rapports.csv_numero_facture'), t('rapports.csv_date'), t('rapports.csv_commande'), t('rapports.csv_articles'),
-    `${t('rapports.csv_total_label')} ${SITE.currency.label}`, t('rapports.csv_mode'), t('rapports.csv_statut'),
-  ]];
-  tbody.querySelectorAll('tr').forEach(tr => {
-    rows.push(Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim()));
-  });
+    `${t('rapports.csv_total_label')} ${devise}`, t('mode.label'), t('supplement.badge'), t('depenses.th_paiement'), t('rapports.csv_statut'),
+  ]);
+  (data.factures || []).forEach(f => rows.push([
+    f.numero, f.date, f.commandeNumero || '', (f.items || []).reduce((s, i) => s + (i.quantite || 0), 0), f.total || 0,
+    libMode(f.modeConsommation), f.supplement ? t('export.oui') : '', f.modePaiement ? labelModePaiement(f.modePaiement) : '', f.statut || '',
+  ]));
 
-  const csv = rows.map(r => r.map(v => `"${v}"`).join(';')).join('\n');
+  const cellule = (v) => typeof v === 'number' ? String(v) : `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const csv = rows.map(l => l.map(cellule).join(';')).join('\r\n');
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
   const url  = URL.createObjectURL(blob);
-  const a    = Object.assign(document.createElement('a'), { href: url, download: `rapport-cookafrica-${today()}.csv` });
+  const nom  = debut && fin ? `${debut}_${fin}` : today();
+  const a    = Object.assign(document.createElement('a'), { href: url, download: `rapport-cookafrica-${nom}.csv` });
   a.click(); URL.revokeObjectURL(url);
 }
 
