@@ -6,20 +6,16 @@ const cache    = require('../utils/cache');
 const eventBus = require('../utils/eventBus');
 const { createFactureFromCommande } = require('../utils/factures');
 const { formatMontant } = require('../utils/currency');
-const { modeApresFacture, supplementApresFacture } = require('../utils/commandes');
+const { modeApresFacture, supplementApresFacture, stocksDuJour } = require('../utils/commandes');
+const { listeParPeriode, LISTE_TTL } = require('../utils/listes');
 
 const router = express.Router();
 
-// `factures:list:<aujourd'hui>` + `commandes:list:<aujourd'hui>` en plus des clés
-// globales, même logique que commandes.js : c'est la vue du jour (facturation, comme
-// commandes) qui doit rester instantanément fraîche, les autres jours suivent leur TTL.
+// À appeler après chaque écriture. Les listes `factures:list*` / `commandes:list*` ne sont plus vidées ici : chaque
+// écriture les met à jour en mémoire (voir firebase-admin.js). Exception : les écritures
+// en lot (batch), qui ne passent pas par ce branchement — voir repair-numeros.
 function invalidate() {
-  const today = new Date().toISOString().split('T')[0];
-  cache.del(
-    'factures:list', `factures:list:${today}`,
-    'commandes:list', `commandes:list:${today}`,
-    'stats:dashboard', 'stats:notifications',
-  );
+  cache.del('stats:dashboard', 'stats:notifications', 'commandes:actives-anterieures');
   cache.delPrefix('stats:bilan:'); // un paiement change les entrées du bilan
 }
 
@@ -28,28 +24,16 @@ router.get('/', authenticateToken, async (req, res) => {
   try {
     const { debut, fin, statut } = req.query;
 
-    let all;
-    if (debut && fin && debut === fin) {
-      // Cas le plus fréquent (vue "Facturation" par défaut sur aujourd'hui, relue à
-      // chaque événement SSE pendant le service) : filtre Firestore directement sur ce
-      // jour plutôt que de rescanner les 300 dernières factures TOUS jours confondus —
-      // même optimisation que commandes.js, pour la même raison (voir pics de lecture
-      // Firestore du 26/09 corrélés aux heures de repas).
-      const cacheKey = `factures:list:${debut}`;
-      all = cache.get(cacheKey);
-      if (!all) {
-        const snap = await db.collection('factures').where('date', '==', debut).get();
-        all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        cache.set(cacheKey, all, 15_000);
-      }
-    } else {
-      all = cache.get('factures:list');
-      if (!all) {
+    // Jour ou période : filtre Firestore sur `date`, listes tenues à jour à l'écriture
+    // (voir utils/listes.js). Sans période : les 300 plus récentes — c'est ce que les
+    // pages Commandes et Commandes en ligne demandaient à CHAQUE rafraîchissement SSE
+    // jusqu'au 2026-11-04, première cause de consommation du quota de lectures.
+    const all = debut && fin
+      ? await listeParPeriode('factures', debut, fin)
+      : await cache.remember('factures:list', LISTE_TTL, async () => {
         const snap = await db.collection('factures').orderBy('createdAt', 'desc').limit(300).get();
-        all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        cache.set('factures:list', all, 60_000);
-      }
-    }
+        return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      });
 
     let factures = all.filter(f => !f.type || f.type === 'facture');
     if (debut)  factures = factures.filter(f => f.date >= debut);
@@ -113,6 +97,7 @@ router.post('/repair-numeros', authenticateToken, requireRole('admin'), async (r
       details.push({ id: item.id, ancien: item.oldNumero, nouveau: newNumero });
     }
     await batch.commit();
+    cache.delPrefix('factures:list'); // écriture en lot : non suivie par patchDoc
 
     // Resynchronise le compteur (utils/factures.js) sur ce nouveau maximum : sinon la
     // prochaine facture normale pourrait reprendre un numéro qu'on vient d'attribuer
@@ -212,15 +197,15 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere', 'cai
 
     await docRef.update(update);
     invalidate();
-    cache.del('commandes:list');
     eventBus.emit('factures');
     eventBus.emit('commandes');
     eventBus.emit('stocks');
 
     // Déduire les articles du stock journalier
     const factureDate = facture.date || now.toISOString().split('T')[0];
+    const fiches = await stocksDuJour(db, factureDate); // évite une lecture par article sans fiche
     for (const item of finalItems) {
-      if (!item.menuItemId) continue;
+      if (!item.menuItemId || !fiches.has(`${item.menuItemId}_${factureDate}`)) continue;
       const stockRef = db.collection('stocks_plats').doc(`${item.menuItemId}_${factureDate}`);
       const platDoc = await stockRef.get();
       if (platDoc.exists) {

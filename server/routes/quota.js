@@ -22,13 +22,19 @@ function quotaKeyOrAdmin(req, res, next) {
 router.get('/', quotaKeyOrAdmin, async (req, res) => {
   const day = new Date().toISOString().split('T')[0];
   try {
-    const snap = await db.collection('_meta').doc(`quotaLectures-${day}`).get();
+    // ?jour=AAAA-MM-JJ pour relire un jour passé (diagnostic après coup).
+    const jour = /^\d{4}-\d{2}-\d{2}$/.test(req.query.jour || '') ? req.query.jour : day;
+    const snap = await db.collection('_meta').doc(`quotaLectures-${jour}`).get();
     const count = snap.exists ? (snap.data().count || 0) : 0;
+    const parRoute = Object.entries(snap.exists ? (snap.data().routes || {}) : {})
+      .sort((a, b) => b[1] - a[1])
+      .map(([route, lectures]) => ({ route, lectures }));
     res.json({
-      day,
+      day: jour,
       lecturesAujourdhui: count,
       quotaGratuit: FREE_READ_QUOTA,
       pourcentage: Math.round((count / FREE_READ_QUOTA) * 1000) / 10,
+      parRoute,
     });
   } catch {
     res.status(500).json({ error: 'quota_unavailable' });

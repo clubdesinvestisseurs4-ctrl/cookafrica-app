@@ -10,6 +10,7 @@ const eventBus = require('../utils/eventBus');
 const { getNextNumero, decrementStocksForItems, determineModeConsommation } = require('../utils/commandes');
 const { resolvePublicItems, resolvePublicContact } = require('../utils/publicCommande');
 const { formatMontant } = require('../utils/currency');
+const { menuEnCache } = require('../utils/listes');
 
 const router = express.Router();
 
@@ -31,17 +32,17 @@ async function fetchMenuDisponible() {
 // GET /api/public/menu — menu consultable sans authentification
 router.get('/menu', async (req, res) => {
   try {
-    let menu = cache.get('public:menu');
-    if (!menu) {
-      const docs = await fetchMenuDisponible();
-      menu = docs
-        .map(m => ({
-          id: m.id, nom: m.nom, categorie: m.categorie || '', prix: m.prix, description: m.description || '',
-          joursDisponibles: m.joursDisponibles || [],
-        }))
-        .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
-      cache.set('public:menu', menu, 30_000);
-    }
+    // Dérivé du menu en cache du personnel (vidé à chaque modification du menu) : avec un
+    // TTL de 30 s propre à cette page publique, chaque visiteur — robots compris —
+    // pouvait relancer une lecture de tout le menu. Le prix réellement facturé reste
+    // vérifié à la commande (POST ci-dessous, relu dans Firestore).
+    const menu = (await menuEnCache())
+      .filter(m => m.disponible === true)
+      .map(m => ({
+        id: m.id, nom: m.nom, categorie: m.categorie || '', prix: m.prix, description: m.description || '',
+        joursDisponibles: m.joursDisponibles || [],
+      }))
+      .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
     res.json(menu);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -95,9 +96,10 @@ router.post('/commandes', orderLimiter, async (req, res) => {
     };
 
     const ref = await db.collection('commandes').add(data);
-    // Une commande publique est toujours datée d'aujourd'hui (voir data.date ci-dessus) :
-    // on invalide directement la clé du jour, même logique que commandes.js/factures.js.
-    cache.del('commandes:list', `commandes:list:${data.date}`, 'factures:list', 'stats:dashboard', 'stats:notifications');
+    // Les listes de commandes en cache sont mises à jour par l'écriture elle-même (voir
+    // firebase-admin.js) ; seules les vues calculées sont à refaire.
+    cache.del('stats:dashboard', 'stats:notifications');
+    cache.delPrefix('stats:bilan:');
     eventBus.emit('commandes');
 
     const epuises = await decrementStocksForItems(db, resolved.items, now);

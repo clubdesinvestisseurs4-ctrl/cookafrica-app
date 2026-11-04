@@ -4,6 +4,7 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 const { pushNotification } = require('../utils/notifications');
 const eventBus = require('../utils/eventBus');
 const cache = require('../utils/cache');
+const { stocksDuJour } = require('../utils/commandes');
 
 const router = express.Router();
 
@@ -97,30 +98,36 @@ router.put('/:id', authenticateToken, requireRole('admin'), async (req, res) => 
 router.get('/plats', authenticateToken, async (req, res) => {
   try {
     const date = req.query.date || new Date().toISOString().split('T')[0];
-    const snap = await db.collection('stocks_plats').where('date', '==', date).get();
-
-    if (!snap.empty) {
+    // Jour sans aucune fiche (cas habituel, voir stocksDuJour) : pas la peine d'interroger.
+    const fiches = await stocksDuJour(db, date);
+    if (fiches.size > 0) {
+      const snap = await db.collection('stocks_plats').where('date', '==', date).get();
       return res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }
 
     // Nouveau jour — seules les Boissons sont reportées (non périssables)
-    // Plats et Accompagnements se réinitialisent à zéro chaque jour
-    const allSnap = await db.collection('stocks_plats').get();
-    const latestByItem = {};
-    allSnap.docs.forEach(doc => {
-      const data = doc.data();
-      if (data.categorie !== 'Boissons') return;
-      const existing = latestByItem[data.menuItemId];
-      if (!existing || data.date > existing.date) {
-        latestByItem[data.menuItemId] = {
-          id: doc.id, ...data,
-          quantitePrepare: data.quantiteRestante, // Stock restant = nouveau point de départ
-          fromPreviousDate: true,
-        };
-      }
+    // Plats et Accompagnements se réinitialisent à zéro chaque jour.
+    // Lit toute la collection : mis en cache (la page se recharge à chaque paiement via
+    // le SSE 'stocks'), vidé quand de nouvelles fiches sont enregistrées (POST /plats).
+    const reports = await cache.remember('stocks_plats:report-boissons', 30 * 60_000, async () => {
+      const allSnap = await db.collection('stocks_plats').get();
+      const latestByItem = {};
+      allSnap.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.categorie !== 'Boissons') return;
+        const existing = latestByItem[data.menuItemId];
+        if (!existing || data.date > existing.date) {
+          latestByItem[data.menuItemId] = {
+            id: doc.id, ...data,
+            quantitePrepare: data.quantiteRestante, // Stock restant = nouveau point de départ
+            fromPreviousDate: true,
+          };
+        }
+      });
+      return Object.values(latestByItem);
     });
 
-    res.json(Object.values(latestByItem));
+    res.json(reports);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -184,6 +191,7 @@ router.post('/plats', authenticateToken, requireRole('admin'), async (req, res) 
 
       if (newRestante === 0 && plat.quantitePrepare > 0) epuises.push(plat.nom);
     }
+    cache.del(`stocks_plats:jour:${dateStr}`, 'stocks_plats:report-boissons');
 
     pushNotification({
       type: 'success', icon: 'utensils',

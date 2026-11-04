@@ -2,23 +2,20 @@ const express = require('express');
 const { db } = require('../firebase-admin');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const cache = require('../utils/cache');
+const { menuEnCache } = require('../utils/listes');
 
 const router = express.Router();
 
 // Le menu ne change quasiment jamais dans la journée (contrairement aux commandes) :
 // TTL large, invalidé explicitement à chaque écriture ci-dessous.
-function invalidate() { cache.del('menu:list'); }
+function invalidate() { cache.del('menu:list', 'public:menu'); }
 
 // GET /api/menu
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    let menu = cache.get('menu:list');
-    if (!menu) {
-      const snap = await db.collection('menu').orderBy('categorie').get();
-      menu = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      cache.set('menu:list', menu, 5 * 60_000);
-    }
-    res.json(menu);
+    // Après un redémarrage de Render, tous les postes rechargent le menu en même temps :
+    // une seule lecture Firestore pour tous (voir cache.remember).
+    res.json(await menuEnCache());
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -37,6 +37,8 @@ jobs:
           pct=$(jq -r '.pourcentage // 0' /tmp/quota.json)
           reads=$(jq -r '.lecturesAujourdhui // 0' /tmp/quota.json)
           echo "Lectures Firestore aujourd'hui : $reads ($pct% du quota gratuit)"
+          echo "Routes les plus coûteuses :"
+          jq -r '(.parRoute // [])[:10][] | "  \(.lectures)\t\(.route)"' /tmp/quota.json || true
           # Comparaison en entier (bash ne fait pas de flottants) : pct >= 80.0 ⇔ pct*10 >= 800
           pct_x10=$(jq -r '((.pourcentage // 0) * 10) | floor' /tmp/quota.json)
           if [ "$pct_x10" -ge 800 ]; then

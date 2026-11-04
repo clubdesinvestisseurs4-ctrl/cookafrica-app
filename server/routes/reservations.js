@@ -10,7 +10,9 @@ const { formatMontant } = require('../utils/currency');
 const router = express.Router();
 
 function invalidate() {
-  cache.del('reservations:list', 'factures:list', 'stats:dashboard', 'stats:notifications');
+  // `factures:list*` : tenues à jour par l'écriture de la facture (voir firebase-admin.js).
+  cache.del('reservations:list', 'stats:dashboard', 'stats:notifications');
+  cache.delPrefix('stats:bilan:');
 }
 
 function round2(n) {

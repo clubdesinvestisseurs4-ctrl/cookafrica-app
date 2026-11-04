@@ -7,6 +7,8 @@ const {
   computeBilan, statsParMode, series, estVente, modeDeFacture, estSupplement,
 } = require('../utils/bilan');
 
+const { listeParPeriode, menuEnCache } = require('../utils/listes');
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 const router = express.Router();
@@ -21,20 +23,28 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
 
     const today = new Date().toISOString().split('T')[0];
 
-    const [todayCommandesSnap, activeCommandesSnap, facturesSnap] = await Promise.all([
-      db.collection('commandes').where('date', '==', today).get(),
-      db.collection('commandes').where('statut', 'in', ['en-attente', 'en-preparation']).get(),
-      db.collection('factures').where('date', '==', today).get(),
+    // Commandes et factures du jour : mêmes listes en cache que les pages Commandes et
+    // Facturation (tenues à jour à l'écriture) — recalculer le tableau de bord après une
+    // écriture ne relit donc plus la journée. Seules les commandes encore actives (pour
+    // garder celles des jours précédents, rares) font l'objet d'une petite requête à part,
+    // refaite après chaque écriture sur commandes/factures (voir leurs invalidate()).
+    const [commandesJourListe, facturesJour, activesAnterieures] = await Promise.all([
+      listeParPeriode('commandes', today, today),
+      listeParPeriode('factures', today, today),
+      cache.remember('commandes:actives-anterieures', 60_000, async () => {
+        const snap = await db.collection('commandes').where('statut', 'in', ['en-attente', 'en-preparation']).get();
+        return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => c.date !== today);
+      }),
     ]);
 
     // Merge and deduplicate commandes (today's + active from any date)
     const commandesMap = new Map();
-    todayCommandesSnap.docs.forEach(d => commandesMap.set(d.id, { id: d.id, ...d.data() }));
-    activeCommandesSnap.docs.forEach(d => commandesMap.set(d.id, { id: d.id, ...d.data() }));
-    const commandes = Array.from(commandesMap.values());
+    commandesJourListe.forEach(c => commandesMap.set(c.id, c));
+    activesAnterieures.forEach(c => commandesMap.set(c.id, c));
+    const commandes = Array.from(commandesMap.values())
+      .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
 
-    const factures = facturesSnap.docs.map(d => d.data())
-      .filter(f => !f.type || f.type === 'facture');
+    const factures = facturesJour.filter(f => !f.type || f.type === 'facture');
 
     const commandesJour    = commandes.filter(c => c.date === today);
     const commandesActives = commandes.filter(c => ['en-attente', 'en-preparation'].includes(c.statut));
@@ -85,30 +95,31 @@ router.get('/rapport', authenticateToken, async (req, res) => {
   try {
     const { debut, fin } = req.query;
 
-    // Sans date, cette route lit les collections factures/commandes en entier (aucun
-    // filtre Firestore possible) : cache plus long qu'ailleurs (un rapport n'a pas
-    // besoin d'être à la seconde près), clé par période pour ne pas mélanger les vues.
+    // Période bornée : recalculé à chaque fois à partir des listes en cache (toujours à
+    // jour, aucune relecture), donc jamais en retard sur une vente. Sans borne, la route
+    // lit les collections en entier : résultat gardé 5 min, clé par période.
+    const borne = !!(debut && fin);
     const cacheKey = `stats:rapport:${debut || ''}:${fin || ''}`;
-    const cached = cache.get(cacheKey);
+    const cached = borne ? null : cache.get(cacheKey);
     if (cached) return res.json(cached);
 
-    let query = db.collection('factures');
-    if (debut) query = query.where('date', '>=', debut);
-    if (fin)   query = query.where('date', '<=', fin);
+    // Période bornée : mêmes listes en cache que /bilan, /api/commandes et /api/factures
+    // (tenues à jour à l'écriture, voir utils/listes.js) — le rapport et le bilan, chargés
+    // ensemble par la page Rapports, ne lisent plus deux fois les mêmes documents. Sans
+    // borne (historique complet), lecture directe : trop gros pour rester en mémoire.
+    const lire = async (col) => {
+      if (debut && fin) return listeParPeriode(col, debut, fin);
+      let q = db.collection(col);
+      if (debut) q = q.where('date', '>=', debut);
+      if (fin)   q = q.where('date', '<=', fin);
+      const snap = await q.get();
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    };
 
-    // Commandes en ligne sur la période : un seul filtre Firestore sur 'date' (même champ
-    // que ci-dessus, donc pas d'index composite requis), le tri par source/statut se fait
-    // ensuite en mémoire — mêmes précautions que /api/commandes.
-    let commandesQuery = db.collection('commandes');
-    if (debut) commandesQuery = commandesQuery.where('date', '>=', debut);
-    if (fin)   commandesQuery = commandesQuery.where('date', '<=', fin);
-
-    const [snap, commandesSnap, menuSnap] = await Promise.all([
-      query.get(), commandesQuery.get(), db.collection('menu').get(),
+    const [facturesListe, commandesPeriode, menu] = await Promise.all([
+      lire('factures'), lire('commandes'), menuEnCache(),
     ]);
-
-    const factures = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const commandesPeriode = commandesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const factures = [...facturesListe];
 
     // Commandes en ligne, badgées "Client" (commandeClient) ou "Caisse" (saisie par la
     // caissière) confondues — annulées exclues, ce compteur ne reflète que le volume traité.
@@ -147,9 +158,8 @@ router.get('/rapport', authenticateToken, async (req, res) => {
     // a été renommé depuis) ; un bucket "hors-catalogue" recueille les ventes orphelines (menu
     // item supprimé depuis, ou article ajouté sans lien catalogue) pour ne perdre aucune vente.
     const ventesParMenuItem = {};
-    menuSnap.docs.forEach(d => {
-      const m = d.data();
-      ventesParMenuItem[d.id] = { nom: m.nom, categorie: m.categorie || 'Autre', quantite: 0, total: 0 };
+    menu.forEach(m => {
+      ventesParMenuItem[m.id] = { nom: m.nom, categorie: m.categorie || 'Autre', quantite: 0, total: 0 };
     });
     const ventesHorsCatalogue = {};
 
@@ -218,7 +228,7 @@ router.get('/rapport', authenticateToken, async (req, res) => {
         supplement: estSupplement(commandesById.get(f.commandeId)),
       })),
     };
-    cache.set(cacheKey, result, 5 * 60_000);
+    if (!borne) cache.set(cacheKey, result, 5 * 60_000);
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -240,14 +250,17 @@ router.get('/bilan', authenticateToken, requireRole('admin'), async (req, res) =
     const cached = cache.get(cacheKey);
     if (cached) return res.json(cached);
 
-    const parDate = (col) => db.collection(col).where('date', '>=', debut).where('date', '<=', fin).get();
-    const [facturesSnap, commandesSnap, depensesSnap] = await Promise.all([
-      parDate('factures'), parDate('commandes'), parDate('depenses'),
+    // Factures et commandes : listes partagées avec /rapport (même période, chargées en
+    // même temps par la page Rapports) et tenues à jour à l'écriture. Dépenses : petite
+    // collection, lue directement.
+    const [factures, commandes, depensesSnap] = await Promise.all([
+      listeParPeriode('factures', debut, fin),
+      listeParPeriode('commandes', debut, fin),
+      db.collection('depenses').where('date', '>=', debut).where('date', '<=', fin).get(),
     ]);
-    const docs = (snap) => snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
     const result = computeBilan({
-      factures: docs(facturesSnap), commandes: docs(commandesSnap), depenses: docs(depensesSnap), debut, fin,
+      factures, commandes, depenses: depensesSnap.docs.map(d => ({ id: d.id, ...d.data() })), debut, fin,
     });
     cache.set(cacheKey, result, 2 * 60_000);
     res.json(result);

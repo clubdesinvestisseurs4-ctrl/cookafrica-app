@@ -88,6 +88,9 @@ app.get('/api/events', (req, res) => {
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
+// Attribue chaque lecture Firestore à sa route (détail du quota, voir routes/quota.js).
+app.use(require('./firebase-admin').suivreLecturesParRoute);
+
 app.post('/api/auth/login', authLimiter);
 app.post('/api/auth/exchange-switch-token', authLimiter);
 app.use('/api/auth',          require('./routes/auth'));

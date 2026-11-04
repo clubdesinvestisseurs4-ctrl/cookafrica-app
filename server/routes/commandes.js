@@ -12,21 +12,17 @@ const {
 } = require('../utils/commandes');
 const { ROLES_MODE } = require('../utils/commandeUpdate');
 const { createFactureFromCommande } = require('../utils/factures');
+const { listeParPeriode, LISTE_TTL } = require('../utils/listes');
 const { formatMontant } = require('../utils/currency');
 
 const router = express.Router();
 
-// Invalide tous les caches commandes + factures (à appeler après chaque écriture).
-// `commandes:list:<aujourd'hui>` en plus des clés globales : c'est la vue du jour qui
-// doit rester instantanément fraîche (voir GET / ci-dessous) ; les autres jours suivent
-// juste leur TTL normal, sans besoin d'être invalidés en temps réel - SAUF si on vient
-// justement d'écrire une commande antidatée (resolveCommandeDate) : sa propre clé de jour
-// est alors explicitement nettoyée via `autreDate` pour rester cohérente immédiatement.
-function invalidate(autreDate) {
-  const today = new Date().toISOString().split('T')[0];
-  const keys = ['commandes:list', `commandes:list:${today}`, 'factures:list', 'stats:dashboard', 'stats:notifications'];
-  if (autreDate && autreDate !== today) keys.push(`commandes:list:${autreDate}`);
-  cache.del(...keys);
+// À appeler après chaque écriture. Les listes de commandes/factures (`*:list*`) ne sont
+// plus vidées ici : chaque écriture les met à jour en mémoire (patchDoc, branché dans
+// firebase-admin.js). Seules les vues calculées (dashboard, bilan) sont recalculées — à
+// partir de ces listes, donc presque sans relecture.
+function invalidate() {
+  cache.del('stats:dashboard', 'stats:notifications', 'commandes:actives-anterieures');
   cache.delPrefix('stats:bilan:'); // le mode d'une commande ventile le bilan
 }
 
@@ -35,36 +31,23 @@ router.get('/', authenticateToken, async (req, res) => {
   try {
     const { statut, date, debut, fin, source } = req.query;
 
-    let all;
-    if (date && !debut && !fin) {
-      // Cas de très loin le plus fréquent (vue "Commandes" par défaut sur aujourd'hui,
-      // relue à chaque événement SSE pendant le service) : filtre Firestore directement
-      // sur ce jour plutôt que de rescanner les 200 dernières commandes TOUS jours
-      // confondus. Aux heures de pointe, ça ramène le coût de CHAQUE relecture de ~200
-      // lectures fixes à la taille réelle du jour (souvent bien moins) — voir pics de
-      // lecture Firestore du 26/09 corrélés aux heures de repas.
-      const cacheKey = `commandes:list:${date}`;
-      all = cache.get(cacheKey);
-      if (!all) {
-        const snap = await db.collection('commandes').where('date', '==', date).get();
-        all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        cache.set(cacheKey, all, 15_000);
-      }
-    } else {
-      // Plage de dates ou vue sans filtre (ex. onglet Commandes en ligne) : le cache des
-      // 200 dernières commandes suffit pour ce cas d'usage courant (fenêtre récente),
-      // mais peut tronquer une plage large/ancienne — pour des statistiques exhaustives
-      // sur une longue période, voir /api/stats/rapport qui interroge Firestore
-      // directement, sans ce plafond.
-      all = cache.get('commandes:list');
-      if (!all) {
+    // Un jour (vue par défaut, relue à chaque événement SSE pendant le service) ou une
+    // période : filtre Firestore sur `date`, on ne lit que les commandes concernées. Les
+    // listes restent en cache et sont tenues à jour à chaque écriture (patchDoc, voir
+    // firebase-admin.js) : un événement SSE ne déclenche plus de relecture de la journée.
+    // Avant le 2026-11-04, une période (onglet Commandes en ligne, même sur un seul jour)
+    // relisait les 200 dernières commandes à chaque rafraîchissement.
+    const d1 = date && !debut && !fin ? date : debut;
+    const d2 = date && !debut && !fin ? date : fin;
+    const all = d1 && d2
+      ? await listeParPeriode('commandes', d1, d2)
+      : await cache.remember('commandes:list', LISTE_TTL, async () => {
+        // Vue sans filtre : les 200 plus récentes.
         const snap = await db.collection('commandes').orderBy('createdAt', 'desc').limit(200).get();
-        all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        cache.set('commandes:list', all, 15_000);
-      }
-    }
+        return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      });
 
-    let result = all;
+    let result = [...all];
     if (statut) result = result.filter(c => c.statut === statut);
     if (date)   result = result.filter(c => c.date === date);
     if (debut)  result = result.filter(c => c.date >= debut);

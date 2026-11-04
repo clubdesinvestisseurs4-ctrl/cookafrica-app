@@ -1193,7 +1193,10 @@ async function loadCommandes() {
   if (statut) url += `statut=${statut}&`;
   if (date)   url += `date=${date}`;
 
-  const [commandesRes, factures] = await Promise.all([api(url), api('/api/factures')]);
+  // Factures du même jour seulement (une facture porte la date de sa commande) : sans
+  // période, le serveur relisait les 300 dernières factures à chaque rafraîchissement.
+  const facturesUrl = date ? `/api/factures?debut=${date}&fin=${date}` : '/api/factures';
+  const [commandesRes, factures] = await Promise.all([api(url), api(facturesUrl)]);
   // Commandes créées hors-ligne, pas encore synchronisées : affichées tout de
   // suite (respecte le filtre statut si un filtre précis est actif).
   const pending = getPendingCommandes().filter(c => !statut || c.statut === statut);
@@ -1708,7 +1711,8 @@ async function loadCommandesLigne() {
   if (debut) url += `&debut=${debut}`;
   if (fin)   url += `&fin=${fin}`;
 
-  const [commandesRes, factures] = await Promise.all([api(url), api('/api/factures')]);
+  const facturesUrl = debut && fin ? `/api/factures?debut=${debut}&fin=${fin}` : '/api/factures';
+  const [commandesRes, factures] = await Promise.all([api(url), api(facturesUrl)]);
   const pendingEnLigne = getPendingCommandes().filter(c => c.source === 'en-ligne');
   if (!commandesRes && pendingEnLigne.length === 0) return;
   const commandes = [...pendingEnLigne, ...(commandesRes || [])];

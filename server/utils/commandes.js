@@ -1,5 +1,6 @@
 // Logique partagée entre la création de commande "staff" (routes/commandes.js)
 // et la création de commande "client" (routes/commande-publique.js).
+const cache = require('./cache');
 
 async function getNextNumero(db) {
   const snap = await db.collection('commandes').orderBy('createdAt', 'desc').limit(1).get();
@@ -9,13 +10,25 @@ async function getNextNumero(db) {
   return `CMD-${String(lastNum + 1).padStart(4, '0')}`;
 }
 
+// Identifiants des fiches stocks_plats d'un jour, en cache : avant, chaque article de chaque
+// commande et de chaque paiement coûtait une lecture, même les jours (la grande majorité
+// depuis juin) où aucun stock n'a été saisi. Les fiches ne sont créées que par
+// POST /api/stocks/plats, qui vide cette clé.
+function stocksDuJour(db, date) {
+  return cache.remember(`stocks_plats:jour:${date}`, 10 * 60_000, async () => {
+    const snap = await db.collection('stocks_plats').where('date', '==', date).get();
+    return new Set(snap.docs.map(d => d.id));
+  });
+}
+
 // Décrémente quantiteRestante dans stocks_plats pour chaque article commandé.
 // Retourne la liste des noms d'articles désormais épuisés.
 async function decrementStocksForItems(db, items, now) {
   const today = now.toISOString().split('T')[0];
   const epuises = [];
+  const fiches = await stocksDuJour(db, today);
   for (const item of items) {
-    if (!item.menuItemId) continue;
+    if (!item.menuItemId || !fiches.has(`${item.menuItemId}_${today}`)) continue;
     const stockRef = db.collection('stocks_plats').doc(`${item.menuItemId}_${today}`);
     const stockDoc = await stockRef.get();
     if (stockDoc.exists) {
@@ -160,7 +173,7 @@ function resolveCommandeDate(requestedDate, role, now) {
 }
 
 module.exports = {
-  getNextNumero, decrementStocksForItems, determineModeConsommation, resolveCommandeDate,
+  getNextNumero, decrementStocksForItems, stocksDuJour, determineModeConsommation, resolveCommandeDate,
   MODES_CONSOMMATION, modeParDefaut, resolveModeConsommation, modeApresFacture,
   estSupplementAuto, resolveSupplement, supplementApresFacture, chargerCommandeParent, champsRattachement,
 };
