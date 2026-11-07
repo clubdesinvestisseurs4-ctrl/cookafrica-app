@@ -1,34 +1,47 @@
 const express = require('express');
 const { db } = require('../firebase-admin');
 const { authenticateService } = require('../middleware/serviceAuth');
+const { listeParPeriode } = require('../utils/listes');
+const { periodeValide, chiffreAffaires, ventesParJour, depensesPourCompta } = require('../utils/integration');
 
 const router = express.Router();
 
-// GET /api/integration/ca?debut=YYYY-MM-DD&fin=YYYY-MM-DD — utilisé par ERP-Compta ("Audit Flash")
-// pour comparer le chiffre d'affaires réel au versement bancaire déclaré. Seules les factures
-// payées comptent (base encaissement, cohérente avec un rapprochement de trésorerie) — une
-// facture "partielle" ne représente pas encore de l'argent effectivement reçu.
+// Toutes les routes ici sont appelées par ERP-Compta (clé de service X-Service-Key,
+// INTEGRATION_API_KEY), jamais par l'app elle-même.
+
+// GET /api/integration/ca?debut=&fin= — "Audit Flash" : CA encaissé (factures payées,
+// sans les bons CUI/BAR) comparé côté ERP au versement bancaire déclaré.
 router.get('/ca', authenticateService, async (req, res) => {
   try {
     const { debut, fin } = req.query;
-    if (!debut || !fin) {
-      return res.status(400).json({ error: 'debut et fin sont requis' });
+    if (!periodeValide(debut, fin)) return res.status(400).json({ error: 'debut et fin (AAAA-MM-JJ) sont requis' });
+    const factures = await listeParPeriode('factures', debut, fin);
+    res.json({ debut, fin, ...chiffreAffaires(factures) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur interne du serveur' });
+  }
+});
+
+// GET /api/integration/journal?debut=&fin= — ce que l'ERP transforme en écritures :
+// recettes encaissées par jour et par mode de paiement + dépenses saisies dans l'app.
+// Limité à 92 jours (un trimestre) pour borner les lectures Firestore.
+router.get('/journal', authenticateService, async (req, res) => {
+  try {
+    const { debut, fin } = req.query;
+    if (!periodeValide(debut, fin)) return res.status(400).json({ error: 'debut et fin (AAAA-MM-JJ) sont requis' });
+    if ((Date.parse(fin) - Date.parse(debut)) / 86_400_000 > 92) {
+      return res.status(400).json({ error: 'Période limitée à 3 mois' });
     }
-
-    const snap = await db.collection('factures')
-      .where('date', '>=', debut)
-      .where('date', '<=', fin)
-      .get();
-
-    const factures = snap.docs.map(d => d.data()).filter(f => f.statut === 'payee');
-
-    const parMode = {};
-    factures.forEach(f => {
-      parMode[f.modePaiement] = (parMode[f.modePaiement] || 0) + (f.total || 0);
+    const [factures, depSnap] = await Promise.all([
+      listeParPeriode('factures', debut, fin),
+      db.collection('depenses').where('date', '>=', debut).where('date', '<=', fin).get(),
+    ]);
+    res.json({
+      debut, fin,
+      ventes: ventesParJour(factures),
+      depenses: depensesPourCompta(depSnap.docs.map(d => ({ id: d.id, ...d.data() }))),
     });
-    const total = factures.reduce((s, f) => s + (f.total || 0), 0);
-
-    res.json({ debut, fin, total, nombre: factures.length, parMode });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erreur interne du serveur' });
