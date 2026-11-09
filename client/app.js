@@ -3162,6 +3162,126 @@ async function exportCSV() {
   a.click(); URL.revokeObjectURL(url);
 }
 
+// Export PDF : rapport A4 structuré (pas un CSV), ouvert dans une fenêtre d'impression où le
+// navigateur propose « Enregistrer au format PDF » (ordinateur comme téléphone, sans librairie).
+// 1. Recettes (factures payées) par jour, sur place / à emporter ; 2. Dépenses, détail puis par
+// catégorie ; 3. Le point : entrées − dépenses = résultat. Mêmes chiffres que le bilan à l'écran.
+async function exportPDF() {
+  const r = state.rapportData;
+  if (!r?.data) { toast(t('rapports.generer_dabord'), 'warning'); return; }
+  const { debut, fin } = r;
+  const b = debut && fin ? state.bilan : null;
+  if (!b) { toast(t('export.pdf_periode_requise'), 'warning'); return; }
+
+  // Fenêtre ouverte tout de suite (avant l'appel réseau) : sinon le navigateur la bloque.
+  const w = window.open('', '_blank');
+  if (!w) { toast(t('export.pdf_popup_bloquee'), 'warning'); return; }
+  w.document.write('<p style="font-family:sans-serif">…</p>');
+
+  showLoader();
+  const res = await api(`/api/depenses?debut=${debut}&fin=${fin}`);
+  hideLoader();
+  const depenses = [...(res?.depenses || [])].sort((x, y) => x.date.localeCompare(y.date));
+
+  const e = escapeHtml;
+  const n = (v) => Number(v || 0).toLocaleString(SITE.currency.locale);
+  const devise = SITE.currency.label;
+  const periode = t('depenses.du_au', { debut: fmtDateOnly(debut), fin: fmtDateOnly(fin) });
+  const jours = (b.parJour || []).filter(j => j.entrees);
+  const somme = (cle) => jours.reduce((s, j) => s + (j[cle] || 0), 0);
+  const aNonClasse = somme('non-classe') > 0;
+  const parCat = Object.entries(b.depensesParCategorie || {}).sort((x, y) => y[1] - x[1]);
+  const mc = b.parMode || {};
+  const resultatPositif = (b.resultat || 0) >= 0;
+  const colNC = (v) => (aNonClasse ? `<td class="n">${v}</td>` : '');
+
+  const recettes = `
+    <h2>1. ${e(t('export.pdf_recettes'))}</h2>
+    <table>
+      <thead><tr><th>${e(t('common.date'))}</th><th class="n">${e(t('mode.sur_place'))}</th><th class="n">${e(t('mode.a_emporter'))}</th>
+        ${aNonClasse ? `<th class="n">${e(t('mode.non_classe'))}</th>` : ''}<th class="n">${e(t('bilan.entrees'))}</th></tr></thead>
+      <tbody>${jours.map(j => `<tr><td>${e(fmtDateOnly(j.date))}</td><td class="n">${n(j['sur-place'])}</td>
+        <td class="n">${n(j['a-emporter'])}</td>${colNC(n(j['non-classe']))}<td class="n"><b>${n(j.entrees)}</b></td></tr>`).join('')
+        || `<tr><td colspan="5" class="vide">${e(t('export.pdf_aucune_recette'))}</td></tr>`}</tbody>
+      <tfoot><tr><td>${e(t('export.total'))}</td><td class="n">${n(somme('sur-place'))}</td><td class="n">${n(somme('a-emporter'))}</td>
+        ${colNC(n(somme('non-classe')))}<td class="n">${n(b.entrees)}</td></tr></tfoot>
+    </table>
+    <p class="note">${e(t('export.nb_factures_payees'))} : ${n(b.nbVentes)}${b.nonEncaisse ? ` · ${e(t('export.non_encaisse'))} : ${n(b.nonEncaisse)} ${e(devise)}` : ''}</p>`;
+
+  const lignesDep = `
+    <h2>2. ${e(t('nav.depenses'))}</h2>
+    <table>
+      <thead><tr><th>${e(t('common.date'))}</th><th>${e(t('depenses.th_libelle'))}</th><th>${e(t('depenses.th_categorie'))}</th>
+        <th>${e(t('depenses.th_paiement'))}</th><th class="n">${e(t('depenses.th_montant'))}</th></tr></thead>
+      <tbody>${depenses.map(d => `<tr><td>${e(fmtDateOnly(d.date))}</td><td>${e(d.libelle)}</td><td>${e(labelCategorieDepense(d.categorie))}</td>
+        <td>${e(labelModePaiement(d.modePaiement))}</td><td class="n">${n(d.montant)}</td></tr>`).join('')
+        || `<tr><td colspan="5" class="vide">${e(t('depenses.aucune'))}</td></tr>`}</tbody>
+      <tfoot><tr><td colspan="4">${e(t('export.total'))}</td><td class="n">${n(b.depenses)}</td></tr></tfoot>
+    </table>
+    <h3>${e(t('depenses.par_categorie'))}</h3>
+    <table class="etroit">
+      <tbody>${parCat.map(([cat, m]) => `<tr><td>${e(labelCategorieDepense(cat))}</td><td class="n">${n(m)}</td>
+        <td class="n pct">${b.depenses ? Math.round(m * 100 / b.depenses) : 0} %</td></tr>`).join('')
+        || `<tr><td colspan="3" class="vide">${e(t('depenses.aucune'))}</td></tr>`}</tbody>
+      <tfoot><tr><td>${e(t('export.total'))}</td><td class="n">${n(b.depenses)}</td><td></td></tr></tfoot>
+    </table>`;
+
+  const point = `
+    <h2>3. ${e(t('export.pdf_le_point'))}</h2>
+    <table class="etroit point">
+      <tbody>
+        <tr><td>${e(t('bilan.entrees'))} (${e(t('export.factures_payees'))})</td><td class="n">${n(b.entrees)}</td></tr>
+        <tr><td>− ${e(t('bilan.depenses'))}</td><td class="n">${n(b.depenses)}</td></tr>
+      </tbody>
+      <tfoot><tr class="${resultatPositif ? 'pos' : 'neg'}"><td>= ${e(t('bilan.resultat'))} (${e(t(resultatPositif ? 'export.pdf_benefice' : 'export.pdf_perte'))})</td>
+        <td class="n">${n(b.resultat)} ${e(devise)}</td></tr></tfoot>
+    </table>
+    <table class="etroit">
+      <thead><tr><th></th><th class="n">${e(t('mode.sur_place'))}</th><th class="n">${e(t('mode.a_emporter'))}</th></tr></thead>
+      <tbody>
+        <tr><td>${e(t('modestats.ca'))}</td><td class="n">${n(mc['sur-place']?.ca)}</td><td class="n">${n(mc['a-emporter']?.ca)}</td></tr>
+        <tr><td>${e(t('modestats.commandes'))}</td><td class="n">${n(mc['sur-place']?.commandes)}</td><td class="n">${n(mc['a-emporter']?.commandes)}</td></tr>
+      </tbody>
+    </table>
+    <p class="note">${e(t('export.nb_depenses'))} : ${n(b.nbDepenses)}</p>`;
+
+  w.document.open();
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${e(t('export.titre'))} ${e(debut)} – ${e(fin)}</title>
+    <style>
+      @page { size: A4; margin: 14mm 12mm; }
+      * { box-sizing: border-box; }
+      body { font-family: Arial, Helvetica, sans-serif; color: #111; font-size: 11pt; margin: 0; padding: 8px; }
+      header { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; border-bottom: 2px solid #111; padding-bottom: 6px; margin-bottom: 14px; }
+      header h1 { font-size: 18pt; margin: 0; }
+      header .meta { text-align: right; font-size: 9.5pt; line-height: 1.5; }
+      h2 { font-size: 13pt; margin: 18px 0 6px; border-left: 4px solid #111; padding-left: 8px; }
+      h3 { font-size: 11pt; margin: 12px 0 4px; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+      tr { page-break-inside: avoid; }
+      thead { display: table-header-group; }
+      th, td { border: 1px solid #999; padding: 4px 6px; text-align: left; vertical-align: top; }
+      th { background: #eee; font-size: 9.5pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      tfoot td { font-weight: bold; border-top: 2px solid #111; }
+      .n { text-align: right; white-space: nowrap; }
+      .pct { color: #555; width: 60px; }
+      .vide { text-align: center; color: #666; font-style: italic; }
+      .etroit { width: auto; min-width: 60%; }
+      .point td { font-size: 12pt; }
+      .point tfoot td { font-size: 13pt; }
+      .pos td:last-child { color: #0a6b2d; } .neg td:last-child { color: #b00020; }
+      .note { font-size: 9.5pt; color: #444; margin: 2px 0 0; }
+      footer { margin-top: 18px; font-size: 8.5pt; color: #666; border-top: 1px solid #ccc; padding-top: 4px; }
+    </style></head><body>
+    <header><div><h1>${e(t('export.titre'))}</h1><div>${e(t('export.pdf_montants_en', { devise }))}</div></div>
+      <div class="meta">${e(t('export.periode'))} : <b>${e(periode)}</b><br>${e(t('export.genere_le'))} ${e(new Date().toLocaleString(SITE.currency.locale))}</div></header>
+    ${recettes}${lignesDep}${point}
+    <footer>${e(t('export.pdf_pied'))}</footer>
+    </body></html>`);
+  w.document.close();
+  // Script du rapport bloqué par la CSP de l'app : on déclenche l'impression d'ici.
+  setTimeout(() => { try { w.focus(); w.print(); } catch { /* l'utilisateur imprime à la main */ } }, 400);
+}
+
 // ─── DÉPENSES (admin) ──────────────────────────────────
 // Clés identiques à server/utils/depenses.js#CATEGORIES_DEPENSES.
 const CATEGORIES_DEPENSES = [
@@ -4203,6 +4323,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Rapports ──
   document.getElementById('btn-load-rapport').addEventListener('click', loadRapport);
   document.getElementById('btn-export-csv').addEventListener('click', exportCSV);
+  document.getElementById('btn-export-pdf').addEventListener('click', exportPDF);
 
   // ── Sessions ──
   document.getElementById('btn-filter-sessions').addEventListener('click', loadSessions);

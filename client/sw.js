@@ -41,7 +41,7 @@
 // v3.10.0 : le tri par montant (v3.9.0) ne correspondait pas à ce qui était attendu —
 // tri désormais par numéro de facture croissant (FACT-0001, 0002…).
 // v3.11.0 : tri inversé — numéro de facture décroissant (les plus récentes d'abord).
-const SW_VERSION = 'cookafrica-v3.13.1'; // v3.13.1 : Commandes / Commandes en ligne ne demandent plus que les factures de la période
+const SW_VERSION = 'cookafrica-v3.14.0'; // v3.14.0 : export PDF structuré (recettes, dépenses, le point)
 const SHELL_CACHE = `cookafrica-shell-${SW_VERSION}`;
 
 // App shell : ce qui ne change pas à chaque commande, précaché pour un premier
