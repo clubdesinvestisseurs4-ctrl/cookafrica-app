@@ -2167,6 +2167,14 @@ window.aperçuFacture = async (id) => {
     f = res;
   }
 
+  // Bon cadeau créé dès l'aperçu / impression, payé ou non (sur place, buffet, ≥ 10 000) :
+  // le serveur décide et renvoie toujours le même bon si on réimprime.
+  if (!f.bonFidelite && navigator.onLine && (f.items || []).some(i => i.categorie === 'Buffet') && f.total >= 10000
+      && ['admin', 'caissiere', 'caissier-en-ligne'].includes(state.user?.role)) {
+    const r = await api(`/api/fidelite/factures/${encodeURIComponent(id)}/bon`, { method: 'POST' });
+    if (r?.bonFidelite) f = { ...f, bonFidelite: r.bonFidelite };
+  }
+
   document.getElementById('apercu-modal-title').textContent = t('modal.apercu_facture_title');
   state.printTitle = t('print.titre_facture_defaut');
 
@@ -2292,6 +2300,7 @@ async function verifierBon(brut) {
   const zone = document.getElementById('bon-resultat');
   const btn = document.getElementById('btn-bon-valider');
   btn.style.display = 'none';
+  document.getElementById('bon-facture-zone').style.display = 'none';
   if (!code) return;
   document.getElementById('bon-code').value = code;
   zone.innerHTML = '<p style="color:var(--gray)">…</p>';
@@ -2303,19 +2312,65 @@ async function verifierBon(brut) {
       <p style="font-size:1.15rem;font-weight:700"><i class="fas ${r.valide ? 'fa-gift' : 'fa-times-circle'}"></i> ${escapeHtml(r.message)}</p>
       ${b ? `<p style="font-size:.8rem;margin-top:6px;color:var(--gray)">${t('fidelite.facture_origine', { numero: escapeHtml(b.factureNumero || ''), date: fmtDateOnly(b.date), montant: fmt(b.montantFacture) })}</p>` : ''}
     </div>`;
-  if (r.valide) { btn.style.display = 'inline-block'; btn.dataset.code = code; }
+  if (!r.valide) return;
+  // Factures en cours (non payées), la plus récente d'abord, sauf celle qui a fait gagner le bon.
+  const liste = (await api('/api/factures?statut=partielle')) || [];
+  const enCours = liste.filter(x => x.id !== b.factureId)
+    .sort((a, c) => String(c.createdAt || '').localeCompare(String(a.createdAt || '')));
+  const sel = document.getElementById('bon-facture');
+  sel.innerHTML = enCours.length
+    ? enCours.map(x => `<option value="${x.id}">${escapeHtml(x.numero)}${x.tableNumero ? ` — table ${escapeHtml(x.tableNumero)}` : ''} — ${fmt(x.total)}</option>`).join('')
+    : `<option value="">${t('fidelite.aucune_facture')}</option>`;
+  document.getElementById('bon-facture-zone').style.display = 'block';
+  if (enCours.length) { btn.style.display = 'inline-block'; btn.dataset.code = code; }
 }
 
 async function utiliserBon() {
   const code = document.getElementById('btn-bon-valider').dataset.code;
-  if (!code) return;
+  const factureId = document.getElementById('bon-facture').value;
+  if (!code || !factureId) return;
   showLoader();
-  const r = await api(`/api/fidelite/bons/${encodeURIComponent(code)}/utiliser`, { method: 'POST' });
+  const r = await api(`/api/fidelite/bons/${encodeURIComponent(code)}/utiliser`, { method: 'POST', body: JSON.stringify({ factureId }) });
   hideLoader();
   if (!r) return;
   toast(r.message, r.valide ? 'success' : 'error');
-  await verifierBon(code);
+  if (!r.valide) return;
+  document.getElementById('btn-bon-valider').style.display = 'none';
+  document.getElementById('bon-facture-zone').style.display = 'none';
+  document.getElementById('bon-resultat').innerHTML = `<div style="padding:12px;border-radius:8px;text-align:center;background:#ecfdf5;color:#065f46;font-weight:700"><i class="fas fa-check-circle"></i> ${escapeHtml(r.message)}</div>`;
+  if (state.currentPage === 'facturation') loadFactures();
 }
+
+const LIBELLES_PALIER = { bronze: '10 000 – 19 999', argent: '20 000 – 39 999', or: '40 000 et +' };
+async function chargerStatsBons() {
+  const zone = document.getElementById('rapport-bons');
+  if (!zone) return;
+  const debut = document.getElementById('rapp-start').value;
+  const fin = document.getElementById('rapp-end').value;
+  const q = new URLSearchParams();
+  if (debut) q.set('debut', debut);
+  if (fin) q.set('fin', fin);
+  const s = await api(`/api/fidelite/stats?${q}`);
+  if (!s) { zone.textContent = ''; return; }
+  if (!s.distribues) { zone.textContent = 'Aucun bon distribué sur cette période.'; return; }
+  const ligne = (lib, d, u, extra = '') => `<tr><td>${lib}</td><td style="text-align:center">${d}</td><td style="text-align:center">${u}</td><td style="text-align:center">${d ? Math.round((u / d) * 100) : 0} %</td>${extra}</tr>`;
+  zone.innerHTML = `
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;color:var(--text)">
+      <div class="stat-card" style="flex:1;min-width:140px;padding:12px;border:1px solid var(--border);border-radius:8px"><div style="font-size:1.5rem;font-weight:700">${s.distribues}</div><div style="color:var(--gray);font-size:.85rem">bons imprimés</div></div>
+      <div class="stat-card" style="flex:1;min-width:140px;padding:12px;border:1px solid var(--border);border-radius:8px"><div style="font-size:1.5rem;font-weight:700">${s.utilises}</div><div style="color:var(--gray);font-size:.85rem">clients revenus (bons utilisés)</div></div>
+      <div class="stat-card" style="flex:1;min-width:140px;padding:12px;border:1px solid var(--border);border-radius:8px"><div style="font-size:1.5rem;font-weight:700">${s.tauxRetour} %</div><div style="color:var(--gray);font-size:.85rem">taux de retour</div></div>
+      <div class="stat-card" style="flex:1;min-width:140px;padding:12px;border:1px solid var(--border);border-radius:8px"><div style="font-size:1.5rem;font-weight:700">${fmt(s.offert)}</div><div style="color:var(--gray);font-size:.85rem">coût des cadeaux offerts</div></div>
+    </div>
+    <div class="table-wrapper"><table class="data-table">
+      <thead><tr><th>Lot</th><th>Gagnés</th><th>Utilisés</th><th>Retour</th><th>Coût</th></tr></thead>
+      <tbody>${Object.values(s.parLot).map(l => ligne(escapeHtml(l.libelle), l.distribues, l.utilises, `<td style="text-align:right">${fmt(l.offert)}</td>`)).join('')}</tbody>
+    </table></div>
+    <div class="table-wrapper" style="margin-top:10px"><table class="data-table">
+      <thead><tr><th>Addition d'origine</th><th>Bons</th><th>Utilisés</th><th>Retour</th></tr></thead>
+      <tbody>${['bronze', 'argent', 'or'].filter(p => s.parPalier[p]).map(p => ligne(LIBELLES_PALIER[p], s.parPalier[p].distribues, s.parPalier[p].utilises)).join('')}</tbody>
+    </table></div>`;
+}
+document.getElementById('btn-load-rapport')?.addEventListener('click', chargerStatsBons);
 
 async function ouvrirScanBon(codeInitial) {
   document.getElementById('bon-resultat').innerHTML = '';

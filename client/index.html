@@ -544,6 +544,8 @@
             </tbody>
           </table>
         </div>
+        <h3 style="margin:24px 0 10px"><i class="fas fa-gift"></i> <span data-i18n="fidelite.stats_titre">Bons cadeaux (QR des reçus)</span></h3>
+        <div id="rapport-bons" style="color:var(--gray)" data-i18n="rapports.generer_hint">Cliquez sur "Générer" pour afficher les données</div>
       </section>
 
       <!-- ── DÉPENSES (admin) ──────────────────── -->
@@ -1272,10 +1274,14 @@
         <button class="btn btn-secondary" id="btn-bon-verifier" data-i18n="fidelite.verifier">Vérifier</button>
       </div>
       <div id="bon-resultat" style="margin-top:12px"></div>
+      <div id="bon-facture-zone" style="display:none;margin-top:12px">
+        <label style="font-size:.85rem" data-i18n="fidelite.choisir_facture">Facture du client (non payée) sur laquelle offrir le cadeau :</label>
+        <select id="bon-facture" style="width:100%;margin-top:6px"></select>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" data-modal="bon-fidelite" data-i18n="modal.close">Fermer</button>
-      <button class="btn btn-primary" id="btn-bon-valider" style="display:none"><i class="fas fa-gift"></i> <span data-i18n="fidelite.valider">Valider le cadeau</span></button>
+      <button class="btn btn-primary" id="btn-bon-valider" style="display:none"><i class="fas fa-gift"></i> <span data-i18n="fidelite.valider">Appliquer le cadeau</span></button>
     </div>
   </div>
 </div>

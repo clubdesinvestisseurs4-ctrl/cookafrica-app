@@ -43,3 +43,21 @@ test('codes : 10 caractères lisibles, normalisation de la saisie', () => {
   assert.match(c, /^[A-HJ-NP-Z2-9]{10}$/);
   assert.strictEqual(f.normaliserCode(' ab-cd 23 '), 'ABCD23');
 });
+
+test('cadeau appliqué automatiquement : ligne négative du moins cher des articles concernés', () => {
+  const items = [
+    { nom: 'Buffet midi', categorie: 'Buffet', prix: 10_000, quantite: 1, sousTotal: 10_000 },
+    { nom: 'Attiéké', categorie: 'Accompagnement', prix: 1_000, quantite: 2, sousTotal: 2_000 },
+    { nom: 'Alloco', categorie: 'Accompagnement', prix: 1_500, quantite: 1, sousTotal: 1_500 },
+    { nom: 'Jus de bissap', categorie: 'Boissons', prix: 2_000, quantite: 1, sousTotal: 2_000 },
+    { nom: 'Coca', categorie: 'Boissons', prix: 1_000, quantite: 1, sousTotal: 1_000 },
+  ];
+  const bon = (type) => ({ code: 'ABCDEFGHJK', lot: { type, libelle: f.LOTS[type] } });
+  assert.strictEqual(f.ligneCadeau(bon('accompagnement'), items).ligne.prix, -1_000);
+  assert.strictEqual(f.ligneCadeau(bon('jus'), items).ligne.prix, -2_000); // le Coca n'est pas un jus
+  assert.strictEqual(f.ligneCadeau(bon('remise10'), items).ligne.sousTotal, -1_650);
+  assert.match(f.ligneCadeau(bon('plat'), items).error, /plat/);
+  const { ligne } = f.ligneCadeau(bon('remise10'), items);
+  assert.strictEqual(ligne.categorie, f.CATEGORIE_REMISE);
+  assert.match(f.ligneCadeau(bon('accompagnement'), [...items, ligne]).error, /déjà appliqué/);
+});

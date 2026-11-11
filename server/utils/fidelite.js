@@ -75,7 +75,40 @@ function etatBon(bon, aujourdhui) {
   return { valide: true, raison: 'ok', message: `Gagné : ${bon.lot.libelle} !` };
 }
 
+// Ligne négative ajoutée à la facture du retour pour appliquer le cadeau automatiquement.
+// Article offert = un exemplaire du moins cher des articles concernés présents sur la facture
+// (le client doit donc commander l'accompagnement / le jus / le plat) ; remise = 10 % du total
+// hors autres remises. Retourne { ligne } ou { error }.
+const CIBLES = {
+  accompagnement: { categories: ['Accompagnement'], absent: 'Ajoutez d\'abord l\'accompagnement choisi par le client sur la facture.' },
+  jus: { categories: ['Boissons'], nom: /jus/i, absent: 'Ajoutez d\'abord le jus choisi par le client sur la facture.' },
+  plat: { categories: ['Plats', 'Plats (sauce)'], absent: 'Ajoutez d\'abord le plat choisi par le client sur la facture.' },
+};
+const CATEGORIE_REMISE = 'Remise';
+
+function ligneCadeau(bon, items) {
+  const lignes = items || [];
+  if (lignes.some(i => i.bonCode === bon.code)) return { error: 'Ce bon est déjà appliqué sur cette facture.' };
+  let montant;
+  if (bon.lot.type === 'remise10') {
+    const base = lignes.filter(i => i.categorie !== CATEGORIE_REMISE).reduce((s, i) => s + (Number(i.sousTotal) || 0), 0);
+    montant = Math.round(base * 0.10);
+  } else {
+    const cible = CIBLES[bon.lot.type];
+    const candidats = lignes.filter(i => cible.categories.includes(i.categorie) && (!cible.nom || cible.nom.test(i.nom || '')) && Number(i.prix) > 0);
+    if (!candidats.length) return { error: cible.absent };
+    montant = Math.min(...candidats.map(i => Number(i.prix)));
+  }
+  if (!(montant > 0)) return { error: 'Rien à déduire sur cette facture.' };
+  return {
+    ligne: {
+      menuItemId: '', nom: `Bon cadeau ${bon.code} : ${bon.lot.libelle.toLowerCase()}`,
+      prix: -montant, quantite: 1, sousTotal: -montant, categorie: CATEGORIE_REMISE, bonCode: bon.code,
+    },
+  };
+}
+
 module.exports = {
-  MONTANT_MINIMUM, VALIDITE_JOURS, LOTS, PALIERS,
-  estEligible, palierPour, tirerLot, genererCode, normaliserCode, periodeValidite, etatBon,
+  MONTANT_MINIMUM, VALIDITE_JOURS, LOTS, PALIERS, CATEGORIE_REMISE,
+  estEligible, palierPour, tirerLot, genererCode, normaliserCode, periodeValidite, etatBon, ligneCadeau,
 };
