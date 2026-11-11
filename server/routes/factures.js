@@ -8,6 +8,7 @@ const { createFactureFromCommande } = require('../utils/factures');
 const { formatMontant } = require('../utils/currency');
 const { modeApresFacture, supplementApresFacture, stocksDuJour } = require('../utils/commandes');
 const { listeParPeriode, LISTE_TTL } = require('../utils/listes');
+const { creerBonSiEligible } = require('./fidelite');
 
 const router = express.Router();
 
@@ -219,19 +220,32 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere', 'cai
 
     // Marquer la commande comme servie (et ajuster son mode automatique si des
     // articles ont été ajoutés sur la facture — voir modeApresFacture)
+    let modeConsommation;
     if (facture.commandeId) {
       const cmdDoc = await db.collection('commandes').doc(facture.commandeId).get();
-      if (cmdDoc.exists && !['servie', 'annulee'].includes(cmdDoc.data().statut)) {
-        await db.collection('commandes').doc(facture.commandeId).update({
-          statut: 'servie',
-          ...modeApresFacture(cmdDoc.data(), finalItems),
-          ...supplementApresFacture(cmdDoc.data(), finalItems),
-          updatedAt: now.toISOString(),
-        });
+      if (cmdDoc.exists) {
+        const modeMaj = modeApresFacture(cmdDoc.data(), finalItems);
+        modeConsommation = { ...cmdDoc.data(), ...modeMaj }.modeConsommation;
+        if (!['servie', 'annulee'].includes(cmdDoc.data().statut)) {
+          await db.collection('commandes').doc(facture.commandeId).update({
+            statut: 'servie',
+            ...modeMaj,
+            ...supplementApresFacture(cmdDoc.data(), finalItems),
+            updatedAt: now.toISOString(),
+          });
+        }
       }
     }
 
     const finalTotal = update.total ?? facture.total;
+
+    // Bon fidélité « loterie » imprimé en QR sous le reçu (sur place, buffet, ≥ 10 000).
+    // Un échec ici ne doit jamais faire échouer l'encaissement.
+    const bonFidelite = await creerBonSiEligible(db, {
+      factureId: req.params.id, factureNumero: facture.numero, date: factureDate,
+      total: finalTotal, items: finalItems, modeConsommation, createdBy: req.user.username,
+    }).catch((err) => { console.error('Bon fidélité:', err.message); return null; });
+    if (bonFidelite) update.bonFidelite = bonFidelite;
     pushNotification({
       type: 'success', icon: 'money-bill-wave',
       titre: 'Paiement enregistré',

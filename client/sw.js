@@ -41,7 +41,7 @@
 // v3.10.0 : le tri par montant (v3.9.0) ne correspondait pas à ce qui était attendu —
 // tri désormais par numéro de facture croissant (FACT-0001, 0002…).
 // v3.11.0 : tri inversé — numéro de facture décroissant (les plus récentes d'abord).
-const SW_VERSION = 'cookafrica-v3.14.0'; // v3.14.0 : export PDF structuré (recettes, dépenses, le point)
+const SW_VERSION = 'cookafrica-v3.15.0'; // v3.15.0 : bons fidélité QR sous le reçu + scan en caisse
 const SHELL_CACHE = `cookafrica-shell-${SW_VERSION}`;
 
 // App shell : ce qui ne change pas à chaque commande, précaché pour un premier
@@ -58,6 +58,7 @@ const SHELL_ASSETS = [
   '/icons/icon-512.png',
   '/icons/icon-512-maskable.png',
   '/vendor/fontawesome/css/all.min.css',
+  '/vendor/qrcode/qrcode.js',
   '/vendor/fontawesome/webfonts/fa-solid-900.woff2',
 ];
 

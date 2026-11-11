@@ -676,6 +676,7 @@ async function loginFlow(token, user, skipWelcome = false) {
     await showWelcomeTransition(user);
   }
   hideLoader();
+  traiterBonEnAttente();
 }
 
 function defaultPage() {
@@ -2238,10 +2239,131 @@ window.aperçuFacture = async (id) => {
         <p style="margin-top:6px;text-align:center">${t('print.merci')}</p>
         <p style="font-size:.7rem;text-align:center;margin-top:4px">${t('print.tagline')}</p>
       </div>
+      ${blocBonFidelite(f)}
     </div>`;
 
   openModal('apercu-facture');
 };
+
+// ─── Bons fidélité « loterie » (QR sous le reçu) ─────────────────────────────
+// Le serveur crée le bon à l'encaissement (sur place, buffet, ≥ 10 000) et ne renvoie que
+// le code et la validité : le lot reste secret jusqu'au scan en caisse. Le QR contient une
+// URL de l'app (?bon=CODE) : scanné avec l'appareil photo d'un téléphone connecté, il ouvre
+// directement la vérification ; sinon, l'écran « Scanner un bon » de la facturation.
+const urlBon = (code) => `${window.location.origin}/?bon=${encodeURIComponent(code)}`;
+
+function qrSvg(texte) {
+  if (typeof window.qrcode !== 'function') return '';
+  const qr = window.qrcode(0, 'M');
+  qr.addData(texte);
+  qr.make();
+  return qr.createSvgTag({ cellSize: 3, margin: 2, scalable: true });
+}
+
+function blocBonFidelite(f) {
+  const b = f.bonFidelite;
+  if (!b || !b.code) return '';
+  return `
+    <div class="bon-fidelite" style="margin-top:10px;padding-top:8px;border-top:2px dashed #000;text-align:center">
+      <p style="font-size:1rem;font-weight:800;letter-spacing:1px">${t('fidelite.recu_titre')}</p>
+      <p style="font-size:.78rem">${t('fidelite.recu_texte')}</p>
+      <div style="width:34mm;max-width:60%;margin:6px auto">${qrSvg(urlBon(b.code))}</div>
+      <p style="font-size:.85rem;font-weight:800;letter-spacing:2px">${escapeHtml(b.code)}</p>
+      <p style="font-size:.68rem">${t('fidelite.recu_validite', { debut: fmtDateOnly(b.valableDes), fin: fmtDateOnly(b.expireLe) })}</p>
+    </div>`;
+}
+
+let scanFlux = null;
+function arreterScan() {
+  if (scanFlux) { scanFlux.getTracks().forEach(tr => tr.stop()); scanFlux = null; }
+  const v = document.getElementById('bon-video');
+  if (v) { v.srcObject = null; v.style.display = 'none'; }
+}
+
+// Accepte un code brut ou l'URL complète lue dans le QR.
+function codeDepuisTexte(txt) {
+  const s = String(txt || '').trim();
+  try { const u = new URL(s); if (u.searchParams.get('bon')) return u.searchParams.get('bon'); } catch { /* pas une URL */ }
+  return s;
+}
+
+async function verifierBon(brut) {
+  const code = codeDepuisTexte(brut).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const zone = document.getElementById('bon-resultat');
+  const btn = document.getElementById('btn-bon-valider');
+  btn.style.display = 'none';
+  if (!code) return;
+  document.getElementById('bon-code').value = code;
+  zone.innerHTML = '<p style="color:var(--gray)">…</p>';
+  const r = await api(`/api/fidelite/bons/${encodeURIComponent(code)}`);
+  if (!r) { zone.innerHTML = ''; return; }
+  const b = r.bon;
+  zone.innerHTML = `
+    <div style="padding:12px;border-radius:8px;text-align:center;background:${r.valide ? '#ecfdf5' : '#fef2f2'};color:${r.valide ? '#065f46' : '#991b1b'}">
+      <p style="font-size:1.15rem;font-weight:700"><i class="fas ${r.valide ? 'fa-gift' : 'fa-times-circle'}"></i> ${escapeHtml(r.message)}</p>
+      ${b ? `<p style="font-size:.8rem;margin-top:6px;color:var(--gray)">${t('fidelite.facture_origine', { numero: escapeHtml(b.factureNumero || ''), date: fmtDateOnly(b.date), montant: fmt(b.montantFacture) })}</p>` : ''}
+    </div>`;
+  if (r.valide) { btn.style.display = 'inline-block'; btn.dataset.code = code; }
+}
+
+async function utiliserBon() {
+  const code = document.getElementById('btn-bon-valider').dataset.code;
+  if (!code) return;
+  showLoader();
+  const r = await api(`/api/fidelite/bons/${encodeURIComponent(code)}/utiliser`, { method: 'POST' });
+  hideLoader();
+  if (!r) return;
+  toast(r.message, r.valide ? 'success' : 'error');
+  await verifierBon(code);
+}
+
+async function ouvrirScanBon(codeInitial) {
+  document.getElementById('bon-resultat').innerHTML = '';
+  document.getElementById('btn-bon-valider').style.display = 'none';
+  document.getElementById('bon-code').value = codeInitial || '';
+  openModal('bon-fidelite');
+  if (codeInitial) { verifierBon(codeInitial); return; }
+
+  const aide = document.getElementById('bon-camera-aide');
+  aide.style.display = 'none';
+  if (!('BarcodeDetector' in window) || !navigator.mediaDevices?.getUserMedia) { aide.style.display = 'block'; return; }
+  try {
+    const detecteur = new window.BarcodeDetector({ formats: ['qr_code'] });
+    scanFlux = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    const v = document.getElementById('bon-video');
+    v.srcObject = scanFlux;
+    v.style.display = 'block';
+    await v.play();
+    const boucle = async () => {
+      if (!scanFlux) return;
+      try {
+        const lus = await detecteur.detect(v);
+        if (lus.length) { arreterScan(); verifierBon(lus[0].rawValue); return; }
+      } catch { /* image pas prête */ }
+      setTimeout(boucle, 300);
+    };
+    boucle();
+  } catch {
+    arreterScan();
+    aide.style.display = 'block';
+  }
+}
+
+document.getElementById('btn-scan-bon')?.addEventListener('click', () => ouvrirScanBon());
+document.getElementById('btn-bon-verifier')?.addEventListener('click', () => { arreterScan(); verifierBon(document.getElementById('bon-code').value); });
+document.getElementById('bon-code')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { arreterScan(); verifierBon(e.target.value); } });
+document.getElementById('btn-bon-valider')?.addEventListener('click', utiliserBon);
+document.querySelectorAll('[data-modal="bon-fidelite"]').forEach(b => b.addEventListener('click', arreterScan));
+
+// QR scanné avec l'appareil photo du téléphone : l'app s'ouvre sur /?bon=CODE.
+// Le code reste dans l'URL jusqu'à ce qu'un membre de la caisse soit connecté (appelé à la
+// fin de loginFlow — fonction hoistée, pas de const ici : loginFlow peut tourner avant).
+function traiterBonEnAttente() {
+  const code = new URLSearchParams(window.location.search).get('bon');
+  if (!code || !['admin', 'caissiere', 'caissier-en-ligne'].includes(state.user?.role)) return;
+  history.replaceState(null, '', window.location.pathname + window.location.hash);
+  ouvrirScanBon(code);
+}
 
 function printFacture() {
   const content = document.getElementById('facture-print-area').innerHTML;

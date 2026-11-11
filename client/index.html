@@ -290,6 +290,7 @@
             <option value="partielle" data-i18n="facturation.filter_partielle">Partielle</option>
           </select>
           <button class="btn btn-secondary" id="btn-filter-fact"><i class="fas fa-filter"></i> <span data-i18n="common.filter">Filtrer</span></button>
+          <button class="btn btn-secondary" id="btn-scan-bon"><i class="fas fa-qrcode"></i> <span data-i18n="fidelite.scanner">Scanner un bon</span></button>
           <button class="btn btn-primary" id="btn-new-facture"><i class="fas fa-plus"></i> <span data-i18n="facturation.new">Nouvelle facture</span></button>
           <!-- <button class="btn btn-danger btn-sm" id="btn-repair-numeros" title="Répare les N° FACT-0NaN en base" style="display:none">
             <i class="fas fa-wrench"></i> Réparer N°
@@ -1256,6 +1257,29 @@
   </div>
 </div>
 
+<!-- Modal Bon fidélité (scan du QR imprimé sous le reçu) -->
+<div class="modal-overlay hidden" id="modal-bon-fidelite">
+  <div class="modal-box" style="max-width:440px">
+    <div class="modal-header">
+      <h2 data-i18n="fidelite.modal_titre">Bon cadeau</h2>
+      <button class="modal-close" data-modal="bon-fidelite">&times;</button>
+    </div>
+    <div class="modal-body">
+      <video id="bon-video" playsinline muted style="display:none;width:100%;border-radius:8px;background:#000;margin-bottom:10px"></video>
+      <p id="bon-camera-aide" style="display:none;font-size:.85rem;color:var(--gray);margin-bottom:10px" data-i18n="fidelite.camera_indispo">Scan par caméra indisponible.</p>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="bon-code" autocomplete="off" style="flex:1;text-transform:uppercase;letter-spacing:2px" data-i18n-placeholder="fidelite.code_placeholder" placeholder="Code imprimé sous le QR">
+        <button class="btn btn-secondary" id="btn-bon-verifier" data-i18n="fidelite.verifier">Vérifier</button>
+      </div>
+      <div id="bon-resultat" style="margin-top:12px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-modal="bon-fidelite" data-i18n="modal.close">Fermer</button>
+      <button class="btn btn-primary" id="btn-bon-valider" style="display:none"><i class="fas fa-gift"></i> <span data-i18n="fidelite.valider">Valider le cadeau</span></button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Confirmation générique (remplace confirm()) -->
 <div class="modal-overlay hidden" id="modal-confirm">
   <div class="modal-box modal-box-sm">
@@ -1373,6 +1397,7 @@
   </div>
 </div>
 
+<script src="/vendor/qrcode/qrcode.js"></script>
 <script src="i18n.js"></script>
 <script src="app.js" type="module"></script>
 </body>
