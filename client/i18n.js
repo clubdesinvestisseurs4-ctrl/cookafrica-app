@@ -699,7 +699,9 @@ const I18N = {
 
     // Dépenses (admin)
     'nav.depenses': 'Dépenses',
+    'nav.stock_boissons': 'Stock boissons',
     'title.depenses': 'Dépenses',
+    'title.stock-boissons': 'Stock des boissons',
     'depenses.periode_jour': 'Jour',
     'depenses.periode_semaine': 'Semaine',
     'depenses.periode_mois': 'Mois',
@@ -1444,7 +1446,9 @@ const I18N = {
 
     // Expenses (admin)
     'nav.depenses': 'Expenses',
+    'nav.stock_boissons': 'Drinks stock',
     'title.depenses': 'Expenses',
+    'title.stock-boissons': 'Drinks stock',
     'depenses.periode_jour': 'Day',
     'depenses.periode_semaine': 'Week',
     'depenses.periode_mois': 'Month',

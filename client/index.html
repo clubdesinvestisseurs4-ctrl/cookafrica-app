@@ -154,6 +154,9 @@
       <a class="nav-item" data-page="depenses" id="nav-depenses">
         <i class="fas fa-wallet"></i><span data-i18n="nav.depenses">Dépenses</span>
       </a>
+      <a class="nav-item" data-page="stock-boissons" id="nav-stock-boissons">
+        <i class="fas fa-wine-bottle"></i><span data-i18n="nav.stock_boissons">Stock boissons</span>
+      </a>
       <a class="nav-item" data-page="sessions" id="nav-sessions">
         <i class="fas fa-shield-alt"></i><span data-i18n="nav.sessions">Sessions</span>
       </a>
@@ -584,6 +587,48 @@
             <tbody id="depenses-tbody">
               <tr><td colspan="7" style="text-align:center;color:var(--gray);padding:24px" data-i18n="depenses.aucune">Aucune dépense sur cette période</td></tr>
             </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ── STOCK BOISSONS ────────────────────── -->
+      <section id="page-stock-boissons" class="page">
+        <div class="page-actions">
+          <label style="font-size:.85rem;color:var(--gray)">Du</label><input type="date" id="sb-debut">
+          <label style="font-size:.85rem;color:var(--gray)">au</label><input type="date" id="sb-fin">
+          <button class="btn btn-secondary" id="btn-sb-afficher"><i class="fas fa-filter"></i> Afficher</button>
+          <button class="btn btn-primary" id="btn-sb-entree"><i class="fas fa-arrow-down"></i> Entrée de stock</button>
+          <button class="btn btn-primary" id="btn-sb-sortie" style="background:#b45309;border-color:#b45309"><i class="fas fa-arrow-up"></i> Sortie de stock</button>
+        </div>
+        <div class="rapports-grid">
+          <div class="rapport-card">
+            <h3><i class="fas fa-coins"></i> Valeur du stock</h3>
+            <div class="kpi-value-big" id="sb-valeur">—</div>
+            <div class="kpi-label-sm" id="sb-bouteilles">au prix de vente du menu</div>
+          </div>
+          <div class="rapport-card">
+            <h3><i class="fas fa-balance-scale"></i> Contrôle avec la caisse</h3>
+            <ul class="kpi-list" id="sb-controle"></ul>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:20px 0 8px;flex-wrap:wrap;gap:8px">
+          <h3 style="margin:0">Boissons</h3>
+          <span style="display:flex;gap:10px;align-items:center;font-size:.85rem">
+            <input type="search" id="sb-recherche" placeholder="Rechercher une boisson" style="max-width:200px">
+            <label><input type="checkbox" id="sb-toutes"> Toutes les boissons</label>
+          </span>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead><tr><th>Boisson</th><th>Prix</th><th>Début</th><th>Entrées</th><th>Sorties vente</th><th>Vendu en caisse</th><th>Écart</th><th>Autres sorties</th><th>Stock</th><th>Valeur</th></tr></thead>
+            <tbody id="sb-tbody"></tbody>
+          </table>
+        </div>
+        <h3 style="margin:24px 0 8px">Entrées et sorties saisies</h3>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead><tr><th>Date</th><th>Mouvement</th><th>Boissons</th><th>Note</th><th>Saisie par</th><th></th></tr></thead>
+            <tbody id="sb-mouvements"></tbody>
           </table>
         </div>
       </section>
@@ -1282,6 +1327,35 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" data-modal="bon-fidelite" data-i18n="modal.close">Fermer</button>
       <button class="btn btn-primary" id="btn-bon-valider" style="display:none"><i class="fas fa-gift"></i> <span data-i18n="fidelite.valider">Appliquer le cadeau</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Mouvement de stock boissons -->
+<div class="modal-overlay hidden" id="modal-stock-boissons">
+  <div class="modal-box" style="max-width:640px">
+    <div class="modal-header">
+      <h2 id="sb-modal-titre">Entrée de stock</h2>
+      <button class="modal-close" data-modal="stock-boissons">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="sb-sens">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+        <label style="flex:1;min-width:140px">Date<input type="date" id="sb-date" style="width:100%"></label>
+        <label style="flex:1;min-width:140px">Motif<select id="sb-motif" style="width:100%"></select></label>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+        <input type="search" id="sb-filtre" placeholder="Filtrer les boissons" style="flex:1;min-width:160px">
+        <button class="btn btn-secondary btn-sm" id="btn-sb-prefill" style="display:none"><i class="fas fa-magic"></i> Reprendre les ventes en caisse du jour</button>
+      </div>
+      <p style="font-size:.8rem;color:var(--gray);margin-bottom:6px" id="sb-aide"></p>
+      <div id="sb-lignes" style="max-height:46vh;overflow:auto;border:1px solid var(--border);border-radius:8px"></div>
+      <label style="display:block;margin-top:10px">Note<input type="text" id="sb-note" maxlength="200" style="width:100%" placeholder="Fournisseur, n° de bon de livraison…"></label>
+      <p style="margin-top:8px;font-weight:600" id="sb-recap"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-modal="stock-boissons" data-i18n="modal.close">Fermer</button>
+      <button class="btn btn-primary" id="btn-sb-enregistrer"><i class="fas fa-save"></i> Enregistrer</button>
     </div>
   </div>
 </div>
