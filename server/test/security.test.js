@@ -228,3 +228,16 @@ test('resolvePublicContact — refuse une localisation absente ou hors limites',
   assert.ok(resolvePublicContact({ ...CONTACT_VALIDE, localisation: { lat: 200, lng: -4.01 } }).error);
   assert.ok(resolvePublicContact({ ...CONTACT_VALIDE, localisation: { lat: 5.36, lng: 'nawak' } }).error);
 });
+
+test('resolvePublicItems — un article « sur place uniquement » (enLigne:false) ne se commande pas en ligne', () => {
+  const menu = [{ id: 'bouchon', nom: 'Droit de bouchon vin', prix: 5000, disponible: true, enLigne: false }];
+  assert.ok(resolvePublicItems([{ menuItemId: 'bouchon', quantite: 1 }], menu).error);
+});
+
+test('resolvePublicContact — repère et remarque facultatifs, nettoyés et tronqués', () => {
+  const sans = resolvePublicContact(CONTACT_VALIDE);
+  assert.deepStrictEqual([sans.contact.repere, sans.contact.note], ['', '']);
+  const avec = resolvePublicContact({ ...CONTACT_VALIDE, repere: '  Cocody,\n  près de la pharmacie ', note: 'x'.repeat(500) });
+  assert.strictEqual(avec.contact.repere, 'Cocody, près de la pharmacie');
+  assert.strictEqual(avec.contact.note.length, 200);
+});

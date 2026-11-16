@@ -21,6 +21,7 @@ function resolvePublicItems(requestedItems, menuDocs) {
     const menuItem = menuById.get(requested?.menuItemId);
     if (!menuItem) return { error: 'Un article du panier n\'existe plus au menu' };
     if (menuItem.disponible === false) return { error: `"${menuItem.nom}" n'est plus disponible` };
+    if (menuItem.enLigne === false) return { error: `"${menuItem.nom}" se commande uniquement sur place` };
 
     const quantite = Math.floor(Number(requested.quantite));
     if (!Number.isFinite(quantite) || quantite < 1 || quantite > MAX_QTE_PAR_LIGNE) {
@@ -45,7 +46,10 @@ function resolvePublicItems(requestedItems, menuDocs) {
 // et reconstruit toujours le lien Google Maps à partir des coordonnées numériques
 // validées — jamais depuis une URL fournie par le client, pour empêcher qu'une
 // commande n'affiche un lien arbitraire (phishing) à la caissière qui clique dessus.
-function resolvePublicContact({ prenom, nom, telephone, localisation } = {}) {
+function resolvePublicContact({ prenom, nom, telephone, localisation, repere, note } = {}) {
+  // Champs libres facultatifs : repère pour le livreur (le GPS seul ne suffit pas
+  // toujours) et remarque pour la cuisine. Texte brut, échappé à l'affichage côté caisse.
+  const texteLibre = (v, max) => String(v || '').replace(/\s+/g, ' ').trim().slice(0, max);
   const prenomSafe    = String(prenom || '').trim().slice(0, 60);
   const nomSafe       = String(nom || '').trim().slice(0, 60);
   const telephoneSafe = String(telephone || '').trim().slice(0, 30);
@@ -69,6 +73,8 @@ function resolvePublicContact({ prenom, nom, telephone, localisation } = {}) {
       nom: nomSafe,
       telephone: telephoneSafe,
       localisation: { lat, lng, mapsUrl: `https://www.google.com/maps?q=${lat},${lng}` },
+      repere: texteLibre(repere, 160),
+      note: texteLibre(note, 200),
     },
   };
 }

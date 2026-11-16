@@ -37,7 +37,10 @@ document.title = SITE.siteId === 'dubai' ? 'Cook Africa – Order' : 'Cook Afric
 
 // Wave (mobile money) n'opère pas aux Émirats arabes unis — le lien marchand est
 // spécifique à la Côte d'Ivoire, donc invisible pour les clients du site Dubaï.
-if (SITE.siteId === 'dubai') document.getElementById('pub-wave-pay')?.remove();
+if (SITE.siteId === 'dubai') {
+  document.getElementById('pub-wave-pay')?.remove();
+  document.getElementById('pub-wave-motif')?.remove();
+}
 
 // Ordre d'affichage des rayons : mots-clés cherchés dans le nom de catégorie
 // (insensible à la casse/accents approximatifs) plutôt qu'une liste exacte,
@@ -91,6 +94,38 @@ function rechercheDansMenu() {
   const q = state.recherche.trim().toLowerCase();
   if (!q) return state.menu;
   return state.menu.filter((m) => m.nom.toLowerCase().includes(q));
+}
+
+// ─── Visuels du menu ────────────────────────────────────
+// Photos libres (Wikimedia Commons, crédits dans img/menu/credits.json) choisies par
+// mots-clés du nom : chaque plat a une photo représentative de son type, sans champ à
+// remplir côté administration. Ordre important : la première règle qui correspond gagne.
+const sansAccents = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const VISUELS_BOISSONS = [
+  [/champagne|moet|veuve|feuillatte|feuillante/, 'champagne'],
+  [/bissap|gnamankou|gingembre|zomkom/, 'bissap'], [/orangina|coca|youki|schweppes|tonic|sanbitter/, 'soda'],
+  [/orange/, 'jus_orange'], [/ananas/, 'jus_ananas'], [/citron/, 'citronnade'], [/coco/, 'coco'],
+  [/passion/, 'jus_passion'], [/pasteque/, 'jus_pasteque'], [/pamplemousse/, 'pamplemousse'],
+  [/tomi|tamarin/, 'tamarin'], [/celeste|kirene|perrier|\beau\b/, 'eau'], [/biere|heineken|ivoire|beaufort/, 'biere'],
+  [/cocktail/, 'cocktail'],
+  [/whisky|j&b|jack|johnn|finest|baileys|smirnoff|vodka|pastis|campari|liqueur/, 'spiritueux'],
+  [/cap+uc+ino|moka|cafe/, 'cafe'], [/\bthe\b|infusion/, 'the'], [/energy/, 'energie'],
+];
+const VISUELS_PLATS = [
+  [/^riz|\briz\b/, 'riz'], [/attieke/, 'attieke'], [/alloco/, 'alloco'], [/claclo/, 'claclo'], [/foufou/, 'foufou'],
+  [/foutou/, 'foutou'], [/placali/, 'placali'], [/frite/, 'frites'], [/igname/, 'igname'], [/kedjenou/, 'kedjenou'],
+  [/tchep/, 'tchep'], [/yassa/, 'yassa'], [/couscous/, 'couscous'], [/pepper/, 'pepper_soupe'],
+  [/soupe/, 'soupe_poisson'], [/marmite/, 'marmite'], [/akpessi/, 'akpessi'], [/gesier/, 'gesier'], [/salade/, 'salade'],
+  [/escargot/, 'escargot'], [/gombo|djoumgble/, 'gombo'], [/graine/, 'sauce_graine'], [/arachide/, 'sauce_arachide'],
+  [/pistache/, 'pistache'], [/gnangnan/, 'gnangnan'], [/feuille|\bdah\b/, 'sauce_feuille'], [/claire/, 'sauce_claire'],
+  [/^sauce/, 'sauce'], [/agouti|biche|brousse/, 'gibier'], [/mouton/, 'mouton'], [/poisson/, 'poisson'],
+  [/poulet grille/, 'poulet_grille'], [/poulet/, 'poulet_braise'],
+];
+function visuelPour(m) {
+  const nom = sansAccents(m.nom);
+  const regles = sansAccents(m.categorie).includes('boisson') ? VISUELS_BOISSONS : VISUELS_PLATS;
+  const r = regles.find(([re]) => re.test(nom));
+  return `img/menu/${r ? r[1] : (regles === VISUELS_BOISSONS ? 'vin' : 'sauce')}.webp`;
 }
 
 // ─── Utilitaires ────────────────────────────────────────
@@ -299,6 +334,7 @@ function renderMenu() {
       const qty = qtyInPanier(m.id);
       return `
       <div class="pub-item-card${qty > 0 ? ' has-qty' : ''}" data-id="${m.id}">
+        <img class="pub-item-img" src="${visuelPour(m)}" alt="" loading="lazy" width="76" height="76">
         <div class="pub-item-info">
           <h3>${escapeHtml(m.nom)}</h3>
           ${m.description ? `<p>${escapeHtml(m.description)}</p>` : ''}
@@ -382,7 +418,37 @@ function renderCartScreen() {
     });
   }
   document.getElementById('pub-cart-footer-total-val').textContent = fmt(panierTotal());
+  renderSuggestions();
   updateSubmitState();
+}
+
+// Une sauce ou un plat sans accompagnement dans le panier : on propose les
+// accompagnements en un clic (riz, attiéké, foutou…), sans bloquer la commande.
+function renderSuggestions() {
+  const el = document.getElementById('pub-suggest');
+  const estAcc = (c) => sansAccents(c).includes('accompagnement');
+  const aUnPlat = state.panier.some((p) => /plat|sauce/.test(sansAccents(p.categorie)));
+  const aUnAcc = state.panier.some((p) => estAcc(p.categorie));
+  const accs = state.menu.filter((m) => estAcc(m.categorie));
+  if (!aUnPlat || aUnAcc || accs.length === 0) { el.style.display = 'none'; return; }
+  el.innerHTML = `<p>${t('pub.suggest_acc')}</p><div class="pub-suggest-row">${accs.map((m) => `
+    <button type="button" class="pub-suggest-item" data-id="${m.id}">
+      <img src="${visuelPour(m)}" alt="" loading="lazy" width="56" height="56">
+      <span>${escapeHtml(m.nom)}</span><small>+ ${fmt(m.prix)}</small>
+    </button>`).join('')}</div>`;
+  el.style.display = '';
+  el.querySelectorAll('.pub-suggest-item').forEach((btn) => btn.addEventListener('click', () => {
+    addToPanier(btn.dataset.id);
+    renderCartScreen();
+  }));
+}
+
+// Côte d'Ivoire : numéros à 10 chiffres (07 xx xx xx xx), indicatif 225 accepté.
+// Dubaï : formats internationaux variés, au moins 8 chiffres.
+function telValide(tel) {
+  const d = tel.replace(/\D/g, '');
+  if (SITE.siteId === 'dubai') return d.length >= 8 && d.length <= 15;
+  return d.length === 10 || (d.length === 13 && d.startsWith('225'));
 }
 
 // Le bouton reste grisé tant que le panier n'est pas rempli et que prénom,
@@ -390,8 +456,8 @@ function renderCartScreen() {
 function updateSubmitState() {
   const prenom = document.getElementById('pub-cart-prenom').value.trim();
   const nom = document.getElementById('pub-cart-nom').value.trim();
-  const telDigits = document.getElementById('pub-cart-tel').value.replace(/\D/g, '');
-  const ready = state.panier.length > 0 && !!prenom && !!nom && telDigits.length >= 8 && !!state.localisation;
+  const ready = state.panier.length > 0 && !!prenom && !!nom
+    && telValide(document.getElementById('pub-cart-tel').value) && !!state.localisation;
   document.getElementById('pub-submit-btn').disabled = !ready;
 }
 
@@ -408,6 +474,7 @@ function saveContact() {
     prenom: document.getElementById('pub-cart-prenom').value,
     nom: document.getElementById('pub-cart-nom').value,
     tel: document.getElementById('pub-cart-tel').value,
+    repere: document.getElementById('pub-cart-repere').value,
     localisation: state.localisation,
   }));
 }
@@ -467,7 +534,7 @@ function captureLocalisation() {
 
 geolocBtn.addEventListener('click', captureLocalisation);
 
-['pub-cart-prenom', 'pub-cart-nom', 'pub-cart-tel'].forEach((id) => {
+['pub-cart-prenom', 'pub-cart-nom', 'pub-cart-tel', 'pub-cart-repere'].forEach((id) => {
   document.getElementById(id).addEventListener('input', (e) => {
     e.target.classList.remove('pub-field-invalid');
     saveContact();
@@ -489,7 +556,7 @@ document.getElementById('pub-submit-btn').addEventListener('click', async () => 
 
   if (!prenom) { prenomEl.classList.add('pub-field-invalid'); prenomEl.focus(); toast(t('pub.indiquez_prenom'), 'error'); return; }
   if (!nom) { nomEl.classList.add('pub-field-invalid'); nomEl.focus(); toast(t('pub.indiquez_nom'), 'error'); return; }
-  if (tel.replace(/\D/g, '').length < 8) { telEl.classList.add('pub-field-invalid'); telEl.focus(); toast(t('pub.indiquez_tel'), 'error'); return; }
+  if (!telValide(tel)) { telEl.classList.add('pub-field-invalid'); telEl.focus(); toast(t('pub.indiquez_tel'), 'error'); return; }
   if (!state.localisation) {
     toast(t('pub.partagez_position'), 'error');
     geolocBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -507,6 +574,8 @@ document.getElementById('pub-submit-btn').addEventListener('click', async () => 
       items: state.panier.map((p) => ({ menuItemId: p.menuItemId, quantite: p.quantite })),
       prenom, nom, telephone: tel,
       localisation: state.localisation,
+      repere: document.getElementById('pub-cart-repere').value.trim(),
+      note: document.getElementById('pub-cart-note').value.trim(),
     }),
   });
 
@@ -552,6 +621,10 @@ function applyStatutTrack(statut) {
 
 function showConfirmScreen(order) {
   document.getElementById('pub-confirm-numero').textContent = order.numero;
+  // Le lien Wave ne transporte ni montant ni référence : on dit au client quoi saisir,
+  // pour que la caisse puisse rapprocher le paiement de la commande.
+  const motif = document.getElementById('pub-wave-motif');
+  if (motif) motif.textContent = t('pub.wave_motif', { montant: fmt(order.total), numero: order.numero });
   renderConfirmItems(order);
   applyStatutTrack(order.statut || 'en-preparation');
   show('pub-screen-confirm');
@@ -583,6 +656,18 @@ document.getElementById('pub-new-order-btn').addEventListener('click', () => {
   show('pub-screen-menu');
 });
 
+// ─── Crédits photos (licences Creative Commons : auteur + licence obligatoires) ──
+document.getElementById('pub-credits-btn').addEventListener('click', async () => {
+  const el = document.getElementById('pub-credits-list');
+  if (!el.hidden) { el.hidden = true; return; }
+  if (!el.innerHTML) {
+    const credits = await fetch('img/menu/credits.json').then((r) => r.json()).catch(() => ({}));
+    el.innerHTML = Object.values(credits).map((c) =>
+      `<a href="${escapeHtml(c.source)}" target="_blank" rel="noopener">${escapeHtml(c.auteur)}</a> (${escapeHtml(c.licence)})`).join(' · ');
+  }
+  el.hidden = false;
+});
+
 // ─── Démarrage ──────────────────────────────────────────
 
 (async function init() {
@@ -593,6 +678,7 @@ document.getElementById('pub-new-order-btn').addEventListener('click', () => {
     document.getElementById('pub-cart-prenom').value = savedContact.prenom || '';
     document.getElementById('pub-cart-nom').value = savedContact.nom || '';
     document.getElementById('pub-cart-tel').value = savedContact.tel || '';
+    document.getElementById('pub-cart-repere').value = savedContact.repere || '';
     if (savedContact.localisation) {
       state.localisation = savedContact.localisation;
       renderGeolocSuccess(state.localisation);

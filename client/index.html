@@ -1113,6 +1113,13 @@
           <input type="text" id="plat-description" placeholder="Description courte du plat" data-i18n-placeholder="modal.plat_description_placeholder">
         </div>
         <div class="form-group">
+          <label data-i18n="modal.plat_en_ligne">Visible sur la page de commande client</label>
+          <select id="plat-en-ligne">
+            <option value="true" data-i18n="modal.plat_en_ligne_oui">Oui — les clients peuvent le commander en ligne</option>
+            <option value="false" data-i18n="modal.plat_en_ligne_non">Non — seulement à la caisse (sur place)</option>
+          </select>
+        </div>
+        <div class="form-group">
           <label data-i18n="modal.plat_jours_dispo">Jours disponibles (laisser tout décoché = tous les jours)</label>
           <div class="plat-jours-checkboxes">
             <label><input type="checkbox" class="plat-jour" value="lundi"> <span data-i18n="modal.jour_lun">Lun</span></label>

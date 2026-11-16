@@ -1241,10 +1241,10 @@ async function loadCommandes() {
     <tr>
       <td data-label="${t('common.num')}"><strong>${c.numero}</strong> ${badgeQui(c)} ${badgeMode(c)} ${badgeSupplement(c)}${nomClientCmd ? `<div style="font-size:.78rem;color:var(--gray);margin-top:2px">${nomClientCmd}</div>` : ''}</td>
       <td data-label="${t('common.date')}" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
-      <td data-label="${t('commandes.th_articles')}" style="font-size:.82rem">${items}</td>
+      <td data-label="${t('commandes.th_articles')}" style="font-size:.82rem">${items}${c.clientNote ? `<div style="font-size:.74rem;color:var(--gray);font-style:italic;margin-top:2px"><i class="fas fa-comment"></i> ${escapeHtml(c.clientNote)}</div>` : ''}</td>
       <td data-label="${t('commandes.th_total')}"><strong>${fmt(c.total)}</strong></td>
       <td data-label="${t('commandes.th_table')}" style="color:var(--gray);font-size:.82rem">${c.commandeClient
-        ? `${c.clientTelephone ? `<a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);text-decoration:none;white-space:nowrap"><i class="fas fa-phone"></i> ${escapeHtml(c.clientTelephone)}</a>` : '—'}${c.clientLocalisation ? `<br><a href="${escapeHtml(localisationHref(c.clientLocalisation))}" target="_blank" rel="noopener" style="color:var(--primary);font-weight:600;text-decoration:none;white-space:nowrap"><i class="fas fa-location-dot"></i> ${t('commandes.localisation')}</a>` : ''}`
+        ? `${c.clientTelephone ? `<a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);text-decoration:none;white-space:nowrap"><i class="fas fa-phone"></i> ${escapeHtml(c.clientTelephone)}</a>` : '—'}${c.clientLocalisation ? `<br><a href="${escapeHtml(localisationHref(c.clientLocalisation))}" target="_blank" rel="noopener" style="color:var(--primary);font-weight:600;text-decoration:none;white-space:nowrap"><i class="fas fa-location-dot"></i> ${t('commandes.localisation')}</a>` : ''}${c.clientRepere ? `<div style="font-size:.74rem;margin-top:2px"><i class="fas fa-map-signs"></i> ${escapeHtml(c.clientRepere)}</div>` : ''}`
         : (escapeHtml(c.tableNumero) || '—')}</td>
       <td data-label="${t('common.status')}">${badgeStatus(c.statut)}</td>
       <td data-label="${t('common.actions')}">
@@ -1287,6 +1287,8 @@ async function viewCommande(id) {
           <p style="font-weight:700">${escapeHtml(c.clientPrenom || '')} ${escapeHtml(c.clientNom || '')}</p>
           ${c.clientTelephone ? `<p style="font-size:.85rem;margin-top:3px"><i class="fas fa-phone"></i> <a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);text-decoration:none">${escapeHtml(c.clientTelephone)}</a></p>` : ''}
           ${c.clientLocalisation ? `<p style="font-size:.85rem;margin-top:3px"><a href="${escapeHtml(localisationHref(c.clientLocalisation))}" target="_blank" rel="noopener" style="color:var(--primary);font-weight:700;text-decoration:none"><i class="fas fa-location-dot"></i> ${t('commandes.voir_localisation')}</a></p>` : ''}
+          ${c.clientRepere ? `<p style="font-size:.85rem;margin-top:3px"><i class="fas fa-map-signs"></i> ${escapeHtml(c.clientRepere)}</p>` : ''}
+          ${c.clientNote ? `<p style="font-size:.85rem;margin-top:3px;font-style:italic"><i class="fas fa-comment"></i> ${escapeHtml(c.clientNote)}</p>` : ''}
         </div>` : ''}
       ${c.tableNumero ? `<p><strong>${t('commandes.table_label')}</strong> ${escapeHtml(c.tableNumero)}</p>` : ''}
       ${c.note ? `<p style="color:var(--gray);font-size:.85rem;font-style:italic"><i class="fas fa-sticky-note"></i> ${escapeHtml(c.note)}</p>` : ''}
@@ -1755,8 +1757,8 @@ async function loadCommandesLigne() {
     <tr>
       <td data-label="${t('common.num')}"><strong>${c.numero}</strong></td>
       <td data-label="${t('common.date')}" style="font-size:.78rem;color:var(--gray)">${fmtDate(c.createdAt)}</td>
-      <td data-label="${t('commandes.dl_client')}">${badgeQui(c)} ${badgeMode(c)} ${badgeSupplement(c)}${nomClient ?`<div style="font-size:.78rem;margin-top:3px">${nomClient}</div>` : ''}${c.clientTelephone ? `<div style="margin-top:2px"><a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);font-size:.76rem;text-decoration:none;white-space:nowrap"><i class="fas fa-phone"></i> ${escapeHtml(c.clientTelephone)}</a></div>` : ''}</td>
-      <td data-label="${t('commandes.th_articles')}" style="font-size:.82rem">${items}</td>
+      <td data-label="${t('commandes.dl_client')}">${badgeQui(c)} ${badgeMode(c)} ${badgeSupplement(c)}${nomClient ?`<div style="font-size:.78rem;margin-top:3px">${nomClient}</div>` : ''}${c.clientTelephone ? `<div style="margin-top:2px"><a href="tel:${escapeHtml(c.clientTelephone)}" style="color:var(--primary);font-size:.76rem;text-decoration:none;white-space:nowrap"><i class="fas fa-phone"></i> ${escapeHtml(c.clientTelephone)}</a></div>` : ''}${c.clientRepere ? `<div style="font-size:.74rem;color:var(--gray);margin-top:2px"><i class="fas fa-map-signs"></i> ${escapeHtml(c.clientRepere)}</div>` : ''}</td>
+      <td data-label="${t('commandes.th_articles')}" style="font-size:.82rem">${items}${c.clientNote ? `<div style="font-size:.74rem;color:var(--gray);font-style:italic;margin-top:2px"><i class="fas fa-comment"></i> ${escapeHtml(c.clientNote)}</div>` : ''}</td>
       <td data-label="${t('commandes.th_total')}"><strong>${fmt(c.total)}</strong></td>
       <td data-label="${t('common.status')}">${badgeStatus(c.statut)}</td>
       <td data-label="${t('common.actions')}">
@@ -2558,6 +2560,7 @@ function renderMenu(menu) {
           <span class="badge-status ${m.disponible ? 'disponible' : 'annulee'}" style="font-size:.7rem">
             ${m.disponible ? 'Dispo' : 'Indispo'}
           </span>
+          ${m.enLigne === false ? `<span class="badge-status" style="font-size:.7rem" title="${t('menu.sur_place_title')}"><i class="fas fa-store"></i> ${t('menu.sur_place')}</span>` : ''}
           ${state.user?.role === 'admin' ? `
             <button class="btn btn-secondary btn-sm" onclick="editPlat('${m.id}')">
               <i class="fas fa-edit"></i>
@@ -2580,6 +2583,7 @@ window.editPlat = (id) => {
   document.getElementById('plat-prix').value        = m.prix;
   document.getElementById('plat-disponible').value  = String(m.disponible);
   document.getElementById('plat-description').value = m.description || '';
+  document.getElementById('plat-en-ligne').value    = String(m.enLigne !== false);
   const jours = m.joursDisponibles || [];
   document.querySelectorAll('.plat-jour').forEach(cb => { cb.checked = jours.includes(cb.value); });
   openModal('plat');
@@ -2600,6 +2604,7 @@ async function savePlat() {
     prix:        Number(document.getElementById('plat-prix').value),
     disponible:  document.getElementById('plat-disponible').value === 'true',
     description: document.getElementById('plat-description').value.trim(),
+    enLigne:     document.getElementById('plat-en-ligne').value === 'true',
     joursDisponibles: [...document.querySelectorAll('.plat-jour:checked')].map(cb => cb.value),
   };
   if (!body.nom || !body.prix) { toast(t('menu.nom_prix_requis'), 'warning'); return; }

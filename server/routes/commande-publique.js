@@ -37,7 +37,7 @@ router.get('/menu', async (req, res) => {
     // pouvait relancer une lecture de tout le menu. Le prix réellement facturé reste
     // vérifié à la commande (POST ci-dessous, relu dans Firestore).
     const menu = (await menuEnCache())
-      .filter(m => m.disponible === true)
+      .filter(m => m.disponible === true && m.enLigne !== false) // enLigne:false = sur place uniquement
       .map(m => ({
         id: m.id, nom: m.nom, categorie: m.categorie || '', prix: m.prix, description: m.description || '',
         joursDisponibles: m.joursDisponibles || [],
@@ -54,7 +54,7 @@ router.get('/menu', async (req, res) => {
 // (onglet Commandes en Ligne) exactement comme une commande en ligne créée par le staff.
 router.post('/commandes', orderLimiter, async (req, res) => {
   try {
-    const { items, prenom, nom, telephone, localisation } = req.body;
+    const { items, prenom, nom, telephone, localisation, repere, note } = req.body;
 
     // Le menu est relu à chaque commande (jamais depuis le cache) pour garantir
     // que le prix facturé correspond toujours au prix réel au moment de l'achat.
@@ -62,7 +62,7 @@ router.post('/commandes', orderLimiter, async (req, res) => {
     const resolved = resolvePublicItems(items, menuDocs);
     if (resolved.error) return res.status(400).json({ error: resolved.error });
 
-    const resolvedContact = resolvePublicContact({ prenom, nom, telephone, localisation });
+    const resolvedContact = resolvePublicContact({ prenom, nom, telephone, localisation, repere, note });
     if (resolvedContact.error) return res.status(400).json({ error: resolvedContact.error });
     const { contact } = resolvedContact;
 
@@ -86,6 +86,8 @@ router.post('/commandes', orderLimiter, async (req, res) => {
       clientNom: contact.nom,
       clientTelephone: contact.telephone,
       clientLocalisation: contact.localisation,
+      clientRepere: contact.repere || '',
+      clientNote: contact.note || '',
       statut: 'en-preparation',
       date: now.toISOString().split('T')[0],
       createdBy: 'client-web',

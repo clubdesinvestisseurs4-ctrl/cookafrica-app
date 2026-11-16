@@ -37,6 +37,8 @@ router.post('/', authenticateToken, requireRole('admin'), async (req, res) => {
       // Jours de la semaine où ce plat apparaît dans le "menu du jour" côté client
       // (ex: ['lundi','mercredi']). Absent ou vide = visible tous les jours.
       joursDisponibles: Array.isArray(joursDisponibles) ? joursDisponibles : [],
+      // false = vendu seulement à la caisse (sur place) : masqué de la page de commande client.
+      enLigne: req.body.enLigne !== false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -54,6 +56,7 @@ router.put('/:id', authenticateToken, requireRole('admin'), async (req, res) => 
     const update = { ...req.body, updatedAt: new Date().toISOString() };
     delete update.id;
     if (update.prix !== undefined) update.prix = Number(update.prix);
+    if (update.enLigne !== undefined) update.enLigne = update.enLigne !== false;
     await db.collection('menu').doc(req.params.id).update(update);
     invalidate();
     res.json({ id: req.params.id, ...update });

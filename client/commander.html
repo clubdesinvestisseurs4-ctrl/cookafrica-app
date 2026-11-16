@@ -51,6 +51,8 @@
     <nav class="pub-cats" id="pub-cats"></nav>
 
     <main class="pub-menu-list" id="pub-menu-list"></main>
+    <p class="pub-credits"><button type="button" id="pub-credits-btn" data-i18n="pub.credits_photos">Crédits photos</button></p>
+    <div class="pub-credits-list" id="pub-credits-list" hidden></div>
 
     <div class="pub-cart-bar" id="pub-cart-bar">
       <button id="pub-cart-bar-btn" class="pub-cart-bar-btn">
@@ -70,6 +72,7 @@
 
     <div class="pub-cart-body">
       <div class="pub-cart-items" id="pub-cart-items"></div>
+      <div class="pub-suggest" id="pub-suggest" style="display:none"></div>
 
       <div class="pub-cart-form">
         <div class="pub-field-row">
@@ -94,6 +97,14 @@
           </button>
           <p class="pub-geoloc-status" id="pub-geoloc-status"></p>
         </div>
+        <label class="pub-field">
+          <span><span data-i18n="pub.repere_label">Repère pour le livreur</span> <em data-i18n="pub.facultatif">(facultatif)</em></span>
+          <input type="text" id="pub-cart-repere" maxlength="160" placeholder="Ex : Cocody Angré, près de la pharmacie" data-i18n-placeholder="pub.repere_placeholder">
+        </label>
+        <label class="pub-field">
+          <span><span data-i18n="pub.note_label">Remarque pour la cuisine</span> <em data-i18n="pub.facultatif">(facultatif)</em></span>
+          <input type="text" id="pub-cart-note" maxlength="200" placeholder="Ex : pas trop pimenté" data-i18n-placeholder="pub.note_placeholder">
+        </label>
       </div>
     </div>
 
@@ -124,6 +135,7 @@
         </span>
         <i class="fas fa-arrow-right"></i>
       </a>
+      <p class="pub-wave-motif" id="pub-wave-motif"></p>
 
       <div class="pub-status-track" id="pub-status-track">
         <div class="pub-status-step is-active" data-statut="en-preparation">
