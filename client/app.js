@@ -3499,16 +3499,16 @@ function ajusterALaPage(doc) {
 
 // ─── STOCK BOISSONS (admin) ────────────────────────────
 // Comme les dépenses : on saisit ce qui entre et ce qui sort. Les boissons sont celles du menu
-// (prix de vente compris). Une sortie « pour la vente » met la boisson au frigo / bar ; les ventes
+// (prix de vente compris). Une sortie « pour la vente » met la boisson en cuisine / au bar ; les ventes
 // en caisse l'en retirent. Comptage du frigo et correction de ventes : voir
 // server/utils/stockBoissons.js.
 const MOTIFS_STOCK = {
-  entree: { achat: 'Achat / livraison', retour: 'Retour du frigo à la réserve', correction: 'Correction après comptage' },
-  sortie: { vente: 'Vers le frigo / bar, pour la vente', casse: 'Casse', offert: 'Offert', perte: 'Perte', correction: 'Correction après comptage' },
-  comptage: { frigo: 'Comptage du frigo / bar' },
+  entree: { achat: 'Achat / livraison', retour: 'Retour de la cuisine / du bar à la réserve', correction: 'Correction après comptage' },
+  sortie: { vente: 'Vers la cuisine / le bar, pour la vente', casse: 'Casse', offert: 'Offert', perte: 'Perte', correction: 'Correction après comptage' },
+  comptage: { frigo: 'Comptage cuisine / bar' },
   reattribution: { caisse: 'Correction d\'une vente en caisse' },
 };
-const TITRES_STOCK = { entree: 'Entrée de stock', sortie: 'Sortie de stock', comptage: 'Comptage du frigo / bar', reattribution: 'Corriger une vente en caisse' };
+const TITRES_STOCK = { entree: 'Entrée de stock', sortie: 'Sortie de stock', comptage: 'Comptage cuisine / bar', reattribution: 'Corriger une vente en caisse' };
 const BADGES_STOCK = {
   entree: ['Entrée', '#dcfce7;color:#166534'], sortie: ['Sortie', '#ffedd5;color:#9a3412'],
   comptage: ['Comptage', '#dbeafe;color:#1e40af'], reattribution: ['Correction', '#f3e8ff;color:#6b21a8'],
@@ -3534,13 +3534,13 @@ async function loadStockBoissons() {
   sbEtat.mouvements = mouvements || [];
   const tt = etat.totaux;
   document.getElementById('sb-valeur').textContent = fmt(tt.valeurStock);
-  document.getElementById('sb-bouteilles').textContent = `${tt.bouteillesEnStock} bouteille(s) en réserve + ${tt.bouteillesFrigo} au frigo, au prix de vente du menu`;
+  document.getElementById('sb-bouteilles').textContent = `${tt.bouteillesEnStock} bouteille(s) en réserve + ${tt.bouteillesFrigo} en cuisine / bar, au prix de vente du menu`;
   const rouge = 'var(--danger)', vert = 'var(--success, #15803d)';
   document.getElementById('sb-controle').innerHTML = `
-    <li><span>Sorties vers le frigo</span><strong>${tt.sortiesVente} · ${fmt(tt.valeurSortiesVente)}</strong></li>
+    <li><span>Sorties vers la cuisine / le bar</span><strong>${tt.sortiesVente} · ${fmt(tt.valeurSortiesVente)}</strong></li>
     <li><span>Boissons vendues en caisse</span><strong>${tt.vendusCaisse} · ${fmt(tt.montantCaisse)}</strong></li>
-    <li><span>Doit être au frigo (fin de période)</span><strong>${tt.bouteillesFrigo}</strong></li>
-    <li><span title="Bouteilles qui manquaient lors des comptages du frigo de la période">Manquants aux comptages</span><strong style="color:${tt.manquants > 0 ? rouge : vert}">${tt.manquants ? `${tt.manquants} · ${fmt(tt.valeurManquants)}` : 'Aucun'}</strong></li>
+    <li><span>Doit rester en cuisine / bar (fin de période)</span><strong>${tt.bouteillesFrigo}</strong></li>
+    <li><span title="Bouteilles qui manquaient lors des comptages cuisine / bar de la période">Manquants aux comptages</span><strong style="color:${tt.manquants > 0 ? rouge : vert}">${tt.manquants ? `${tt.manquants} · ${fmt(tt.valeurManquants)}` : 'Aucun'}</strong></li>
     ${tt.frigoNegatif ? `<li><span>Vendues sans sortie de la réserve</span><strong style="color:${rouge}">${tt.frigoNegatif} boisson(s)</strong></li>` : ''}
     <li><span>Casse, offerts, pertes</span><strong>${tt.sortiesAutres}</strong></li>`;
   renderStockBoissons();
@@ -3567,9 +3567,9 @@ function renderStockBoissons() {
       <td data-label="Prix">${fmt(l.prix)}</td>
       <td data-label="Réserve début">${l.stockDebut}</td>
       <td data-label="Entrées">${l.entrees || ''}</td>
-      <td data-label="Vers le frigo">${l.sortiesVente || ''}</td>
+      <td data-label="Vers cuisine / bar">${l.sortiesVente || ''}</td>
       <td data-label="Vendu en caisse">${vendu(l)}</td>
-      <td data-label="Au frigo">${frigo(l)}</td>
+      <td data-label="En cuisine / bar">${frigo(l)}</td>
       <td data-label="Autres sorties">${l.sortiesAutres || ''}</td>
       <td data-label="Réserve"><strong style="${l.stockFin <= 0 ? 'color:var(--danger)' : ''}">${l.stockFin}</strong></td>
       <td data-label="Valeur">${fmt(l.valeurStock)}</td>
@@ -3642,8 +3642,8 @@ async function ouvrirMouvementStock(sens, m = null) {
   document.getElementById('btn-sb-prefill').style.display = sens === 'sortie' ? 'inline-flex' : 'none';
   document.getElementById('sb-aide').textContent = {
     entree: 'Indiquez le nombre de bouteilles reçues (le prix d\'achat est facultatif). Laissez vide les boissons non concernées.',
-    sortie: 'Indiquez le nombre de bouteilles sorties de la réserve. « Vers le frigo / bar » : elles ne sont pas encore vendues, la caisse les retirera du frigo au fil des ventes.',
-    comptage: 'Comptez les bouteilles réellement au frigo / bar en fin de journée et indiquez-les (0 si plus aucune). Laissez vide les boissons non comptées. La différence avec le stock attendu apparaît en « manquants ».',
+    sortie: 'Indiquez le nombre de bouteilles sorties de la réserve. « Vers la cuisine / le bar » : elles ne sont pas encore vendues. Elles y restent le temps nécessaire (1, 2, 3 jours…) et la caisse les retire au fil des ventes.',
+    comptage: 'Comptez les bouteilles réellement en cuisine / au bar en fin de journée et indiquez-les (0 si plus aucune). Laissez vide les boissons non comptées. La différence avec le stock attendu apparaît en « manquants ».',
     reattribution: '',
   }[sens];
 
@@ -3660,7 +3660,7 @@ async function ouvrirMouvementStock(sens, m = null) {
     const deja = new Map((m?.lignes || []).map(l => [l.menuItemId, l]));
     const info = (b) => {
       const l = lignesEtat.get(b.id);
-      return sens === 'comptage' ? `attendu au frigo : ${l?.frigo ?? 0}` : `en réserve : ${l?.stockFin ?? 0}`;
+      return sens === 'comptage' ? `attendu en cuisine / bar : ${l?.frigo ?? 0}` : `en réserve : ${l?.stockFin ?? 0}`;
     };
     document.getElementById('sb-lignes').innerHTML = sbEtat.menu.map(b => `
       <div class="sb-ligne" data-nom="${escapeHtml(b.nom.toLowerCase())}" style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border)">

@@ -599,7 +599,7 @@
           <button class="btn btn-secondary" id="btn-sb-afficher"><i class="fas fa-filter"></i> Afficher</button>
           <button class="btn btn-primary" id="btn-sb-entree"><i class="fas fa-arrow-down"></i> Entrée de stock</button>
           <button class="btn btn-primary" id="btn-sb-sortie" style="background:#b45309;border-color:#b45309"><i class="fas fa-arrow-up"></i> Sortie de stock</button>
-          <button class="btn btn-secondary" id="btn-sb-comptage"><i class="fas fa-clipboard-check"></i> Comptage du frigo</button>
+          <button class="btn btn-secondary" id="btn-sb-comptage"><i class="fas fa-clipboard-check"></i> Comptage cuisine / bar</button>
           <button class="btn btn-secondary" id="btn-sb-reattribution"><i class="fas fa-exchange-alt"></i> Corriger une vente</button>
         </div>
         <div class="rapports-grid">
@@ -609,7 +609,7 @@
             <div class="kpi-label-sm" id="sb-bouteilles">au prix de vente du menu</div>
           </div>
           <div class="rapport-card">
-            <h3><i class="fas fa-balance-scale"></i> Frigo / bar et caisse</h3>
+            <h3><i class="fas fa-balance-scale"></i> Cuisine / bar et caisse</h3>
             <ul class="kpi-list" id="sb-controle"></ul>
           </div>
         </div>
@@ -622,7 +622,7 @@
         </div>
         <div class="table-wrapper">
           <table class="data-table">
-            <thead><tr><th>Boisson</th><th>Prix</th><th title="Réserve au début de la période">Réserve début</th><th>Entrées</th><th title="Sorties de la réserve pour la vente">Vers le frigo</th><th title="Ventes en caisse, corrections comprises">Vendu en caisse</th><th title="Ce qui doit se trouver au frigo / bar à la fin de la période">Au frigo</th><th title="Casse, offerts, pertes, corrections">Autres sorties</th><th>Réserve</th><th title="Réserve + frigo, au prix de vente">Valeur</th></tr></thead>
+            <thead><tr><th>Boisson</th><th>Prix</th><th title="Réserve au début de la période">Réserve début</th><th>Entrées</th><th title="Sorties de la réserve pour la vente">Vers cuisine / bar</th><th title="Ventes en caisse, corrections comprises">Vendu en caisse</th><th title="Ce qui doit encore se trouver en cuisine / au bar à la fin de la période">En cuisine / bar</th><th title="Casse, offerts, pertes, corrections">Autres sorties</th><th>Réserve</th><th title="Réserve + cuisine / bar, au prix de vente">Valeur</th></tr></thead>
             <tbody id="sb-tbody"></tbody>
           </table>
         </div>
@@ -1348,7 +1348,7 @@
         <label style="flex:1;min-width:140px" id="sb-motif-label">Motif<select id="sb-motif" style="width:100%"></select></label>
       </div>
       <div id="sb-reattr" style="display:none">
-        <p style="font-size:.8rem;color:var(--gray);margin-bottom:8px">Une vente tapée en caisse sous une boisson, mais servie avec une autre. Exemple : 1 « Celeste 0.5 L » tapée en caisse = 2 bouteilles « Celeste 0.33 L » servies. L'argent encaissé ne change pas ; le frigo compte la boisson réellement servie.</p>
+        <p style="font-size:.8rem;color:var(--gray);margin-bottom:8px">Une vente tapée en caisse sous une boisson, mais servie avec une autre. Exemple : 1 « Celeste 0.5 L » tapée en caisse = 2 bouteilles « Celeste 0.33 L » servies. L'argent encaissé ne change pas ; le stock compte la boisson réellement servie.</p>
         <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px">
           <label style="width:80px">Quantité<input type="number" min="1" step="1" inputmode="numeric" id="sb-de-qte" value="1" style="width:100%"></label>
           <label style="flex:1;min-width:180px">Tapée en caisse comme<select id="sb-de" style="width:100%"></select></label>
