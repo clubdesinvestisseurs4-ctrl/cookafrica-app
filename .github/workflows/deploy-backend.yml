@@ -51,10 +51,13 @@ jobs:
             exit 1
           fi
 
+  # Désactivé le 16/11/2026 : facturation du projet Google Cloud coupée (BILLING_DISABLED),
+  # le site Dubaï est fermé et cookafrica-dubai.vercel.app renvoie vers l'appli Côte d'Ivoire
+  # (voir client/vercel.json). Remettre `github.event_name != 'pull_request'` pour réactiver.
   deploy-cloudrun:
     name: Deploy sur Cloud Run
     needs: test
-    if: github.event_name != 'pull_request'
+    if: false
     runs-on: ubuntu-latest
     permissions:
       contents: read

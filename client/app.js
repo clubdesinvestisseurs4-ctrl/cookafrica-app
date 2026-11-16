@@ -664,7 +664,10 @@ async function loginFlow(token, user, skipWelcome = false) {
 
   document.getElementById('sidebar-user-name').textContent = user.nom;
   document.getElementById('sidebar-user-role').textContent = ROLE_LABELS[user.role] || user.role;
-  document.getElementById('switch-site-btn').style.display = user.role === 'admin' ? 'flex' : 'none';
+  // Site Dubaï désactivé (16/11/2026, serveur Google Cloud arrêté) : un seul site actif,
+  // le bouton « Gérer un autre site » n'a plus de destination — remettre la condition
+  // `user.role === 'admin'` le jour où un second site revient.
+  document.getElementById('switch-site-btn').style.display = 'none';
   applyRoleNav();
   updateOfflineBadge();
   flushOfflineQueue();
@@ -798,7 +801,7 @@ function showSwitchSiteLoginStep() {
 
 function showSwitchSitePickStep(sites) {
   // Inutile de proposer de "basculer" vers le site déjà affiché.
-  renderSwitchSiteList((sites || []).filter(s => s.siteId !== SITE.siteId));
+  renderSwitchSiteList((sites || []).filter(s => s.siteId !== SITE.siteId && s.siteId !== 'dubai'));
   document.getElementById('switch-site-step-login').style.display = 'none';
   document.getElementById('switch-site-step-pick').style.display  = 'block';
   document.getElementById('btn-switch-site-login').style.display  = 'none';
