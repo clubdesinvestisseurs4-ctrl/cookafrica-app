@@ -3499,11 +3499,19 @@ function ajusterALaPage(doc) {
 
 // ─── STOCK BOISSONS (admin) ────────────────────────────
 // Comme les dépenses : on saisit ce qui entre et ce qui sort. Les boissons sont celles du menu
-// (prix de vente compris). Le contrôle compare les sorties « vente » aux boissons vendues en
-// caisse (même calcul que le tableau de bord) — voir server/utils/stockBoissons.js.
+// (prix de vente compris). Une sortie « pour la vente » met la boisson au frigo / bar ; les ventes
+// en caisse l'en retirent. Comptage du frigo et correction de ventes : voir
+// server/utils/stockBoissons.js.
 const MOTIFS_STOCK = {
-  entree: { achat: 'Achat / livraison', retour: 'Retour', correction: 'Correction après comptage' },
-  sortie: { vente: 'Sortie pour la vente', casse: 'Casse', offert: 'Offert', perte: 'Perte', correction: 'Correction après comptage' },
+  entree: { achat: 'Achat / livraison', retour: 'Retour du frigo à la réserve', correction: 'Correction après comptage' },
+  sortie: { vente: 'Vers le frigo / bar, pour la vente', casse: 'Casse', offert: 'Offert', perte: 'Perte', correction: 'Correction après comptage' },
+  comptage: { frigo: 'Comptage du frigo / bar' },
+  reattribution: { caisse: 'Correction d\'une vente en caisse' },
+};
+const TITRES_STOCK = { entree: 'Entrée de stock', sortie: 'Sortie de stock', comptage: 'Comptage du frigo / bar', reattribution: 'Corriger une vente en caisse' };
+const BADGES_STOCK = {
+  entree: ['Entrée', '#dcfce7;color:#166534'], sortie: ['Sortie', '#ffedd5;color:#9a3412'],
+  comptage: ['Comptage', '#dbeafe;color:#1e40af'], reattribution: ['Correction', '#f3e8ff;color:#6b21a8'],
 };
 const sbEtat = { etat: null, mouvements: [], menu: [] };
 
@@ -3526,12 +3534,14 @@ async function loadStockBoissons() {
   sbEtat.mouvements = mouvements || [];
   const tt = etat.totaux;
   document.getElementById('sb-valeur').textContent = fmt(tt.valeurStock);
-  document.getElementById('sb-bouteilles').textContent = `${tt.bouteillesEnStock} bouteille(s) en stock, au prix de vente du menu`;
-  const ecartVal = tt.valeurSortiesVente - tt.montantCaisse;
+  document.getElementById('sb-bouteilles').textContent = `${tt.bouteillesEnStock} bouteille(s) en réserve + ${tt.bouteillesFrigo} au frigo, au prix de vente du menu`;
+  const rouge = 'var(--danger)', vert = 'var(--success, #15803d)';
   document.getElementById('sb-controle').innerHTML = `
-    <li><span>Sorties déclarées pour la vente</span><strong>${tt.sortiesVente} · ${fmt(tt.valeurSortiesVente)}</strong></li>
+    <li><span>Sorties vers le frigo</span><strong>${tt.sortiesVente} · ${fmt(tt.valeurSortiesVente)}</strong></li>
     <li><span>Boissons vendues en caisse</span><strong>${tt.vendusCaisse} · ${fmt(tt.montantCaisse)}</strong></li>
-    <li><span>Écart</span><strong style="color:${tt.articlesEnEcart ? 'var(--danger)' : 'var(--success, #15803d)'}">${tt.articlesEnEcart ? `${tt.articlesEnEcart} boisson(s) · ${fmt(ecartVal)}` : 'Tout correspond'}</strong></li>
+    <li><span>Doit être au frigo (fin de période)</span><strong>${tt.bouteillesFrigo}</strong></li>
+    <li><span title="Bouteilles qui manquaient lors des comptages du frigo de la période">Manquants aux comptages</span><strong style="color:${tt.manquants > 0 ? rouge : vert}">${tt.manquants ? `${tt.manquants} · ${fmt(tt.valeurManquants)}` : 'Aucun'}</strong></li>
+    ${tt.frigoNegatif ? `<li><span>Vendues sans sortie de la réserve</span><strong style="color:${rouge}">${tt.frigoNegatif} boisson(s)</strong></li>` : ''}
     <li><span>Casse, offerts, pertes</span><strong>${tt.sortiesAutres}</strong></li>`;
   renderStockBoissons();
   renderMouvementsStock();
@@ -3541,36 +3551,55 @@ function renderStockBoissons() {
   const toutes = document.getElementById('sb-toutes').checked;
   const q = document.getElementById('sb-recherche').value.trim().toLowerCase();
   const lignes = (sbEtat.etat?.lignes || []).filter(l =>
-    (toutes || l.stockDebut || l.entrees || l.sorties || l.vendusCaisse) && (!q || l.nom.toLowerCase().includes(q)));
-  const ecart = (e) => !e ? '<span style="color:var(--gray)">0</span>'
-    : `<strong style="color:var(--danger)" title="${e > 0 ? 'Sorties non facturées' : 'Vendues sans avoir été sorties du stock'}">${e > 0 ? '+' : ''}${e}</strong>`;
+    (toutes || l.stockDebut || l.entrees || l.sorties || l.vendusCaisse || l.frigo) && (!q || l.nom.toLowerCase().includes(q)));
+  const frigo = (l) => {
+    const titre = l.dernierComptage ? `Dernier comptage : ${fmtDateOnly(l.dernierComptage)}` : 'Pas encore compté';
+    const manq = l.manquants ? ` <small style="color:var(--danger)" title="Manquants aux comptages de la période">(${l.manquants > 0 ? '−' : '+'}${Math.abs(l.manquants)})</small>` : '';
+    return l.frigo < 0
+      ? `<strong style="color:var(--danger)" title="Vendues en caisse sans avoir été sorties de la réserve">${l.frigo}</strong>${manq}`
+      : `<strong title="${titre}">${l.frigo}</strong>${manq}`;
+  };
+  const vendu = (l) => !l.reattribues ? (l.vendusCaisse || '')
+    : `${l.vendusCaisse} <small style="color:#6b21a8" title="Corrections de ventes comprises">(${l.reattribues > 0 ? '+' : ''}${l.reattribues})</small>`;
   document.getElementById('sb-tbody').innerHTML = lignes.length ? lignes.map(l => `
     <tr>
       <td data-label="Boisson"><strong>${escapeHtml(l.nom)}</strong></td>
       <td data-label="Prix">${fmt(l.prix)}</td>
-      <td data-label="Début">${l.stockDebut}</td>
+      <td data-label="Réserve début">${l.stockDebut}</td>
       <td data-label="Entrées">${l.entrees || ''}</td>
-      <td data-label="Sorties vente">${l.sortiesVente || ''}</td>
-      <td data-label="Vendu en caisse">${l.vendusCaisse || ''}</td>
-      <td data-label="Écart">${ecart(l.ecart)}</td>
+      <td data-label="Vers le frigo">${l.sortiesVente || ''}</td>
+      <td data-label="Vendu en caisse">${vendu(l)}</td>
+      <td data-label="Au frigo">${frigo(l)}</td>
       <td data-label="Autres sorties">${l.sortiesAutres || ''}</td>
-      <td data-label="Stock"><strong style="${l.stockFin <= 0 ? 'color:var(--danger)' : ''}">${l.stockFin}</strong></td>
+      <td data-label="Réserve"><strong style="${l.stockFin <= 0 ? 'color:var(--danger)' : ''}">${l.stockFin}</strong></td>
       <td data-label="Valeur">${fmt(l.valeurStock)}</td>
     </tr>`).join('')
     : `<tr><td colspan="10" style="text-align:center;color:var(--gray);padding:24px">Aucun mouvement sur cette période. Commencez par une « Entrée de stock » (cochez « Toutes les boissons » pour voir la liste complète).</td></tr>`;
 }
 
+function detailMouvement(m) {
+  if (m.sens === 'reattribution') return `${m.de.quantite} × ${escapeHtml(m.de.nom)} (caisse)<br>→ ${m.vers.quantite} × ${escapeHtml(m.vers.nom)} (servi)`;
+  return (m.lignes || []).map(l => `${l.quantite} × ${escapeHtml(l.nom)}`).join('<br>');
+}
+
 function renderMouvementsStock() {
   const tb = document.getElementById('sb-mouvements');
-  tb.innerHTML = sbEtat.mouvements.length ? sbEtat.mouvements.map(m => `
+  tb.innerHTML = sbEtat.mouvements.length ? sbEtat.mouvements.map(m => {
+    const [badge, couleurs] = BADGES_STOCK[m.sens] || [m.sens, '#eee;color:#333'];
+    const modifie = m.modifieAt ? `<br><small title="Modifiée le ${escapeHtml(new Date(m.modifieAt).toLocaleString('fr-FR'))}">modifiée par ${escapeHtml(m.modifieByNom || m.modifieBy || '')}</small>` : '';
+    return `
     <tr>
       <td data-label="Date" style="font-size:.82rem">${fmtDateOnly(m.date)}</td>
-      <td data-label="Mouvement"><span class="badge" style="background:${m.sens === 'entree' ? '#dcfce7;color:#166534' : '#ffedd5;color:#9a3412'}">${m.sens === 'entree' ? 'Entrée' : 'Sortie'}</span> <span style="font-size:.8rem;color:var(--gray)">${escapeHtml(MOTIFS_STOCK[m.sens]?.[m.motif] || m.motif)}</span></td>
-      <td data-label="Boissons" style="font-size:.82rem">${m.lignes.map(l => `${l.quantite} × ${escapeHtml(l.nom)}`).join('<br>')}</td>
+      <td data-label="Mouvement"><span class="badge-status" style="background:${couleurs}">${badge}</span> <span style="font-size:.8rem;color:var(--gray)">${escapeHtml(MOTIFS_STOCK[m.sens]?.[m.motif] || m.motif)}</span></td>
+      <td data-label="Boissons" style="font-size:.82rem">${detailMouvement(m)}</td>
       <td data-label="Note" style="font-size:.8rem;color:var(--gray)">${escapeHtml(m.note || '')}</td>
-      <td data-label="Saisie par" style="font-size:.8rem;color:var(--gray)">${escapeHtml(m.createdByNom || m.createdBy || '')}</td>
-      <td><button class="btn btn-danger btn-sm" onclick="supprimerMouvementStock('${m.id}')" title="Supprimer"><i class="fas fa-trash"></i></button></td>
-    </tr>`).join('')
+      <td data-label="Saisie par" style="font-size:.8rem;color:var(--gray)">${escapeHtml(m.createdByNom || m.createdBy || '')}${modifie}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-secondary btn-sm" onclick="modifierMouvementStock('${m.id}')" title="Modifier"><i class="fas fa-pen"></i></button>
+        <button class="btn btn-danger btn-sm" onclick="supprimerMouvementStock('${m.id}')" title="Supprimer"><i class="fas fa-trash"></i></button>
+      </td>
+    </tr>`;
+  }).join('')
     : `<tr><td colspan="6" style="text-align:center;color:var(--gray);padding:18px">Aucune saisie sur cette période.</td></tr>`;
 }
 
@@ -3583,32 +3612,73 @@ window.supprimerMouvementStock = async (id) => {
   loadStockBoissons();
 };
 
-async function ouvrirMouvementStock(sens) {
+window.modifierMouvementStock = (id) => {
+  const m = sbEtat.mouvements.find(x => x.id === id);
+  if (m) ouvrirMouvementStock(m.sens, m);
+};
+
+// sens : entree | sortie | comptage | reattribution. `m` : saisie existante à modifier.
+async function ouvrirMouvementStock(sens, m = null) {
   const menu = (await api('/api/menu')) || [];
-  sbEtat.menu = menu.filter(m => m.categorie === 'Boissons').sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
-  const stockParId = new Map((sbEtat.etat?.lignes || []).map(l => [l.menuItemId, l.stockFin]));
+  sbEtat.menu = menu.filter(x => x.categorie === 'Boissons').sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+  const lignesEtat = new Map((sbEtat.etat?.lignes || []).map(l => [l.menuItemId, l]));
+  const reattr = sens === 'reattribution';
   document.getElementById('sb-sens').value = sens;
-  document.getElementById('sb-modal-titre').textContent = sens === 'entree' ? 'Entrée de stock' : 'Sortie de stock';
+  document.getElementById('sb-edit-id').value = m?.id || '';
+  document.getElementById('sb-modal-titre').textContent = (m ? 'Modifier : ' : '') + TITRES_STOCK[sens];
   document.getElementById('sb-motif').innerHTML = Object.entries(MOTIFS_STOCK[sens]).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
-  document.getElementById('sb-date').value = today();
+  document.getElementById('sb-motif').value = m?.motif || Object.keys(MOTIFS_STOCK[sens])[0];
+  document.getElementById('sb-motif-label').style.display = sens === 'entree' || sens === 'sortie' ? '' : 'none';
+  document.getElementById('sb-date').value = m?.date || today();
   document.getElementById('sb-date').max = today();
-  document.getElementById('sb-note').value = '';
+  document.getElementById('sb-note').value = m?.note || '';
+  document.getElementById('sb-note').placeholder = {
+    entree: 'Fournisseur, n° de bon de livraison…', sortie: 'Raison, service du soir…',
+    comptage: 'Compté par…', reattribution: 'Ex. : plus de 0.5 L, servi en 0.33 L',
+  }[sens];
   document.getElementById('sb-filtre').value = '';
+  document.getElementById('sb-reattr').style.display = reattr ? '' : 'none';
+  document.getElementById('sb-liste-bloc').style.display = reattr ? 'none' : '';
   document.getElementById('btn-sb-prefill').style.display = sens === 'sortie' ? 'inline-flex' : 'none';
-  document.getElementById('sb-aide').textContent = sens === 'entree'
-    ? 'Indiquez le nombre de bouteilles reçues (le prix d\'achat est facultatif). Laissez vide les boissons non concernées.'
-    : 'Indiquez le nombre de bouteilles sorties du stock. Pour la vente, « Reprendre les ventes en caisse du jour » pré-remplit la liste : corrigez si besoin.';
-  document.getElementById('sb-lignes').innerHTML = sbEtat.menu.map(b => `
-    <div class="sb-ligne" data-nom="${escapeHtml(b.nom.toLowerCase())}" style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border)">
-      <span style="flex:1;font-size:.88rem">${escapeHtml(b.nom)}<br><small style="color:var(--gray)">${fmt(b.prix)} · en stock : ${stockParId.get(b.id) ?? 0}</small></span>
-      <input type="number" min="0" step="1" inputmode="numeric" class="sb-qte" data-id="${b.id}" placeholder="0" style="width:72px">
-      ${sens === 'entree' ? `<input type="number" min="0" step="1" class="sb-pa" data-id="${b.id}" placeholder="Prix achat" style="width:96px">` : ''}
-    </div>`).join('');
-  majRecapStock();
+  document.getElementById('sb-aide').textContent = {
+    entree: 'Indiquez le nombre de bouteilles reçues (le prix d\'achat est facultatif). Laissez vide les boissons non concernées.',
+    sortie: 'Indiquez le nombre de bouteilles sorties de la réserve. « Vers le frigo / bar » : elles ne sont pas encore vendues, la caisse les retirera du frigo au fil des ventes.',
+    comptage: 'Comptez les bouteilles réellement au frigo / bar en fin de journée et indiquez-les (0 si plus aucune). Laissez vide les boissons non comptées. La différence avec le stock attendu apparaît en « manquants ».',
+    reattribution: '',
+  }[sens];
+
+  if (reattr) {
+    const options = sbEtat.menu.map(b => `<option value="${b.id}">${escapeHtml(b.nom)} (${fmt(b.prix)})</option>`).join('');
+    document.getElementById('sb-de').innerHTML = options;
+    document.getElementById('sb-vers').innerHTML = options;
+    document.getElementById('sb-de').value = m?.de?.menuItemId || sbEtat.menu[0]?.id || '';
+    document.getElementById('sb-vers').value = m?.vers?.menuItemId || sbEtat.menu[1]?.id || '';
+    document.getElementById('sb-de-qte').value = m?.de?.quantite || 1;
+    document.getElementById('sb-vers-qte').value = m?.vers?.quantite || 1;
+    document.getElementById('sb-recap').textContent = '';
+  } else {
+    const deja = new Map((m?.lignes || []).map(l => [l.menuItemId, l]));
+    const info = (b) => {
+      const l = lignesEtat.get(b.id);
+      return sens === 'comptage' ? `attendu au frigo : ${l?.frigo ?? 0}` : `en réserve : ${l?.stockFin ?? 0}`;
+    };
+    document.getElementById('sb-lignes').innerHTML = sbEtat.menu.map(b => `
+      <div class="sb-ligne" data-nom="${escapeHtml(b.nom.toLowerCase())}" style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border)">
+        <span style="flex:1;font-size:.88rem">${escapeHtml(b.nom)}<br><small style="color:var(--gray)">${fmt(b.prix)} · ${info(b)}</small></span>
+        <input type="number" min="0" step="1" inputmode="numeric" class="sb-qte" data-id="${b.id}" placeholder="${sens === 'comptage' ? '—' : '0'}" value="${deja.has(b.id) ? deja.get(b.id).quantite : ''}" style="width:72px">
+        ${sens === 'entree' ? `<input type="number" min="0" step="1" class="sb-pa" data-id="${b.id}" placeholder="Prix achat" value="${deja.get(b.id)?.prixAchat ?? ''}" style="width:96px">` : ''}
+      </div>`).join('');
+    majRecapStock();
+  }
   openModal('stock-boissons');
 }
 
 function majRecapStock() {
+  if (document.getElementById('sb-sens').value === 'comptage') {
+    const n = [...document.querySelectorAll('#sb-lignes .sb-qte')].filter(i => i.value !== '').length;
+    document.getElementById('sb-recap').textContent = n ? `${n} boisson(s) comptée(s)` : '';
+    return;
+  }
   const prix = new Map(sbEtat.menu.map(b => [b.id, Number(b.prix) || 0]));
   let n = 0, v = 0;
   document.querySelectorAll('#sb-lignes .sb-qte').forEach(i => { const q = Number(i.value) || 0; n += q; v += q * (prix.get(i.dataset.id) || 0); });
@@ -3622,7 +3692,7 @@ async function prefillVentesCaisse() {
   let n = 0;
   e.lignes.forEach(l => {
     const inp = document.querySelector(`#sb-lignes .sb-qte[data-id="${l.menuItemId}"]`);
-    if (inp) { inp.value = l.vendusCaisse || ''; n += l.vendusCaisse; }
+    if (inp) { inp.value = l.vendusCaisse > 0 ? l.vendusCaisse : ''; n += Math.max(0, l.vendusCaisse); }
   });
   document.getElementById('sb-motif').value = 'vente';
   majRecapStock();
@@ -3630,25 +3700,36 @@ async function prefillVentesCaisse() {
 }
 
 async function enregistrerMouvementStock() {
-  const lignes = [...document.querySelectorAll('#sb-lignes .sb-qte')]
-    .filter(i => Number(i.value) > 0)
-    .map(i => {
-      const pa = document.querySelector(`#sb-lignes .sb-pa[data-id="${i.dataset.id}"]`);
-      return { menuItemId: i.dataset.id, quantite: Number(i.value), prixAchat: pa && pa.value !== '' ? Number(pa.value) : null };
-    });
-  if (!lignes.length) { toast('Indiquez au moins une quantité', 'warning'); return; }
+  const sens = document.getElementById('sb-sens').value;
+  const editId = document.getElementById('sb-edit-id').value;
   const body = {
     date: document.getElementById('sb-date').value,
-    sens: document.getElementById('sb-sens').value,
+    sens,
     motif: document.getElementById('sb-motif').value,
     note: document.getElementById('sb-note').value.trim(),
-    lignes,
   };
+  let resume;
+  if (sens === 'reattribution') {
+    body.de = { menuItemId: document.getElementById('sb-de').value, quantite: Number(document.getElementById('sb-de-qte').value) };
+    body.vers = { menuItemId: document.getElementById('sb-vers').value, quantite: Number(document.getElementById('sb-vers-qte').value) };
+    if (body.de.menuItemId === body.vers.menuItemId) { toast('Choisissez deux boissons différentes', 'warning'); return; }
+    resume = 'Vente corrigée';
+  } else {
+    body.lignes = [...document.querySelectorAll('#sb-lignes .sb-qte')]
+      .filter(i => sens === 'comptage' ? i.value !== '' : Number(i.value) > 0)
+      .map(i => {
+        const pa = document.querySelector(`#sb-lignes .sb-pa[data-id="${i.dataset.id}"]`);
+        return { menuItemId: i.dataset.id, quantite: Number(i.value), prixAchat: pa && pa.value !== '' ? Number(pa.value) : null };
+      });
+    if (!body.lignes.length) { toast('Indiquez au moins une quantité', 'warning'); return; }
+    resume = sens === 'comptage' ? `Comptage enregistré : ${body.lignes.length} boisson(s)`
+      : `${sens === 'entree' ? 'Entrée' : 'Sortie'} enregistrée : ${body.lignes.reduce((s, l) => s + l.quantite, 0)} bouteille(s)`;
+  }
   showLoader();
-  const r = await api('/api/stock-boissons/mouvements', { method: 'POST', body: JSON.stringify(body) });
+  const r = await api(`/api/stock-boissons/mouvements${editId ? `/${editId}` : ''}`, { method: editId ? 'PUT' : 'POST', body: JSON.stringify(body) });
   hideLoader();
   if (!r?.id) { toast(r?.error || t('common.error'), 'error'); return; }
-  toast(`${body.sens === 'entree' ? 'Entrée' : 'Sortie'} enregistrée : ${lignes.reduce((s, l) => s + l.quantite, 0)} bouteille(s)`, 'success');
+  toast(editId ? 'Saisie modifiée' : resume, 'success');
   closeModal('stock-boissons');
   loadStockBoissons();
 }
@@ -3656,6 +3737,8 @@ async function enregistrerMouvementStock() {
 document.getElementById('btn-sb-afficher')?.addEventListener('click', loadStockBoissons);
 document.getElementById('btn-sb-entree')?.addEventListener('click', () => ouvrirMouvementStock('entree'));
 document.getElementById('btn-sb-sortie')?.addEventListener('click', () => ouvrirMouvementStock('sortie'));
+document.getElementById('btn-sb-comptage')?.addEventListener('click', () => ouvrirMouvementStock('comptage'));
+document.getElementById('btn-sb-reattribution')?.addEventListener('click', () => ouvrirMouvementStock('reattribution'));
 document.getElementById('btn-sb-prefill')?.addEventListener('click', prefillVentesCaisse);
 document.getElementById('btn-sb-enregistrer')?.addEventListener('click', enregistrerMouvementStock);
 document.getElementById('sb-toutes')?.addEventListener('change', renderStockBoissons);

@@ -153,4 +153,4 @@ DocumentReference.prototype.delete = function (...args) {
   });
 };
 
-module.exports = { db, FieldPath, suivreLecturesParRoute };
+module.exports = { db, FieldPath, FieldValue, suivreLecturesParRoute };
