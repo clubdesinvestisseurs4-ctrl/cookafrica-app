@@ -696,6 +696,7 @@ const I18N = {
     'fidelite.aucune_facture': "Aucune facture en cours : créez d'abord la facture de la commande du client.",
     'export.pdf_periode_requise': 'Choisissez une période (jour, semaine, mois…) pour exporter en PDF.',
     'export.pdf_popup_bloquee': "Autorisez les fenêtres pop-up pour cette application afin d'ouvrir le PDF.",
+    'export.pdf_recto_verso': "Rapport long : il tient sur 2 pages. Pour une seule feuille, choisissez « Recto verso » dans la fenêtre d'impression.",
 
     // Dépenses (admin)
     'nav.depenses': 'Dépenses',
@@ -1443,6 +1444,7 @@ const I18N = {
     'fidelite.aucune_facture': "No open invoice: first create the invoice for the customer's order.",
     'export.pdf_periode_requise': 'Pick a period (day, week, month…) to export as PDF.',
     'export.pdf_popup_bloquee': 'Allow pop-ups for this app to open the PDF.',
+    'export.pdf_recto_verso': 'Long report: it takes 2 pages. To use a single sheet, choose "Two-sided" in the print dialog.',
 
     // Expenses (admin)
     'nav.depenses': 'Expenses',

@@ -3428,29 +3428,32 @@ async function exportPDF() {
   w.document.open();
   w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${e(t('export.titre'))} ${e(debut)} – ${e(fin)}</title>
     <style>
-      @page { size: A4; margin: 14mm 12mm; }
+      @page { size: A4; margin: 10mm; }
       * { box-sizing: border-box; }
-      body { font-family: Arial, Helvetica, sans-serif; color: #111; font-size: 11pt; margin: 0; padding: 8px; }
-      header { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; border-bottom: 2px solid #111; padding-bottom: 6px; margin-bottom: 14px; }
-      header h1 { font-size: 18pt; margin: 0; }
-      header .meta { text-align: right; font-size: 9.5pt; line-height: 1.5; }
-      h2 { font-size: 13pt; margin: 18px 0 6px; border-left: 4px solid #111; padding-left: 8px; }
-      h3 { font-size: 11pt; margin: 12px 0 4px; }
-      table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+      /* Largeur imprimable A4 (210 − 2×10 mm) aussi à l'écran : la mise en page mesurée avant
+         l'impression est celle qui sera imprimée (voir ajusterALaPage). */
+      body { font-family: Arial, Helvetica, sans-serif; color: #111; font-size: 10pt; margin: 0 auto; padding: 0; width: 190mm; }
+      header { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; border-bottom: 2px solid #111; padding-bottom: 4px; margin-bottom: 8px; }
+      header h1 { font-size: 15pt; margin: 0; }
+      header .meta { text-align: right; font-size: 9pt; line-height: 1.4; }
+      h2 { font-size: 11.5pt; margin: 10px 0 4px; border-left: 4px solid #111; padding-left: 6px; }
+      h3 { font-size: 10pt; margin: 6px 0 3px; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
       tr { page-break-inside: avoid; }
       thead { display: table-header-group; }
-      th, td { border: 1px solid #999; padding: 4px 6px; text-align: left; vertical-align: top; }
+      th, td { border: 1px solid #999; padding: 2px 5px; text-align: left; vertical-align: top; }
       th { background: #eee; font-size: 9.5pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       tfoot td { font-weight: bold; border-top: 2px solid #111; }
       .n { text-align: right; white-space: nowrap; }
       .pct { color: #555; width: 60px; }
       .vide { text-align: center; color: #666; font-style: italic; }
       .etroit { width: auto; min-width: 60%; }
-      .point td { font-size: 12pt; }
-      .point tfoot td { font-size: 13pt; }
+      .point td { font-size: 10.5pt; }
+      .point tfoot td { font-size: 11.5pt; }
       .pos td:last-child { color: #0a6b2d; } .neg td:last-child { color: #b00020; }
-      .note { font-size: 9.5pt; color: #444; margin: 2px 0 0; }
-      footer { margin-top: 18px; font-size: 8.5pt; color: #666; border-top: 1px solid #ccc; padding-top: 4px; }
+      .note { font-size: 9pt; color: #444; margin: 2px 0 0; }
+      footer { margin-top: 10px; font-size: 8pt; color: #666; border-top: 1px solid #ccc; padding-top: 3px; }
+      @media screen and (max-width: 200mm) { body { width: auto; } }
     </style></head><body>
     <header><div><h1>${e(t('export.titre'))}</h1><div>${e(t('export.pdf_montants_en', { devise }))}</div></div>
       <div class="meta">${e(t('export.periode'))} : <b>${e(periode)}</b><br>${e(t('export.genere_le'))} ${e(new Date().toLocaleString(SITE.currency.locale))}</div></header>
@@ -3458,8 +3461,40 @@ async function exportPDF() {
     <footer>${e(t('export.pdf_pied'))}</footer>
     </body></html>`);
   w.document.close();
-  // Script du rapport bloqué par la CSP de l'app : on déclenche l'impression d'ici.
-  setTimeout(() => { try { w.focus(); w.print(); } catch { /* l'utilisateur imprime à la main */ } }, 400);
+  // Script du rapport bloqué par la CSP de l'app : on ajuste et on déclenche l'impression d'ici.
+  setTimeout(() => {
+    let pages = 1;
+    try { pages = ajusterALaPage(w.document); } catch { /* imprimé à taille normale */ }
+    if (pages > 1) toast(t('export.pdf_recto_verso'), 'info');
+    try { w.focus(); w.print(); } catch { /* l'utilisateur imprime à la main */ }
+  }, 400);
+}
+
+// Fait tenir le rapport sur une seule feuille A4 en réduisant tout le contenu (CSS zoom), sans
+// descendre sous un seuil lisible. Trop long même réduit (beaucoup de dépenses) : il est réduit pour
+// tenir sur 2 pages, à imprimer en recto verso. Renvoie le nombre de pages visé.
+function ajusterALaPage(doc) {
+  const ZOOM_MIN = 0.65;                 // 10 pt → 6,5 pt : encore lisible
+  const MARGE = 0.97;                    // marge de sécurité (arrondis du moteur d'impression)
+  const etalon = doc.createElement('div');
+  etalon.style.cssText = 'position:absolute;visibility:hidden;height:277mm;width:1px';   // 297 − 2×10 mm
+  doc.body.appendChild(etalon);
+  const hauteurPage = etalon.getBoundingClientRect().height;
+  etalon.remove();
+  doc.body.style.width = '190mm';        // largeur imprimée, même sur un petit écran
+  const hauteur = doc.body.scrollHeight;
+  if (!hauteurPage || hauteur <= hauteurPage * MARGE) return 1;
+  for (const pages of [1, 2]) {
+    // Sur 2 pages, la coupure (lignes et titres jamais coupés, en-têtes répétés) perd de la place.
+    const zoom = (hauteurPage * pages * (pages === 1 ? MARGE : 0.88)) / hauteur;
+    if (zoom >= ZOOM_MIN) {
+      if (zoom < 1) { doc.body.style.zoom = zoom.toFixed(3); doc.body.style.width = `${(190 / zoom).toFixed(1)}mm`; }
+      return pages;
+    }
+  }
+  doc.body.style.zoom = String(ZOOM_MIN);
+  doc.body.style.width = `${(190 / ZOOM_MIN).toFixed(1)}mm`;
+  return Math.ceil((hauteur * ZOOM_MIN) / hauteurPage);
 }
 
 // ─── STOCK BOISSONS (admin) ────────────────────────────
