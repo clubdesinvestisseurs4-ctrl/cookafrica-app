@@ -1,15 +1,15 @@
 // Stock des boissons — voir utils/stockBoissons.js. Réservé à l'admin, comme les dépenses.
-//   GET    /api/stock-boissons/etat?debut=&fin=         → stock, valeur, contrôle avec la caisse
+//   GET    /api/stock-boissons/etat?debut=&fin=         → stock restant, valeur, ventes déclarées
 //   GET    /api/stock-boissons/mouvements?debut=&fin=   → entrées / sorties saisies
-//   POST   /api/stock-boissons/mouvements               → { date, sens, motif, note, lignes[] | de, vers }
+//   POST   /api/stock-boissons/mouvements               → { date, sens, motif, note, lignes[] }
 //   PUT    /api/stock-boissons/mouvements/:id           → modifie une saisie (l'ancienne version est gardée)
 //   DELETE /api/stock-boissons/mouvements/:id           → suppression douce (gardée en base)
 const express = require('express');
 const { db, FieldValue } = require('../firebase-admin');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const cache = require('../utils/cache');
-const { listeParPeriode, menuEnCache } = require('../utils/listes');
-const { validerMouvement, debutLectureFactures, calculerEtat } = require('../utils/stockBoissons');
+const { menuEnCache } = require('../utils/listes');
+const { validerMouvement, calculerEtat } = require('../utils/stockBoissons');
 
 const router = express.Router();
 router.use(authenticateToken, requireRole('admin'));
@@ -38,9 +38,8 @@ router.get('/etat', async (req, res) => {
     const p = lirePeriode(req.query);
     if (!p) return res.status(400).json({ error: 'Période invalide' });
     const [boissons, mouvements] = await Promise.all([boissonsDuMenu(), tousMouvements()]);
-    // Le frigo se suit en continu : factures depuis le dernier comptage (ou le premier mouvement).
-    const factures = await listeParPeriode('factures', debutLectureFactures(mouvements, p.debut, p.fin), p.fin);
-    res.json(calculerEtat({ boissons, mouvements, factures, ...p }));
+    // Saisies manuelles uniquement : la caisse n'entre plus dans le calcul (décision du 2026-11-17).
+    res.json(calculerEtat({ boissons, mouvements, ...p }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
