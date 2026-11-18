@@ -770,7 +770,11 @@
     </div>
     <div class="modal-body">
       <input type="hidden" id="editcmd-id">
-      <div class="form-group">
+      <!-- Lignes AVANT la recherche : la liste déroulante s'ouvre vers le bas et ne doit
+           jamais recouvrir les articles déjà présents (voir setupMenuSearchPicker). -->
+      <div id="editcmd-items"></div>
+      <div style="text-align:right;font-weight:800;margin-top:10px;font-size:1.05rem" id="editcmd-total"></div>
+      <div class="form-group" style="margin-top:14px">
         <label data-i18n="modal.editcmd_add_article">Ajouter un article</label>
         <div class="menu-search-wrapper" id="editcmd-search-wrapper">
           <div class="menu-search-input-row">
@@ -783,8 +787,6 @@
           <div class="menu-search-dropdown" id="editcmd-menu-dropdown" style="display:none"></div>
         </div>
       </div>
-      <div id="editcmd-items" style="margin-top:10px"></div>
-      <div style="text-align:right;font-weight:800;margin-top:10px;font-size:1.05rem" id="editcmd-total"></div>
       <div class="form-group" style="margin-top:12px">
         <label data-i18n="mode.label">Type de consommation</label>
         <div class="mode-toggle" id="editcmd-mode-toggle">
@@ -1004,7 +1006,10 @@
     <div class="modal-body">
       <input type="hidden" id="editfact-facture-id">
       <div id="editfact-items-step">
-        <div class="form-group">
+        <!-- Lignes AVANT la recherche : voir le commentaire de la fenêtre edit-commande. -->
+        <div id="editfact-items"></div>
+        <div style="text-align:right;font-weight:800;margin-top:10px;font-size:1.05rem" id="editfact-total"></div>
+        <div class="form-group" style="margin-top:14px">
           <label data-i18n="modal.editfacture_add_article">Ajouter un article</label>
           <div class="menu-search-wrapper" id="editfact-search-wrapper">
             <div class="menu-search-input-row">
@@ -1017,8 +1022,6 @@
             <div class="menu-search-dropdown" id="editfact-menu-dropdown" style="display:none"></div>
           </div>
         </div>
-        <div id="editfact-items" style="margin-top:10px"></div>
-        <div style="text-align:right;font-weight:800;margin-top:10px;font-size:1.05rem" id="editfact-total"></div>
       </div>
     </div>
     <div class="modal-footer">

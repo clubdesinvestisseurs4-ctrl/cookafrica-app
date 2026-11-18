@@ -33,4 +33,16 @@ function menuEnCache() {
   });
 }
 
-module.exports = { listeParPeriode, LISTE_TTL, menuEnCache };
+// La catégorie d'une ligne rattachée au menu (menuItemId) vient TOUJOURS du menu, jamais
+// de ce qu'envoie l'écran : c'est elle qui range la vente en « plats » ou « boissons » dans
+// le tableau de bord, le rapport et le bilan. Les lignes hors menu (remise fidélité…)
+// gardent la leur.
+async function avecCategoriesDuMenu(items) {
+  const menu = new Map((await menuEnCache()).map(m => [m.id, m]));
+  return items.map(i => {
+    const m = i.menuItemId ? menu.get(i.menuItemId) : null;
+    return m && m.categorie ? { ...i, categorie: m.categorie } : i;
+  });
+}
+
+module.exports = { listeParPeriode, LISTE_TTL, menuEnCache, avecCategoriesDuMenu };

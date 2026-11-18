@@ -7,7 +7,7 @@ const eventBus = require('../utils/eventBus');
 const { createFactureFromCommande } = require('../utils/factures');
 const { formatMontant } = require('../utils/currency');
 const { modeApresFacture, supplementApresFacture, stocksDuJour } = require('../utils/commandes');
-const { listeParPeriode, LISTE_TTL } = require('../utils/listes');
+const { listeParPeriode, LISTE_TTL, avecCategoriesDuMenu } = require('../utils/listes');
 
 const router = express.Router();
 
@@ -181,14 +181,14 @@ router.put('/:id/pay', authenticateToken, requireRole('admin', 'caissiere', 'cai
     let finalItems = facture.items || [];
 
     if (Array.isArray(items) && items.length > 0) {
-      const mappedItems = items.map(i => ({
+      const mappedItems = await avecCategoriesDuMenu(items.map(i => ({
         menuItemId: i.menuItemId || '',
         nom: i.nom,
         prix: Number(i.prix),
         quantite: Number(i.quantite),
         sousTotal: Number(i.prix) * Number(i.quantite),
         categorie: i.categorie || '',
-      }));
+      })));
 
       finalItems = mappedItems;
       update.items = mappedItems;
@@ -265,14 +265,14 @@ router.post('/:id/edit-items', authenticateToken, requireRole('admin', 'caissier
       return res.status(400).json({ error: 'Facture déjà payée, modification impossible' });
     }
 
-    const mappedItems = items.map(i => ({
+    const mappedItems = await avecCategoriesDuMenu(items.map(i => ({
       menuItemId: i.menuItemId || '',
       nom: i.nom,
       prix: Number(i.prix),
       quantite: Number(i.quantite),
       sousTotal: Number(i.prix) * Number(i.quantite),
       categorie: i.categorie || '',
-    }));
+    })));
 
     const total = mappedItems.reduce((s, i) => s + i.sousTotal, 0);
     const now = new Date();

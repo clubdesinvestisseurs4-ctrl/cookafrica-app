@@ -41,7 +41,7 @@
 // v3.10.0 : le tri par montant (v3.9.0) ne correspondait pas à ce qui était attendu —
 // tri désormais par numéro de facture croissant (FACT-0001, 0002…).
 // v3.11.0 : tri inversé — numéro de facture décroissant (les plus récentes d'abord).
-const SW_VERSION = 'cookafrica-v3.20.0'; // v3.20.0 : stock boissons 100 % manuel — sorties et comptage du soir, plus rien de déduit de la caisse
+const SW_VERSION = 'cookafrica-v3.20.1'; // v3.20.1 : modification de facture — lignes au-dessus de la recherche, confirmation si un article est retiré/ajouté
 const SHELL_CACHE = `cookafrica-shell-${SW_VERSION}`;
 
 // App shell : ce qui ne change pas à chaque commande, précaché pour un premier

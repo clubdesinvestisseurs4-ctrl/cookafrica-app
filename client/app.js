@@ -1567,7 +1567,11 @@ function renderMenuSearchDropdown(query, dropdown, onSelect) {
 // Câble un champ "rechercher un article" réutilisable (panier, modification
 // commande, modification facture) : saisie libre + résultats en dropdown,
 // au lieu d'un <select> qu'il faut parcourir sans pouvoir taper.
-function setupMenuSearchPicker(wrapperId, inputId, clearId, dropdownId, onSelect) {
+// `ouvrirAuFocus: false` (fenêtres de modification commande/facture) : la liste ne s'ouvre
+// qu'une fois au moins 2 lettres tapées. Ouverte d'office sur tout le menu, elle recouvrait
+// les lignes déjà présentes et un appui destiné au prix d'une ligne ajoutait l'article
+// caché dessous (FACT-1224 du 2026-11-18 : un vin remplacé par une sauce).
+function setupMenuSearchPicker(wrapperId, inputId, clearId, dropdownId, onSelect, { ouvrirAuFocus = true } = {}) {
   const input    = document.getElementById(inputId);
   const clearBtn = document.getElementById(clearId);
   const dropdown = document.getElementById(dropdownId);
@@ -1580,6 +1584,7 @@ function setupMenuSearchPicker(wrapperId, inputId, clearId, dropdownId, onSelect
   }
 
   function doRender(query) {
+    if (!ouvrirAuFocus && query.length < 2) { dropdown.style.display = 'none'; return; }
     renderMenuSearchDropdown(query, dropdown, handleSelect);
   }
 
@@ -1893,6 +1898,7 @@ window.openEditFacture = async (factureId) => {
   document.getElementById('editfact-facture-id').value = factureId;
   document.getElementById('editfact-numero').textContent = f.numero;
   state.editFactureItems = (f.items || []).map(i => ({ ...i }));
+  state.editFactureOrigine = (f.items || []).map(i => ({ ...i }));
 
   if (state.menu.length === 0) {
     const menu = await api('/api/menu');
@@ -2002,6 +2008,26 @@ function trackDiscountOtp(code, res) {
 async function saveEditFacture() {
   if (state.editFactureItems.length === 0) { toast(t('facturation.min_1_article'), 'warning'); return; }
   const factureId = document.getElementById('editfact-facture-id').value;
+
+  // Changer un prix ne demande rien ; retirer ou ajouter un article, si : la caissière voit
+  // noir sur blanc ce qui part et ce qui arrive avant d'enregistrer.
+  const cle = i => i.menuItemId || i.nom;
+  const origine = state.editFactureOrigine || [];
+  const retires = origine.filter(o => !state.editFactureItems.some(i => cle(i) === cle(o)));
+  const ajoutes = state.editFactureItems.filter(i => !origine.some(o => cle(o) === cle(i)));
+  if (retires.length || ajoutes.length) {
+    const lignes = [
+      ...retires.map(i => `− ${t('facturation.article_retire')} : ${i.nom}`),
+      ...ajoutes.map(i => `+ ${t('facturation.article_ajoute')} : ${i.nom} (${fmt(i.prix)})`),
+      '',
+      t('facturation.prix_seul_astuce'),
+    ];
+    const ok = await confirmDialog(lignes.join('\n'), {
+      title: t('facturation.verifier_articles'),
+      confirmLabel: t('modal.save'),
+    });
+    if (!ok) return;
+  }
 
   showLoader();
   const res = await api(`/api/factures/${factureId}/edit-items`, {
@@ -4686,7 +4712,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Recherche d'article : panier (nouvelle commande) + modification commande ──
   panierPicker  = setupMenuSearchPicker('menu-search-wrapper', 'cmd-menu-search', 'cmd-menu-clear', 'menu-search-dropdown', addToPanier);
-  editcmdPicker = setupMenuSearchPicker('editcmd-search-wrapper', 'editcmd-menu-search', 'editcmd-menu-clear', 'editcmd-menu-dropdown', addToEditCommande);
+  editcmdPicker = setupMenuSearchPicker('editcmd-search-wrapper', 'editcmd-menu-search', 'editcmd-menu-clear', 'editcmd-menu-dropdown', addToEditCommande, { ouvrirAuFocus: false });
 
   document.getElementById('btn-save-commande').addEventListener('click', saveCommande);
   document.getElementById('btn-filter-cmd').addEventListener('click', loadCommandes);
@@ -4734,7 +4760,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-print-facture').addEventListener('click', printFacture);
   document.getElementById('btn-repair-numeros')?.addEventListener('click', repairNumeros);
   document.getElementById('btn-editfact-save').addEventListener('click', saveEditFacture);
-  editfactPicker = setupMenuSearchPicker('editfact-search-wrapper', 'editfact-menu-search', 'editfact-menu-clear', 'editfact-menu-dropdown', addToEditFacture);
+  editfactPicker = setupMenuSearchPicker('editfact-search-wrapper', 'editfact-menu-search', 'editfact-menu-clear', 'editfact-menu-dropdown', addToEditFacture, { ouvrirAuFocus: false });
   resaMenuPicker  = setupMenuSearchPicker('resa-menu-search-wrapper', 'resa-menu-search', 'resa-menu-clear', 'resa-menu-dropdown', addToResaMenu);
 
   // ── Menu ──

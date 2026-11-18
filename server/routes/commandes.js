@@ -12,7 +12,7 @@ const {
 } = require('../utils/commandes');
 const { ROLES_MODE } = require('../utils/commandeUpdate');
 const { createFactureFromCommande } = require('../utils/factures');
-const { listeParPeriode, LISTE_TTL } = require('../utils/listes');
+const { listeParPeriode, LISTE_TTL, avecCategoriesDuMenu } = require('../utils/listes');
 const { formatMontant } = require('../utils/currency');
 
 const router = express.Router();
@@ -82,14 +82,14 @@ router.post('/', authenticateToken, requireRole('admin', 'serveur', 'caissiere',
     const resolvedDate = resolveCommandeDate(date, req.user.role, now);
     if (resolvedDate.error) return res.status(400).json({ error: resolvedDate.error });
 
-    const mappedItems = items.map(i => ({
+    const mappedItems = await avecCategoriesDuMenu(items.map(i => ({
       menuItemId: i.menuItemId || '',
       nom: i.nom,
       prix: Number(i.prix),
       quantite: Number(i.quantite),
       sousTotal: Number(i.prix) * Number(i.quantite),
       categorie: i.categorie || '',
-    }));
+    })));
 
     let rattachement = {};
     if (commandeParentId) {
@@ -239,14 +239,14 @@ router.put('/:id/items', authenticateToken, requireRole('admin', 'serveur', 'cai
       return res.status(400).json({ error: 'Une facture existe déjà — seul un admin peut modifier via un code de modification' });
     }
 
-    const mappedItems = items.map(i => ({
+    const mappedItems = await avecCategoriesDuMenu(items.map(i => ({
       menuItemId: i.menuItemId || '',
       nom: i.nom,
       prix: Number(i.prix),
       quantite: Number(i.quantite),
       sousTotal: Number(i.prix) * Number(i.quantite),
       categorie: i.categorie || '',
-    }));
+    })));
 
     const total = mappedItems.reduce((s, i) => s + i.sousTotal, 0);
     const now = new Date();
